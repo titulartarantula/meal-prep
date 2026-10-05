@@ -23,7 +23,8 @@ def li(name, qty, unit=None, prep=None):
     ("4x113.5 g", "mass", 113.5, 4), ("6 × 355 mL", "vol", 355, 6),
     ("12 count", "count", 12, 1), ("12 ea", "count", 12, 1), ("1 ea", "count", 1, 1), ("each", "count", 1, 1),
     ("ea", "count", 1, 1), ("3 pack", "count", 3, 1), ("12 ct", "count", 12, 1), ("dozen", "count", 12, 1),
-    ("1 dozen", "count", 12, 1), ("2 dozen", "count", 24, 1),
+    ("1 dozen", "count", 12, 1), ("2 dozen", "count", 24, 1), ("1.36 kg bag", "mass", 1360, 1),
+    ("2 l carton", "vol", 2000, 1), ("16 fl oz", "vol", 473, 1), ("16 fl. oz.", "vol", 473, 1), ("8 oz", "mass", 226.8, 1),
 ])
 def test_parse_pack_sizes(text, family, amount, units):
     p = planner.parse_pack(text)

@@ -53,6 +53,13 @@ _BY_WEIGHT = re.compile(r"^\s*(?:per|/)\s*(?:\d+\s*)?(?:kg|g|lb)\b|/\s*(?:\d+\s*
                         r"sold by weight|\bavg\b|\bapprox", re.I)
 
 
+_TAIL = r"(?: [a-z][a-z -]*)?"            # "1.36 kg bag", "2 l carton": words after the size
+
+
+def _unit(word: str) -> str | None:
+    return _PACK_UNITS.get(re.sub(r"[. ]", "", word).replace("floz", "fl oz"))
+
+
 @dataclass
 class Pack:
     family: str | None = None            # "vol" (ml), "mass" (g), "count", or None when unknown
@@ -89,14 +96,14 @@ def parse_pack(text: str | None, sold_by: str | None = None) -> Pack:
     if st == "SOLD_BY_WEIGHT" or (s and _BY_WEIGHT.search(s)):
         return Pack(by_weight=True, label=f"{text.strip()} (priced by weight)" if s else "priced by weight")
     try:
-        m = re.fullmatch(rf"(\d+) ?x ?({_NUM}) ?([a-z. ]+)", s)
-        if m and m.group(3).strip(". ") in _PACK_UNITS:
-            u = _PACK_UNITS[m.group(3).strip(". ")]
+        m = re.fullmatch(rf"(\d+) ?x ?({_NUM}) ?(fl\.? ?oz|[a-z]+)\.?{_TAIL}", s)
+        if m and _unit(m.group(3)):
+            u = _unit(m.group(3))
             fam, amt = _to_base(float(m.group(2)), u)
             return Pack(fam, amt, int(m.group(1)), label=f"{m.group(1)} × {_num_label(float(m.group(2)))} {_unit_label(u)}")
-        m = re.fullmatch(rf"({_NUM}) ?([a-z. ]+)", s)
-        if m and m.group(2).strip(". ") in _PACK_UNITS:
-            u = _PACK_UNITS[m.group(2).strip(". ")]
+        m = re.fullmatch(rf"({_NUM}) ?(fl\.? ?oz|[a-z]+)\.?{_TAIL}", s)
+        if m and _unit(m.group(2)):
+            u = _unit(m.group(2))
             fam, amt = _to_base(float(m.group(1)), u)
             return Pack(fam, amt, label=f"{_num_label(float(m.group(1)))} {_unit_label(u)}")
         m = re.fullmatch(rf"(?:(\d+) )?dozen", s)
