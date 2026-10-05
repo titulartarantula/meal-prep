@@ -81,7 +81,7 @@ sealed interface HandoffAction {
 }
 
 /**
- * Load loblaws.ca → set the cart id → reload → check it stuck → ready (then Krista signs in).
+ * Load loblaws.ca → set the cart id → reload → check it stuck → ready (then the shopper signs in).
  * Never claims success it didn't see: a block page, a script that didn't take, a page that dropped the id, a load
  * error or a timeout all end in a state with Try again.
  */

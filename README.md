@@ -81,7 +81,8 @@ These drive a remote Windows build host and a Linux server over SSH. Copy `local
 - `remote.sh <gradle args>`: ship the working tree to the build host and run Gradle there.
 - `pull.sh <path> <dest>`: copy a build output back.
 - `release.sh "<notes>" [track]`: bump versionCode, test, build a signed bundle, upload to Play, commit.
-- `play_upload.sh`, `capture_fixtures.sh`, `push_github.sh`: Play upload, test-fixture capture, GitHub push via the server.
+- `play_upload.sh`, `capture_fixtures.sh`: Play upload, GET-only test-fixture capture from the server (scrub before committing).
+- `push_github.sh`: privacy scan of the tracked tree (patterns from `local.env`), then `git push origin main`.
 
 ## License
 
