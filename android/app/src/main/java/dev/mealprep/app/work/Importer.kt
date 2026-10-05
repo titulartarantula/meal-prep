@@ -12,6 +12,8 @@ interface Importer {
     suspend fun shareLink(text: String, week: LocalDate): ApiResult<ShareResult>
     suspend fun importPhotos(pages: List<File>, week: LocalDate, title: String?): ApiResult<ShareResult>
     suspend fun attachPages(recipeId: Int, pages: List<File>, forLine: Int): ApiResult<Recipe>
+    /** The recipe as the server has it now (no saved copy). */
+    suspend fun fetchRecipe(id: Int): ApiResult<Recipe>
 
     /** Durably notes that job [workId] is about to send its request. False if a previous run already did:
      *  that run was interrupted and the server may have processed it. */

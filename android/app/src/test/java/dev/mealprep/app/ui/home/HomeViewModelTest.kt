@@ -142,4 +142,13 @@ class HomeViewModelTest {
         v.cancelImport(id)
         assertEquals(WorkInfo.State.CANCELLED, wm.getWorkInfoById(id).get()!!.state)
     }
+
+    @Test fun `the entry dialog learns about a missing page from the recipe`() = runTest {
+        env.on("GET", "/recipes/3", body = fixture("share_result.json").let { it.substring(it.indexOf("{", 1), it.indexOf(",\n \"entry\"")) })
+        env.on("GET", "/recipes/1", body = fixture("recipe_1.json"))
+        assertEquals(dev.mealprep.app.ui.camera.RefPrompt(3, 1, "Batter for 24 crêpes, page 191", 191), vm.refPromptFor(3))
+        assertEquals(null, vm.refPromptFor(1))
+        env.offline = true
+        assertEquals(null, vm.refPromptFor(99))                     // offline and never saved: nothing to offer
+    }
 }

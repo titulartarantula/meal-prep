@@ -62,13 +62,20 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
                 onDone = { nav.navigate(HomeRoute()) { popUpTo<HomeRoute> { inclusive = true } } })
         }
         composable<CameraRoute> { back ->
+            val r = back.toRoute<CameraRoute>()
             val vm = graphViewModel(key = "camera-${back.id}") { g -> CameraViewModel(g.pages, g.scalePage, g.copyPage) }
-            CameraScreen(vm, title = "Photograph the recipe, page by page",
+            CameraScreen(vm, title = cameraTitle(r),
                 onDone = { dir ->
-                    graph.pendingShare.value = ShareInput.Pages(dir)
-                    nav.navigate(ShareRoute) { popUpTo<CameraRoute> { inclusive = true } }
+                    if (r.purpose == "ref") {
+                        // Read in the background like any import; the home screen shows "Reading the referenced page…".
+                        graph.imports.enqueuePages(dir, r.recipeId, r.forLine, r.page)
+                        if (!nav.popBackStack()) nav.navigate(HomeRoute())
+                    } else {
+                        graph.pendingShare.value = ShareInput.Pages(dir)
+                        nav.navigate(ShareRoute) { popUpTo<CameraRoute> { inclusive = true } }
+                    }
                 },
-                onCancel = { nav.popBackStack() })
+                onCancel = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) })
         }
         composable<ShareRoute> {
             ShareScreen(graph,
@@ -77,6 +84,12 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
                 onSetup = { nav.navigate(SetupRoute) })
         }
     }
+}
+
+fun cameraTitle(r: CameraRoute): String = when {
+    r.purpose != "ref" -> "Photograph the recipe, page by page"
+    r.page > 0 -> "Photograph page ${r.page} (the part this recipe refers to)"
+    else -> "Photograph the page this recipe refers to"
 }
 
 /** Where the home screen's context button goes (null = nothing to open). */

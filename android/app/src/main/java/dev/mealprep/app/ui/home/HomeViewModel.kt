@@ -8,6 +8,8 @@ import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.PlanEntry
 import dev.mealprep.app.data.api.userMessage
+import dev.mealprep.app.ui.camera.RefPrompt
+import dev.mealprep.app.ui.camera.refPrompt
 import dev.mealprep.app.ui.common.errorMessage
 import dev.mealprep.app.ui.common.offlineSince
 import dev.mealprep.app.work.ImportQueue
@@ -119,6 +121,9 @@ class HomeViewModel(
     }
 
     fun clearMessage() { _message.value = null }
+
+    /** For the entry dialog: the recipe's first referenced page without a photo ("Add photo of p.191"). */
+    suspend fun refPromptFor(recipeId: Int): RefPrompt? = repo.recipe(recipeId).value?.let(::refPrompt)
 
     fun dismissImport(id: UUID) {
         hidden.update { it + id }

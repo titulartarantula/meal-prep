@@ -28,10 +28,15 @@ class ImportQueue(private val wm: WorkManager) {
         fun photoInput(dir: File, week: LocalDate, title: String?): Data = workDataOf(
             ImportWorker.KIND to ImportWorker.PHOTO, ImportWorker.DIR to dir.path, ImportWorker.WEEK to week.toString(),
             ImportWorker.TITLE to title)
+        /** A photo of the page that ingredient line [forLine] of recipe [recipeId] refers to ("…, page 191"). */
+        fun pagesInput(dir: File, recipeId: Int, forLine: Int, page: Int = 0): Data = workDataOf(
+            ImportWorker.KIND to ImportWorker.PAGES, ImportWorker.DIR to dir.path,
+            ImportWorker.RECIPE_ID to recipeId, ImportWorker.FOR_LINE to forLine, ImportWorker.PAGE to page)
     }
 
     fun enqueueLink(text: String, week: LocalDate): UUID = enqueue(linkInput(text, week))
     fun enqueuePhotos(dir: File, week: LocalDate, title: String?): UUID = enqueue(photoInput(dir, week, title))
+    fun enqueuePages(dir: File, recipeId: Int, forLine: Int, page: Int): UUID = enqueue(pagesInput(dir, recipeId, forLine, page))
 
     fun enqueue(input: Data): UUID {
         val req = OneTimeWorkRequestBuilder<ImportWorker>()

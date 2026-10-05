@@ -54,4 +54,33 @@ class HomeScreenTest {
         compose.onNodeWithText("✓ Cart sent").performClick()
         assertEquals(dev.mealprep.app.ui.nav.DraftRoute(9), opened)
     }
+
+    @Test fun `an imported recipe that uses another page offers to photograph it`() {
+        val id = java.util.UUID.randomUUID()
+        var opened: Any? = null
+        val done = ImportUi.Done(id, 3, "Wings", false, null, 1, 191, wk, "Batter for 24 crêpes, page 191")
+        compose.setContent { ImportCards(listOf(done), {}, {}, { opened = it }, {}) }
+        compose.onNodeWithText("This uses “Batter for 24 crêpes, page 191” — add a photo of page 191?").assertExists()
+        compose.onNodeWithText("Not now").assertExists()
+        compose.onNodeWithText("Add photo of p.191").performClick()
+        assertEquals(dev.mealprep.app.ui.nav.CameraRoute("ref", 3, 1, 191), opened)
+    }
+
+    @Test fun `a recipe on the week that still misses a page offers it in its dialog`() {
+        var opened: Any? = null
+        compose.setContent {
+            WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, { opened = it }, {},
+                loadRef = { id -> if (id == 5) dev.mealprep.app.ui.camera.RefPrompt(5, 2, "Sauce, page 51", 51) else null })
+        }
+        compose.onNodeWithText("Chili").performClick()
+        compose.onNodeWithText("Add photo of p.51").performClick()
+        assertEquals(dev.mealprep.app.ui.nav.CameraRoute("ref", 5, 2, 51), opened)
+    }
+
+    @Test fun `a failed page import is worded for a page`() {
+        val f = ImportUi.Failed(java.util.UUID.randomUUID(), "That page is already part of the recipe.", false, dev.mealprep.app.work.ImportWorker.PAGES)
+        compose.setContent { ImportCards(listOf(f), {}, {}, {}, {}) }
+        compose.onNodeWithText("Couldn't add the page").assertExists()
+        compose.onNodeWithText("Check the shopping list for its ingredients before adding it again.").assertExists()
+    }
 }

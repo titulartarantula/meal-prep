@@ -17,7 +17,9 @@ import dev.mealprep.app.R
 import dev.mealprep.app.core.RatingText
 import dev.mealprep.app.core.firstMissingRef
 import dev.mealprep.app.core.Weeks
+import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.data.api.ShareResult
+import dev.mealprep.app.ui.camera.refPrompt
 import dev.mealprep.app.ui.nav.Nav
 import dev.mealprep.app.work.ImportWorker
 import dev.mealprep.app.work.JobWatchWorker
@@ -34,7 +36,7 @@ class Notifier(private val context: Context) {
     internal fun failedText(message: String, retrySafe: Boolean, kind: String? = ImportWorker.LINK): String = sentences(
         message, when {
             retrySafe -> "Open Meal Prep to try again."
-            kind == ImportWorker.PAGES -> "It may have been added already — check the shopping list."
+            kind == ImportWorker.PAGES -> "Check the shopping list for its ingredients before adding it again."
             else -> "It may have been added already — check the week."
         })
 
@@ -63,7 +65,17 @@ class Notifier(private val context: Context) {
             RatingText.summary(r.recipe.ratings),
             missing?.let { (_, page) -> "Uses page $page — tap to add a photo of it" },
         ).joinToString(" · ")
-        post("import-${r.entry.id}", CH_JOBS, title, text, if (missing != null) Nav.ref(r.recipe.id, missing.first) else Nav.home(week))
+        post("import-${r.entry.id}", CH_JOBS, title, text,
+            if (missing != null) Nav.ref(r.recipe.id, missing.first, missing.second) else Nav.home(week))
+    }
+
+    /** A referenced page was read and its ingredients added; offers the next missing page, if any. */
+    fun pagesAttached(recipe: Recipe) {
+        val next = refPrompt(recipe)
+        val text = next?.let { "It also uses page ${it.page} (“${it.raw}”) — tap to add that one too." }
+            ?: "Its ingredients are on the shopping list now."
+        post("pages-${recipe.id}", CH_JOBS, "Added the page to ${recipe.title}", text,
+            next?.let { Nav.ref(recipe.id, it.line, it.page) } ?: Nav.home(null))
     }
 
     /** [retrySafe] false: the request may have reached the server, so warn instead of inviting a retry. */

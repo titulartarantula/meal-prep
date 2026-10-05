@@ -101,4 +101,25 @@ class HomeLogicTest {
         assertEquals(ImportWorker.PHOTO, dev.mealprep.app.work.ImportQueue.kindOf(setOf("import", "import-kind:photo")))
         assertEquals(ImportWorker.LINK, dev.mealprep.app.work.ImportQueue.kindOf(setOf("import")))   // jobs from before tags
     }
+
+    @Test fun `attached page shows its own card, with the next page if any`() {
+        val id = UUID.randomUUID(); val id2 = UUID.randomUUID()
+        assertEquals(listOf(
+            ImportUi.PageAdded(id, 3, "Crêpes", null),
+            ImportUi.PageAdded(id2, 3, "Crêpes", dev.mealprep.app.ui.camera.RefPrompt(3, 4, "Sauce, page 51", 51)),
+        ), importUi(listOf(
+            ImportJob(id, WorkInfo.State.SUCCEEDED, workDataOf(ImportWorker.KIND to ImportWorker.PAGES, ImportWorker.OUT_RECIPE_ID to 3,
+                ImportWorker.OUT_TITLE to "Crêpes", ImportWorker.OUT_MISSING_LINE to -1)),
+            ImportJob(id2, WorkInfo.State.SUCCEEDED, workDataOf(ImportWorker.KIND to ImportWorker.PAGES, ImportWorker.OUT_RECIPE_ID to 3,
+                ImportWorker.OUT_TITLE to "Crêpes", ImportWorker.OUT_MISSING_LINE to 4, ImportWorker.OUT_MISSING_PAGE to 51,
+                ImportWorker.OUT_MISSING_TEXT to "Sauce, page 51")),
+        ), emptySet()))
+    }
+
+    @Test fun `an imported recipe with a page reference offers the photo`() {
+        val done = ImportUi.Done(UUID.randomUUID(), 3, "Wings", false, null, 1, 191, wk, "Batter for 24 crêpes, page 191")
+        assertEquals(dev.mealprep.app.ui.camera.RefPrompt(3, 1, "Batter for 24 crêpes, page 191", 191), done.ref)
+        assertEquals(dev.mealprep.app.ui.nav.CameraRoute("ref", 3, 1, 191), refRoute(done.ref!!))
+        assertEquals(null, done.copy(missingLine = -1).ref)
+    }
 }

@@ -7,8 +7,8 @@ import kotlinx.serialization.Serializable
 @Serializable object SettingsRoute
 @Serializable data class HomeRoute(val week: String? = null)
 @Serializable object ShareRoute
-/** purpose "recipe" = new cookbook recipe; "ref" = the page a line refers to ("…, page 191"). */
-@Serializable data class CameraRoute(val purpose: String = "recipe", val recipeId: Int = 0, val forLine: Int = -1)
+/** purpose "recipe" = new cookbook recipe; "ref" = the page ingredient line [forLine] refers to ("…, page 191" → [page]). */
+@Serializable data class CameraRoute(val purpose: String = "recipe", val recipeId: Int = 0, val forLine: Int = -1, val page: Int = 0)
 @Serializable data class ListRoute(val weeks: String)
 @Serializable data class DraftRoute(val id: Int)
 @Serializable data class LoblawsRoute(val cartId: String)
@@ -22,7 +22,7 @@ import kotlinx.serialization.Serializable
 object Nav {
     const val EXTRA = "nav"
     fun home(week: LocalDate?) = "home/${week ?: ""}"
-    fun ref(recipeId: Int, line: Int) = "ref/$recipeId/$line"
+    fun ref(recipeId: Int, line: Int, page: Int = 0) = "ref/$recipeId/$line" + if (page > 0) "/$page" else ""
     fun rating(entryId: Int, week: LocalDate) = "rating/$entryId/$week"
     fun card(entryId: Int) = "card/$entryId"
     fun draft(id: Int) = "draft/$id"
@@ -33,7 +33,7 @@ object Nav {
         return runCatching {
             when (p[0]) {
                 "home" -> HomeRoute(p.getOrNull(1)?.ifBlank { null }?.also(LocalDate::parse))
-                "ref" -> CameraRoute("ref", p[1].toInt(), p[2].toInt())
+                "ref" -> CameraRoute("ref", p[1].toInt(), p[2].toInt(), p.getOrNull(3)?.toInt() ?: 0)
                 "rating" -> RatingRoute(p[1].toInt(), LocalDate.parse(p[2]).toString())
                 "card" -> CardRoute(p[1].toInt())
                 "draft" -> DraftRoute(p[1].toInt())

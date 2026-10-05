@@ -12,6 +12,8 @@ class NavTest {
         assertEquals(HomeRoute("2026-10-11"), Nav.parse(Nav.home(wk)))
         assertEquals(HomeRoute(null), Nav.parse(Nav.home(null)))
         assertEquals(CameraRoute("ref", 3, 1), Nav.parse(Nav.ref(3, 1)))
+        assertEquals(CameraRoute("ref", 3, 1, 191), Nav.parse(Nav.ref(3, 1, 191)))
+        assertEquals(CameraRoute("ref", 3, 1), Nav.parse("ref/3/1"))                // links from 0.2.x notifications
         assertEquals(RatingRoute(21, "2026-10-11"), Nav.parse(Nav.rating(21, wk)))
         assertEquals(CardRoute(21), Nav.parse(Nav.card(21)))
         assertEquals(DraftRoute(7), Nav.parse(Nav.draft(7)))
@@ -34,5 +36,11 @@ class NavTest {
             contextToast(ContextAction.AddRecipes))
         assertNull(contextToast(ContextAction.AllSet))
         assertNull(contextToast(ContextAction.StartPrep(wk)))   // has a route: navigating handles it
+    }
+
+    @Test fun `camera titles say what to photograph`() {
+        assertEquals("Photograph the recipe, page by page", cameraTitle(CameraRoute()))
+        assertEquals("Photograph page 191 (the part this recipe refers to)", cameraTitle(CameraRoute("ref", 3, 1, 191)))
+        assertEquals("Photograph the page this recipe refers to", cameraTitle(CameraRoute("ref", 3, 1)))
     }
 }

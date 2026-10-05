@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -38,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,6 +65,9 @@ import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.nav.CardRoute
 import dev.mealprep.app.ui.nav.RatingRoute
+import dev.mealprep.app.ui.camera.RefPrompt
+import dev.mealprep.app.ui.camera.refPromptText
+import dev.mealprep.app.work.ImportWorker
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 
@@ -107,7 +113,8 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
         HorizontalPager(pager, Modifier.weight(1f)) { page ->
             val week = current.plusWeeks((page - BACK).toLong())
             val ui by vm.week(week).collectAsStateWithLifecycle()
-            WeekContent(ui, today, onAction, vm::place, vm::scale, vm::remove, onOpen, onRefresh = { vm.refresh(week) })
+            WeekContent(ui, today, onAction, vm::place, vm::scale, vm::remove, onOpen, onRefresh = { vm.refresh(week) },
+                loadRef = vm::refPromptFor)
         }
     }
 }
@@ -141,8 +148,10 @@ fun ImportCards(
                     }
                     is ImportUi.Reading -> { Text(readingText(i.kind)); LinearProgressIndicator(Modifier.fillMaxWidth()) }
                     is ImportUi.Failed -> {
+                        Text(if (i.kind == ImportWorker.PAGES) "Couldn't add the page" else "Couldn't add the recipe", fontWeight = FontWeight.Bold)
                         Text(i.message)
-                        if (!i.retrySafe) Text("This may have been added already — check the week before trying again.")
+                        if (!i.retrySafe) Text(if (i.kind == ImportWorker.PAGES) "Check the shopping list for its ingredients before adding it again."
+                            else "This may have been added already — check the week before trying again.")
                         Row {
                             if (i.retrySafe) TextButton({ onRetry(i.id) }) { Text("Try again") }
                             TextButton({ onDismiss(i.id) }) { Text("Dismiss") }
@@ -152,12 +161,32 @@ fun ImportCards(
                         Text(if (i.existing) "Already in your library: ${i.title}" else "Added ${i.title}", fontWeight = FontWeight.Bold)
                         i.ratingLine?.let { Text(it) }
                         Text("Week of ${Weeks.shortDate(i.week)} — it's in the tray until you put it on a night.")
-                        Row { TextButton({ onDismiss(i.id) }) { Text("OK") } }
+                        i.ref?.let { RefLine(it) }
+                        Row {
+                            i.ref?.let { r -> TextButton({ onOpen(refRoute(r)) }) { Text("Add photo of p.${r.page}") } }
+                            TextButton({ onDismiss(i.id) }) { Text(if (i.ref != null) "Not now" else "OK") }
+                        }
+                    }
+                    is ImportUi.PageAdded -> {
+                        Text("Added the page to ${i.title}", fontWeight = FontWeight.Bold)
+                        val next = i.next
+                        if (next == null) Text("Its ingredients are on the shopping list now.") else RefLine(next)
+                        Row {
+                            next?.let { r -> TextButton({ onOpen(refRoute(r)) }) { Text("Add photo of p.${r.page}") } }
+                            TextButton({ onDismiss(i.id) }) { Text(if (next != null) "Not now" else "OK") }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** "This uses “Batter for 24 crêpes, page 191” — add a photo of page 191?" + why it matters. */
+@Composable
+private fun RefLine(p: RefPrompt) {
+    Text(refPromptText(p))
+    Text("Until then its ingredients aren't on the shopping list.", style = MaterialTheme.typography.bodySmall)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -170,6 +199,8 @@ fun WeekContent(
     onRemove: (PlanEntry) -> Unit,
     onOpen: (Any) -> Unit,
     onRefresh: () -> Unit,
+    /** The recipe's first page reference without a photo (null if none, or offline). */
+    loadRef: suspend (recipeId: Int) -> RefPrompt? = { null },
 ) {
     var sheetFor by remember { mutableStateOf<PlanEntry?>(null) }
     val all = ui.view?.all.orEmpty()
@@ -199,7 +230,8 @@ fun WeekContent(
         item { TextButton(onClick = onRefresh) { Text("Refresh") } }
     }
     sheetFor?.let { e ->
-        EntryDialog(e, onDismiss = { sheetFor = null },
+        val ref by produceState<RefPrompt?>(null, e.recipeId) { value = loadRef(e.recipeId) }
+        EntryDialog(e, ref, onDismiss = { sheetFor = null },
             onPlace = { d -> sheetFor = null; onPlace(e, d) },
             onScale = { m -> sheetFor = null; onScale(e, m) },
             onRemove = { sheetFor = null; onRemove(e) },
@@ -243,12 +275,19 @@ private fun fmt(m: Double) = if (m % 1.0 == 0.0) m.toInt().toString() else m.toS
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EntryDialog(e: PlanEntry, onDismiss: () -> Unit, onPlace: (Int?) -> Unit, onScale: (Double) -> Unit, onRemove: () -> Unit, onOpen: (Any) -> Unit) {
+private fun EntryDialog(e: PlanEntry, ref: RefPrompt?, onDismiss: () -> Unit, onPlace: (Int?) -> Unit, onScale: (Double) -> Unit, onRemove: () -> Unit, onOpen: (Any) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(e.title ?: "Recipe") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Scrolls: with large text the dialog can be taller than the screen.
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // First: until this page is added, the recipe's shopping list is incomplete.
+                ref?.let { r ->
+                    Text("It uses page ${r.page} (“${r.raw}”); its ingredients aren't on the shopping list yet.",
+                        style = MaterialTheme.typography.bodySmall)
+                    TextButton({ onOpen(refRoute(r)) }) { Text("Add photo of p.${r.page}") }
+                }
                 Text("Put on")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     (0..6).forEach { d -> FilterChip(e.day == d, { onPlace(d) }, { Text(Weeks.dayLabel(d)) }) }
@@ -262,6 +301,7 @@ private fun EntryDialog(e: PlanEntry, onDismiss: () -> Unit, onPlace: (Int?) -> 
                     TextButton({ onOpen(CardRoute(e.id)) }) { Text("Cook card") }
                     TextButton({ onOpen(RatingRoute(e.id, e.week)) }) { Text(if (e.rating != null) "Rating: ${e.rating.family}/5" else "Rate") }
                 }
+
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },

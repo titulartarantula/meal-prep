@@ -156,6 +156,7 @@ class Repository(
     override suspend fun attachPages(recipeId: Int, pages: List<File>, forLine: Int): ApiResult<Recipe> =
         call { it.pages(recipeId, Http.pageParts(pages), Http.textPart(forLine.toString())) }
 
+    override suspend fun fetchRecipe(id: Int): ApiResult<Recipe> = call { it.recipe(id) }
     override suspend fun markSending(workId: UUID): Boolean = markOnce("import-sent:$workId")
     override suspend fun clearSending(workId: UUID) = cache.delete("once:import-sent:$workId")
 
