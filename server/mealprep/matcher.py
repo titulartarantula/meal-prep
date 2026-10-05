@@ -32,9 +32,9 @@ def _choose(provider, it, cands):
     return ch.get("code"), qty
 
 
-def _remembered_qty(conn, it, code) -> int:
+def _remembered_qty(conn, it, code, key: str | None = None) -> int:
     """Scale the last purchase of this product for this list line to this week's need (1 if no history)."""
-    last = db.last_purchase(conn, it.key, code)
+    last = db.last_purchase(conn, key or it.key, code)
     if not last:
         return 1
     need, qty = last

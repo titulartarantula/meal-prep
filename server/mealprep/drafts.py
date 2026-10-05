@@ -9,6 +9,7 @@ import httpx
 from psycopg.types.json import Jsonb
 
 from . import db
+from .ingredients import item_key, split_prep
 from .matcher import OUT_OF_STOCK, _choose, _remembered_qty
 from .models import ListItem, Product
 
@@ -51,9 +52,29 @@ def create_draft(conn, items, weeks, store_id: str, ai_provider: str | None) -> 
     return did
 
 
+def find_pick(conn, key: str):
+    """(product_code, chosen_by, key it was stored under) for a list key, or None.
+
+    Keys made before ingredient-name clean-up ("parsnip, chopped|each") still count for the cleaned key
+    ("parsnip|each"): the first old key that cleans to this one is used (user picks first, then newest)."""
+    row = db.get_pick_full(conn, key)
+    if row:
+        return row[0], row[1], key
+    for old, code, by in db.all_picks(conn):
+        name, _, dim = old.rpartition("|")
+        if name and item_key(split_prep(name)[0], dim) == key:
+            return code, by, old
+    return None
+
+
+def search_term(name: str) -> str:
+    """Product search uses the name without prep words, even for a list made before the clean-up."""
+    return split_prep(name)[0] or name
+
+
 def _match(pcx, provider, it, pick, remembered_qty):
     """Worker (no DB): search, then remembered pick or AI choice. Returns (found, cands, code, qty, source)."""
-    found = pcx.search(it.name)
+    found = pcx.search(search_term(it.name))
     cands = [p for p in found if p.stock not in OUT_OF_STOCK]
     if not cands:
         return found, cands, None, None, "none"
@@ -79,8 +100,11 @@ def _build(conn, draft_id, pcx, provider, store_id, workers):
     jobs = []
     for lid, item in rows:
         it = ListItem(**item)
-        pick = db.get_pick_full(conn, it.key)
-        jobs.append((lid, it, pick, _remembered_qty(conn, it, pick[0]) if pick else None))
+        found = find_pick(conn, it.key)
+        pick = found[:2] if found else None
+        if found and found[2] != it.key:
+            db.copy_pick(conn, found[2], it.key)
+        jobs.append((lid, it, pick, _remembered_qty(conn, it, pick[0], found[2]) if pick else None))
     errors, last_error = 0, None
     with ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix=f"draft{draft_id}") as pool:
         futs = {pool.submit(_match, pcx, provider, it, pick, rq): (lid, it, pick) for lid, it, pick, rq in jobs}

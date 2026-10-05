@@ -52,6 +52,18 @@ def get_pick_full(conn, key: str) -> tuple[str, str] | None:
     return conn.execute("SELECT product_code, chosen_by FROM picks WHERE key=%s", (key,)).fetchone()
 
 
+def all_picks(conn) -> list[tuple[str, str, str]]:
+    """(key, product_code, chosen_by) for every remembered pick, user picks first, then newest first."""
+    return conn.execute("SELECT key, product_code, chosen_by FROM picks "
+                        "ORDER BY (chosen_by = 'user') DESC, updated_at DESC").fetchall()
+
+
+def copy_pick(conn, old_key: str, new_key: str) -> None:
+    """Carry a remembered pick over to a list key renamed by better name clean-up (not a new choice: no history)."""
+    conn.execute("INSERT INTO picks(key, product_code, chosen_by, updated_at) SELECT %s, product_code, chosen_by, "
+                 "updated_at FROM picks WHERE key=%s ON CONFLICT(key) DO NOTHING", (new_key, old_key))
+
+
 def last_purchase(conn, key: str, code: str) -> tuple[float | None, int] | None:
     """(need_qty, quantity) of the most recent added cart line for this list key + product."""
     return conn.execute("SELECT need_qty, quantity FROM cart_lines WHERE item_key=%s AND product_code=%s "

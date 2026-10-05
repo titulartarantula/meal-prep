@@ -243,3 +243,32 @@ def test_positive_quantity_restores_removed_line(conn):
     out = drafts.update_line(conn, did, line["id"], removed=True)
     out = drafts.update_line(conn, did, line["id"], removed=False)
     assert out["removed"] is False and out["quantity"] == 2
+
+
+def test_pick_under_pre_cleanup_key_still_used(conn):
+    """A pick remembered under an old, uncleaned key ("parsnip, chopped|each") carries over to "parsnip|each"."""
+    db.set_pick(conn, "parsnip, chopped|each", "B", chosen_by="user")
+    pcx, ai = FakePcx({"parsnip": [prod("A"), prod("B")]}), FakeAI({"parsnip": "A"})
+    did = build(conn, [item("parsnip")], pcx, ai)
+    [line] = drafts.get_draft(conn, did)["lines"]
+    assert line["product"]["code"] == "B" and line["source"] == "memory" and ai.n == 0
+    assert db.get_pick_full(conn, "parsnip|each") == ("B", "user")          # copied forward, no new history row
+    assert conn.execute("SELECT count(*) FROM pick_history").fetchone()[0] == 1
+
+
+def test_exact_pick_wins_over_old_keys(conn):
+    db.set_pick(conn, "fresh parsnip|each", "A", chosen_by="user")
+    db.set_pick(conn, "parsnip|each", "B", chosen_by="ai")
+    assert pick(conn, "parsnip|each") == ("B", "ai")
+    assert pick(conn, "turnip|each") is None
+
+
+def pick(conn, key):
+    found = drafts.find_pick(conn, key)
+    return found[:2] if found else None
+
+
+def test_search_term_has_no_prep_words(conn):
+    pcx = FakePcx({"whole milk": [prod("M")]})
+    build(conn, [item("whole milk warmed"), item("finely grated parmesan")], pcx, FakeAI({}))
+    assert sorted(pcx.searches) == ["parmesan", "whole milk"]
