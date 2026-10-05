@@ -1,5 +1,6 @@
 import json, re
 from fractions import Fraction
+from ..ingredients import clean_ingredient
 from ..models import Ingredient
 
 _VULGAR = {"½": "1/2", "⅓": "1/3", "⅔": "2/3", "¼": "1/4", "¾": "3/4", "⅕": "1/5", "⅙": "1/6",
@@ -52,7 +53,8 @@ def _ref_page(line: str) -> int | None:
 
 
 def structure_ingredients(provider, lines: list[str]) -> list[Ingredient]:
-    return [i.model_copy(update={"ref_page": _ref_page(i.raw)}) for i in _structure(provider, lines)]
+    """AI-structured lines, then the deterministic clean-up (amount/unit from the raw line, prep out of the name)."""
+    return [clean_ingredient(i).model_copy(update={"ref_page": _ref_page(i.raw)}) for i in _structure(provider, lines)]
 
 
 def _structure(provider, lines: list[str]) -> list[Ingredient]:

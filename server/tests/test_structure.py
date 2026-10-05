@@ -99,3 +99,14 @@ def test_photo_prompt_excludes_equipment_and_reads_for_n_people():
 def test_photo_people_range_takes_lower_bound():
     p = Fake({"title": "Gâteau", "servings": "4 to 6", "ingredients": [], "steps": []})
     assert import_photo(p, ["/tmp/p1.jpg"]).servings == 4
+
+
+def test_structure_restores_dropped_unit_and_moves_prep():
+    p = Fake([{"name": "oat milk warmed", "qty": "1/3", "unit": None, "prep": None}])
+    [ing] = structure_ingredients(p, ["⅓ cup oat milk, warmed"])
+    assert (ing.name, ing.unit, ing.prep) == ("oat milk", "cup", "warmed") and abs(ing.qty - 1 / 3) < 1e-9
+
+
+def test_structure_fallback_line_is_parsed():
+    [ing] = structure_ingredients(Fake([]), ["1 1/2 cups diced zucchini"])
+    assert (ing.name, ing.qty, ing.unit, ing.prep) == ("zucchini", 1.5, "cup", "diced")

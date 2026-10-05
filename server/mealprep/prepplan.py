@@ -13,6 +13,7 @@ from . import db
 from .ai import AIError
 from .models import CookCard, Ingredient, MealIn, PrepTask, RawCookCard, RawPrepPlan
 from .prep_rules import DAYS, SECTIONS, TITLES, apply_rules
+from .ingredients import clean_ingredient
 from .shopping import scale_factor
 
 log = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ def _qty(q: float) -> str:
 
 
 def _ingredient_line(ing: Ingredient, factor: float) -> str:
+    ing = clean_ingredient(ing)
     parts = ([_qty(ing.qty * factor)] if ing.qty is not None else []) + ([ing.unit] if ing.unit else []) + [ing.name]
     s = " ".join(parts)
     s += f", {ing.prep}" if ing.prep else ""
