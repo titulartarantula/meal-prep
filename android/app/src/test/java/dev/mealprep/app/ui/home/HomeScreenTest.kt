@@ -3,7 +3,13 @@ package dev.mealprep.app.ui.home
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import dev.mealprep.app.data.api.PlanEntry
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -35,6 +41,48 @@ class HomeScreenTest {
         compose.onNodeWithText("Cookies").performClick()
         compose.onNodeWithText("Thu").performClick()
         assertEquals(23 to 4, placed)
+    }
+
+    @Test fun `a placed recipe can be moved to another night or back to the tray from its dialog`() {
+        val moves = mutableListOf<Pair<Int, Int?>>()
+        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { e, d -> moves += e.id to d }, { _, _ -> }, {}, {}, {}) }
+        compose.onNodeWithText("Chili").performClick()
+        compose.onNodeWithText("Move to").assertExists()
+        compose.onNodeWithText("Tue").performClick()                                // where it already is: nothing
+        compose.onNodeWithText("Fri").performClick()
+        assertEquals(listOf(21 to 5), moves)
+        compose.onNodeWithText("Chili").performClick()
+        compose.onNodeWithText("No night (tray)").performClick()
+        assertEquals(listOf(21 to 5, 21 to null), moves)
+    }
+
+    @Test fun `holding a recipe picks it up (a buzz, the drag starts) instead of opening the dialog`() {
+        val buzzes = mutableListOf<HapticFeedbackType>()
+        val haptics = object : HapticFeedback { override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) { buzzes += hapticFeedbackType } }
+        compose.setContent {
+            CompositionLocalProvider(LocalHapticFeedback provides haptics) {
+                WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {})
+            }
+        }
+        compose.onNodeWithText("Hold a recipe and drag it to a night (or back here), or tap it to move it.").assertExists()
+        compose.onNodeWithText("Chili").performTouchInput { longClick() }
+        assertEquals(listOf(HapticFeedbackType.LongPress), buzzes)            // the hold reached the drag start
+        compose.onNodeWithText("Move to").assertDoesNotExist()
+        compose.onNodeWithText("Chili").performClick()                        // and a tap still opens it
+        compose.onNodeWithText("Move to").assertExists()
+        assertEquals(1, buzzes.size)
+    }
+
+    @Test fun `while a recipe is held the zones say where it goes`() {
+        val drag = WeekDrag()
+        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {}, drag = drag) }
+        compose.onNodeWithText("Drop here").assertDoesNotExist()
+        drag.started(); drag.entered(Slot(0))
+        compose.onNodeWithText("Drop here").assertExists()
+        drag.entered(Slot.TRAY); drag.exited(Slot(0))
+        compose.onNodeWithText("Drop here to take it off its night").assertExists()
+        drag.ended()
+        compose.onNodeWithText("Drop here to take it off its night").assertDoesNotExist()
     }
 
     @Test fun `an import waiting for the home network shows no spinner and can be cancelled`() {

@@ -6,7 +6,11 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.ClipDescription
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.draganddrop.dragAndDropSource
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +20,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,10 +31,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +56,13 @@ import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +71,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
+import dev.mealprep.app.R
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.PlanEntry
 import dev.mealprep.app.ui.nav.DraftRoute
@@ -84,6 +100,7 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
     val imports by vm.imports.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     AskForNotificationsOnce(graph)
+    val drag = remember { WeekDrag() }
 
     // Back on Home (or the app resumed days later): reload the visible week and re-read today's date.
     LifecycleResumeEffect(pager.currentPage) {
@@ -104,11 +121,12 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
             }
         }
         ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
-        HorizontalPager(pager, Modifier.weight(1f)) { page ->
+        // While a recipe is held the drag has priority: the week can't be swiped away underneath it.
+        HorizontalPager(pager, Modifier.weight(1f), userScrollEnabled = !drag.dragging) { page ->
             val week = current.plusWeeks((page - BACK).toLong())
             val ui by vm.week(week).collectAsStateWithLifecycle()
             WeekContent(ui, today, onAction, vm::place, vm::scale, vm::remove, onOpen, onRefresh = { vm.refresh(week) },
-                loadRef = vm::refPromptFor)
+                loadRef = vm::refPromptFor, drag = drag)
         }
     }
 }
@@ -195,10 +213,11 @@ fun WeekContent(
     onRefresh: () -> Unit,
     /** The recipe's first page reference without a photo (null if none, or offline). */
     loadRef: suspend (recipeId: Int) -> RefPrompt? = { null },
+    drag: WeekDrag = remember { WeekDrag() },
 ) {
     var sheetFor by remember { mutableStateOf<PlanEntry?>(null) }
     val all = ui.view?.all.orEmpty()
-    val dropTo: (Int?) -> (Int) -> Unit = { day -> { id -> all.firstOrNull { it.id == id }?.let { onPlace(it, day) } } }
+    val drop: (Slot, String?) -> Boolean = { slot, text -> dropMove(all, text, slot)?.let { (e, d) -> onPlace(e, d); true } ?: false }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { OfflineBanner(ui.offlineSince); MessageText(ui.error) }
         item { StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } }) }
@@ -206,18 +225,28 @@ fun WeekContent(
         val view = ui.view
         if (view != null) {
             item {
-                Column(Modifier.fillMaxWidth().dropTarget(dropTo(null))) {
+                Column(Modifier.fillMaxWidth().dropZone(drag, Slot.TRAY, drop).padding(4.dp)) {
                     Text("Not on a night yet", style = MaterialTheme.typography.titleSmall)
+                    DropHint(drag, Slot.TRAY, "Drop here to take it off its night")
                     if (view.unplaced.isEmpty()) Text("Shared recipes land here.", style = MaterialTheme.typography.bodySmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { view.unplaced.forEach { EntryChip(it) { sheetFor = it } } }
                 }
             }
+            if (all.isNotEmpty()) item {
+                Text("Hold a recipe and drag it to a night (or back here), or tap it to move it.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             items(view.nights, key = { it.day }) { n ->
-                Row(Modifier.fillMaxWidth().dropTarget(dropTo(n.day)).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                val slot = Slot(n.day)
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).dropZone(drag, slot, drop).padding(4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
                     Text(Weeks.nightTitle(view.week, n.day), Modifier.width(64.dp),
                         fontWeight = if (n.date == today) FontWeight.Bold else FontWeight.Normal)
-                    if (n.entries.isEmpty()) Text("—", style = MaterialTheme.typography.bodySmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { n.entries.forEach { EntryChip(it) { sheetFor = it } } }
+                    Column {
+                        DropHint(drag, slot, "Drop here")
+                        if (n.entries.isEmpty() && drag.over != slot) Text("—", style = MaterialTheme.typography.bodySmall)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { n.entries.forEach { EntryChip(it) { sheetFor = it } } }
+                    }
                 }
             }
         } else if (ui.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
@@ -246,24 +275,80 @@ private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?) {
     }
 }
 
+/**
+ * A recipe on the week. Tap: the entry dialog (move, scale, remove). Hold: pick it up (a buzz) and drag it to a
+ * night or the tray.
+ *
+ * One gesture detector does both. Until 0.3.0 the chip was an AssistChip (its own click handler) with
+ * `dragAndDropSource` around it: the click handler consumed the touch, which cancels the drag source's hold
+ * detection, so a hold never started a drag. Stacking them the other way round loses the tap instead.
+ */
+@Suppress("DEPRECATION")   // the block form is the one that lets a single detector start the transfer on a hold
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EntryChip(e: PlanEntry, onClick: () -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    val click by rememberUpdatedState(onClick)
     val label = (e.title ?: "Recipe ${e.recipeId}") + if (e.multiplier != 1.0) " ×${fmt(e.multiplier)}" else ""
-    AssistChip(onClick = onClick, label = { Text(label) },
-        modifier = Modifier.dragAndDropSource { _ -> DragAndDropTransferData(ClipData.newPlainText("entry", e.id.toString())) })
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = Modifier.minimumInteractiveComponentSize()
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                onClick(label = "Open, move or remove") { click(); true }
+            }
+            .dragAndDropSource(block = {
+                detectTapGestures(
+                    onTap = { click() },
+                    onLongPress = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        startTransfer(DragAndDropTransferData(ClipData.newPlainText("Meal Prep recipe", WeekDragText.of(e.id))))
+                    },
+                )
+            }),
+    ) {
+        Row(Modifier.padding(start = 4.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_drag_handle), contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge)
+        }
+    }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-private fun Modifier.dropTarget(onDrop: (Int) -> Unit): Modifier = dragAndDropTarget(
-    shouldStartDragAndDrop = { it.mimeTypes().contains(ClipDescription.MIMETYPE_TEXT_PLAIN) },
-    target = object : DragAndDropTarget {
-        override fun onDrop(event: DragAndDropEvent): Boolean {
-            val id = event.toAndroidDragEvent().clipData.getItemAt(0).text.toString().toIntOrNull() ?: return false
-            onDrop(id); return true
+/** A night or the tray as a drop zone: outlined while any recipe is held, filled when it's under the finger. */
+@Composable
+private fun Modifier.dropZone(drag: WeekDrag, slot: Slot, onDrop: (Slot, String?) -> Boolean): Modifier {
+    val drop by rememberUpdatedState(onDrop)
+    val target = remember(drag, slot) {
+        object : DragAndDropTarget {
+            override fun onStarted(event: DragAndDropEvent) = drag.started()
+            override fun onEntered(event: DragAndDropEvent) = drag.entered(slot)
+            override fun onExited(event: DragAndDropEvent) = drag.exited(slot)
+            override fun onEnded(event: DragAndDropEvent) = drag.ended()
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                val clip = event.toAndroidDragEvent().clipData
+                return drop(slot, clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString())
+            }
         }
-    },
-)
+    }
+    val shape = MaterialTheme.shapes.small
+    val look = when {
+        drag.over == slot -> Modifier.background(MaterialTheme.colorScheme.primaryContainer, shape)
+            .border(2.dp, MaterialTheme.colorScheme.primary, shape)
+        drag.dragging -> Modifier.border(1.dp, MaterialTheme.colorScheme.outline, shape)
+        else -> Modifier
+    }
+    return this.then(look).dragAndDropTarget(
+        shouldStartDragAndDrop = { it.mimeTypes().contains(ClipDescription.MIMETYPE_TEXT_PLAIN) },
+        target = target,
+    )
+}
+
+/** Says where a drop goes (the zone's colour alone isn't enough). */
+@Composable
+private fun DropHint(drag: WeekDrag, slot: Slot, text: String) {
+    if (drag.over == slot) Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+}
 
 private fun fmt(m: Double) = if (m % 1.0 == 0.0) m.toInt().toString() else m.toString()
 
@@ -282,10 +367,10 @@ private fun EntryDialog(e: PlanEntry, ref: RefPrompt?, onDismiss: () -> Unit, on
                         style = MaterialTheme.typography.bodySmall)
                     TextButton({ onOpen(refRoute(r)) }) { Text("Add photo of p.${r.page}") }
                 }
-                Text("Put on")
+                Text("Move to")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    (0..6).forEach { d -> FilterChip(e.day == d, { onPlace(d) }, { Text(Weeks.dayLabel(d)) }) }
-                    FilterChip(e.day == null, { onPlace(null) }, { Text("No night") })
+                    (0..6).forEach { d -> FilterChip(e.day == d, { if (e.day != d) onPlace(d) }, { Text(Weeks.dayLabel(d)) }) }
+                    FilterChip(e.day == null, { if (e.day != null) onPlace(null) }, { Text("No night (tray)") })
                 }
                 Text("Make")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {

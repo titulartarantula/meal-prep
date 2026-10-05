@@ -95,8 +95,9 @@ class RecipeViewModel(
                         "(${p.error.userMessage()}). It's in the tray.", w, true)
                 }
             }
-            _state.update { it.copy(adding = false, added = result) }
-            if (result.ok) { load(); repo.week(w) }   // refresh the planned weeks and the saved copy of that week
+            // Refresh the planned weeks and the saved copy of that week before saying it's done.
+            val fresh = if (result.ok) { repo.week(w); repo.recipe(id).value } else null
+            _state.update { it.copy(adding = false, added = result, recipe = fresh ?: it.recipe) }
         }
     }
 }
