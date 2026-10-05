@@ -36,6 +36,10 @@ interface MealPrepApi {
     @GET("ratings/pending") suspend fun pendingRatings(@Query("today") today: String): List<PendingRating>
 
     @POST("list") suspend fun list(@Body body: ListIn): List<ListItem>
+    @GET("staples") suspend fun staples(): List<Staple>
+    @POST("staples") suspend fun addStaple(@Body body: StapleIn): Staple
+    @PATCH("staples/{id}") suspend fun patchStaple(@Path("id") id: Int, @Body body: JsonObject): Staple
+    @DELETE("staples/{id}") suspend fun deleteStaple(@Path("id") id: Int)
     @GET("cart/default-week") suspend fun defaultCartWeek(): DefaultWeek
     @POST("drafts") suspend fun createDraft(@Body body: DraftIn): JobStarted
     @GET("drafts/{id}") suspend fun draft(@Path("id") id: Int): Draft

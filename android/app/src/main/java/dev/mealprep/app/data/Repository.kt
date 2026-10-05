@@ -24,6 +24,8 @@ import dev.mealprep.app.data.api.Product
 import dev.mealprep.app.data.api.RatingIn
 import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.data.api.SearchIn
+import dev.mealprep.app.data.api.Staple
+import dev.mealprep.app.data.api.StapleIn
 import dev.mealprep.app.data.api.ShareIn
 import dev.mealprep.app.data.api.ShareResult
 import dev.mealprep.app.data.api.TaskDone
@@ -113,6 +115,7 @@ class Repository(
     suspend fun card(entryId: Int): Loaded<CookCard?> = loadOptional("card:$entryId", CookCard.serializer()) { it.card(entryId) }
     suspend fun weekDraft(week: LocalDate): Loaded<Draft?> =
         loadOptional("draft:${wk(week)}", Draft.serializer()) { it.weekDraft(wk(week)) }
+    suspend fun staples(): Loaded<List<Staple>> = load("staples", ListSerializer(Staple.serializer())) { it.staples() }
     suspend fun pendingRatings(today: LocalDate): Loaded<List<PendingRating>> =
         load("pending", ListSerializer(PendingRating.serializer())) { it.pendingRatings(today.toString()) }
 
@@ -121,7 +124,8 @@ class Repository(
     suspend fun defaultCartWeek(): ApiResult<LocalDate?> = call { api -> api.defaultCartWeek().week?.let(LocalDate::parse) }
     suspend fun draft(id: Int): ApiResult<Draft> = call { it.draft(id) }
     suspend fun prepPlan(id: Int): ApiResult<PrepPlan> = call { it.prepPlan(id) }
-    suspend fun shoppingList(weeks: List<LocalDate>): ApiResult<List<ListItem>> = call { it.list(ListIn(weeks.map(::wk))) }
+    suspend fun shoppingList(weeks: List<LocalDate>, staples: List<Int> = emptyList()): ApiResult<List<ListItem>> =
+        call { it.list(ListIn(weeks.map(::wk), staples = staples)) }
 
     // --- writes ---
     suspend fun addToWeek(week: LocalDate, recipeId: Int): ApiResult<PlanEntry> = call { it.addEntry(wk(week), EntryIn(recipeId)) }
@@ -144,6 +148,16 @@ class Repository(
     suspend fun searchLine(draftId: Int, lineId: Int, term: String): ApiResult<List<Product>> =
         call { it.searchLine(draftId, lineId, SearchIn(term)) }
     suspend fun sendDraft(draftId: Int): ApiResult<String> = call { it.sendDraft(draftId).pcxCartId }
+    suspend fun addStaple(name: String, qty: Double?, unit: String?, weekly: Boolean): ApiResult<Staple> =
+        call { it.addStaple(StapleIn(name.trim(), qty, unit?.trim()?.ifBlank { null }, weekly)) }
+    suspend fun editStaple(id: Int, name: String, qty: Double?, unit: String?, weekly: Boolean): ApiResult<Staple> =
+        call { it.patchStaple(id, Bodies.staplePatch(name = name.trim(), qty = qty, unit = unit?.trim()?.ifBlank { null },
+            weekly = weekly, amount = true)) }
+    suspend fun setStapleWeekly(id: Int, weekly: Boolean): ApiResult<Staple> =
+        call { it.patchStaple(id, Bodies.staplePatch(weekly = weekly)) }
+    suspend fun moveStaple(id: Int, position: Int): ApiResult<Staple> =
+        call { it.patchStaple(id, Bodies.staplePatch(position = position)) }
+    suspend fun deleteStaple(id: Int): ApiResult<Unit> = call { it.deleteStaple(id) }
     suspend fun startPrep(weeks: List<LocalDate>): ApiResult<JobStarted> = call { it.startPrep(PrepIn(weeks.map(::wk))) }
     suspend fun tickTask(planId: Int, taskId: String, done: Boolean): ApiResult<PrepTask> =
         call { it.tickTask(planId, taskId, TaskDone(done)) }

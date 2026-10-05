@@ -15,6 +15,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class PrepRoute(val week: String)
 @Serializable data class CardRoute(val entryId: Int)
 @Serializable data class RatingRoute(val entryId: Int, val week: String)
+@Serializable object StaplesRoute
 @Serializable object LibraryRoute
 @Serializable data class RecipeRoute(val id: Int)
 
@@ -27,6 +28,7 @@ object Nav {
     fun card(entryId: Int) = "card/$entryId"
     fun draft(id: Int) = "draft/$id"
     fun prep(week: LocalDate) = "prep/$week"
+    fun list() = "list"
 
     fun parse(s: String?): Any? {
         val p = s?.split("/") ?: return null
@@ -38,6 +40,7 @@ object Nav {
                 "card" -> CardRoute(p[1].toInt())
                 "draft" -> DraftRoute(p[1].toInt())
                 "prep" -> PrepRoute(LocalDate.parse(p[1]).toString())
+                "list" -> ListRoute("")
                 else -> null
             }
         }.getOrNull()

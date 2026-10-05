@@ -32,6 +32,17 @@ class SettingsStoreTest {
         assertTrue(s.configured)
         assertEquals(LocalTime.of(16, 30), s.notif.tonightAt)
         assertTrue(s.notif.tonight)
+        assertFalse(s.notif.staples)
+    }
+
+    // One update per store: on the Windows build host a second quick write can fail to rename DataStore's temp file.
+    @Test fun `staples reminder round trip`() = runTest {
+        val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "r.preferences_pb") })
+        store.update { it.copy(notif = it.notif.copy(staples = true, staplesDay = java.time.DayOfWeek.FRIDAY, staplesAt = LocalTime.of(18, 15))) }
+        val r = store.settings.first().notif
+        assertTrue(r.staples)
+        assertEquals(java.time.DayOfWeek.FRIDAY, r.staplesDay)
+        assertEquals(LocalTime.of(18, 15), r.staplesAt)
     }
 
     @Test fun `server url is normalized`() {

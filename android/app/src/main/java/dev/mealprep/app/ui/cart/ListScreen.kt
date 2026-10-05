@@ -7,10 +7,13 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
@@ -22,8 +25,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.data.api.ListItem
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.graphViewModel
@@ -32,8 +40,12 @@ import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ListContent(state: ListState, onWeek: (LocalDate) -> Unit, onToggle: (String) -> Unit, onBuild: () -> Unit, onRetry: () -> Unit = {}) {
-    Column(Modifier.fillMaxSize().padding(12.dp)) {
+fun ListContent(
+    state: ListState, onWeek: (LocalDate) -> Unit, onToggle: (String) -> Unit, onBuild: () -> Unit, onRetry: () -> Unit = {},
+    onStaple: (Int) -> Unit = {}, onEditStaples: () -> Unit = {}, onOpenDraft: (Int) -> Unit = {},
+    today: LocalDate = LocalDate.now(),
+) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Text("Shopping for", style = MaterialTheme.typography.titleMedium)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             state.options.forEach { o ->
@@ -44,30 +56,73 @@ fun ListContent(state: ListState, onWeek: (LocalDate) -> Unit, onToggle: (String
         MessageText(state.error)
         if (!state.loading && state.items.isEmpty() && state.error != null) TextButton(onRetry) { Text("Try again") }
         LazyColumn(Modifier.weight(1f)) {
-            if (state.toBuy.isNotEmpty()) item { Text("To buy", style = MaterialTheme.typography.titleSmall) }
+            state.existing?.let { d -> item { ExistingCart(d) { onOpenDraft(d.id) } } }
+            if (state.staples.isNotEmpty() || state.stapleError != null) item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Staples", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).semantics { heading() })
+                    TextButton(onEditStaples) { Text("Edit staples") }
+                }
+                Text("Ticked staples go in the cart. Untick what you don't need this week.", style = MaterialTheme.typography.bodySmall)
+                MessageText(state.stapleError)
+            }
+            items(state.staples, key = { "staple-${it.id}" }) { s ->
+                CheckRow(s.id in state.ticked, enabled = !state.building && state.draftId == null, onToggle = { onStaple(s.id) },
+                    title = "${s.name} · ${stapleAmount(s)}", lines = listOf(lastBoughtText(s.lastBought, today)))
+            }
+            if (state.onlyStaples) item {
+                Text("No recipes planned for that week yet — only staples.", style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp))
+            }
+            if (state.toBuy.isNotEmpty()) item {
+                Text("To buy", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp).semantics { heading() })
+            }
             items(state.toBuy, key = { it.key }) { ItemRow(it, onToggle) }
             if (state.probablyHave.isNotEmpty()) item {
-                Text("Probably have — tick what you need", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                Text("Probably have — tick what you need", style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 8.dp).semantics { heading() })
             }
             items(state.probablyHave, key = { it.key }) { ItemRow(it, onToggle) }
         }
-        Button(onClick = onBuild, enabled = state.canBuild, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = onBuild, enabled = state.canBuild, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
             Text(if (state.building) "Starting…" else "Build cart (${state.neededCount} items)")
         }
     }
 }
 
+/** A cart already made for the chosen week: the list leads back to it whatever its state. */
 @Composable
-private fun ItemRow(item: ListItem, onToggle: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(item.needed, { onToggle(item.key) })
-        Column {
-            Text(itemText(item))
-            item.prep?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            if (item.recipes.isNotEmpty()) Text(item.recipes.joinToString(", "), style = MaterialTheme.typography.bodySmall)
+private fun ExistingCart(d: Draft, onOpen: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(existingCartText(d), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            TextButton(onOpen) { Text(if (d.status == "sent") "Open cart" else "Review cart") }
         }
     }
 }
+
+internal fun existingCartText(d: Draft): String = when (d.status) {
+    "sent" -> "A cart for this week was already sent to Loblaws."
+    "building" -> "A cart for this week is being built."
+    else -> "A cart for this week is ready to review."
+}
+
+/** A whole-row checkbox (48 dp tall at least; TalkBack reads it as one checkbox with its text). */
+@Composable
+private fun CheckRow(checked: Boolean, enabled: Boolean = true, onToggle: () -> Unit, title: String, lines: List<String>) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(checked, enabled = enabled, role = Role.Checkbox) { onToggle() },
+        verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked, onCheckedChange = null, enabled = enabled, modifier = Modifier.padding(horizontal = 12.dp))
+        Column(Modifier.padding(vertical = 4.dp)) {
+            Text(title)
+            lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+}
+
+@Composable
+private fun ItemRow(item: ListItem, onToggle: (String) -> Unit) =
+    CheckRow(item.needed, onToggle = { onToggle(item.key) }, title = itemText(item),
+        lines = listOfNotNull(item.prep, item.recipes.joinToString(", ").takeIf { item.recipes.isNotEmpty() }))
 
 /** "3 onion", "⅚ cup whole milk" — the prep note ("diced") is shown on its own line under it. */
 internal fun itemText(item: ListItem): String = listOfNotNull(amountText(item.qty, item.unit), item.name).joinToString(" ")
@@ -92,9 +147,11 @@ internal fun qty(q: Double): String {
 }
 
 @Composable
-fun ListScreen(weeks: List<LocalDate>, onDraft: (Int) -> Unit) {
+fun ListScreen(weeks: List<LocalDate>, onDraft: (Int) -> Unit, onOpenDraft: (Int) -> Unit, onEditStaples: () -> Unit) {
     val vm = graphViewModel(key = "list-$weeks") { g -> ListViewModel(g.repo, g.jobs, weeks) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.draftId) { state.draftId?.let(onDraft) }
-    ListContent(state, vm::toggleWeek, vm::toggle, vm::buildCart, vm::retry)
+    // Back from the Staples screen: pick up added/removed/edited staples.
+    LifecycleResumeEffect(Unit) { vm.refreshStaples(); onPauseOrDispose { } }
+    ListContent(state, vm::toggleWeek, vm::toggle, vm::buildCart, vm::retry, vm::toggleStaple, onEditStaples, onOpenDraft)
 }

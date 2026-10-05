@@ -16,6 +16,8 @@ import dev.mealprep.app.ui.camera.CameraViewModel
 import dev.mealprep.app.ui.cart.DraftScreen
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.cart.ListScreen
+import dev.mealprep.app.ui.cart.StaplesScreen
+import dev.mealprep.app.ui.setup.StaplesReminderSettings
 import dev.mealprep.app.ui.home.ContextAction
 import dev.mealprep.app.ui.loblaws.LoblawsScreen
 import dev.mealprep.app.ui.loblaws.LoblawsSettings
@@ -31,7 +33,10 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
         composable<SetupRoute> {
             SetupScreen(graph, onDone = { nav.navigate(HomeRoute()) { popUpTo<SetupRoute> { inclusive = true } } })
         }
-        composable<SettingsRoute> { SettingsScreen(graph, onDone = { nav.popBackStack() }) { LoblawsSettings(graph) } }
+        composable<SettingsRoute> {
+            SettingsScreen(graph, onDone = { nav.popBackStack() }) { StaplesReminderSettings(graph); LoblawsSettings(graph) }
+        }
+        composable<StaplesRoute> { StaplesScreen(onDone = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) }) }
         composable<HomeRoute> { back ->
             val ctx = LocalContext.current
             val open: (Any) -> Unit = { r -> runCatching { nav.navigate(r) }.onFailure {
@@ -49,7 +54,8 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
         composable<ListRoute> { back ->
             val weeks = back.toRoute<ListRoute>().weeks.split(",").filter { it.isNotBlank() }
                 .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
-            ListScreen(weeks, onDraft = { id -> nav.navigate(DraftRoute(id)) { popUpTo<ListRoute> { inclusive = true } } })
+            ListScreen(weeks, onDraft = { id -> nav.navigate(DraftRoute(id)) { popUpTo<ListRoute> { inclusive = true } } },
+                onOpenDraft = { id -> nav.navigate(DraftRoute(id)) }, onEditStaples = { nav.navigate(StaplesRoute) })
         }
         composable<DraftRoute> { back ->
             DraftScreen(back.toRoute<DraftRoute>().id,
@@ -112,4 +118,4 @@ const val LATER = "That arrives in a later update."
 
 /** Home "Menu" items (label to route). */
 fun homeMenu(): List<Pair<String, Any>> =
-    listOf("Snap a cookbook recipe" to CameraRoute(), "Shopping list" to ListRoute(""), "Settings" to SettingsRoute)
+    listOf("Snap a cookbook recipe" to CameraRoute(), "Shopping list" to ListRoute(""), "Staples" to StaplesRoute, "Settings" to SettingsRoute)

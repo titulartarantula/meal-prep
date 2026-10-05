@@ -15,6 +15,7 @@ class MealPrepWorkerFactory(private val g: AppGraph) : WorkerFactory() {
         JobWatchWorker::class.java.name -> JobWatchWorker(ctx, params, g.repo, g.notifier) {
             ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
         }
+        StaplesReminderWorker::class.java.name -> StaplesReminderWorker(ctx, params, g.notifier, g.workManager, prefs = { g.settings.value.notif })
         else -> null
     }
 }

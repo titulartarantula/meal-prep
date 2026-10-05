@@ -18,10 +18,11 @@ class NavTest {
         assertEquals(CardRoute(21), Nav.parse(Nav.card(21)))
         assertEquals(DraftRoute(7), Nav.parse(Nav.draft(7)))
         assertEquals(PrepRoute("2026-10-11"), Nav.parse(Nav.prep(wk)))
+        assertEquals(ListRoute(""), Nav.parse(Nav.list()))
     }
 
     @Test fun `menu opens the shopping list for the default week`() {
-        assertEquals(listOf("Snap a cookbook recipe" to CameraRoute(), "Shopping list" to ListRoute(""), "Settings" to SettingsRoute), homeMenu())
+        assertEquals(listOf("Snap a cookbook recipe" to CameraRoute(), "Shopping list" to ListRoute(""), "Staples" to StaplesRoute, "Settings" to SettingsRoute), homeMenu())
     }
 
     @Test fun `garbage is ignored`() {

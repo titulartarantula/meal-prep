@@ -46,11 +46,26 @@ import kotlinx.serialization.Serializable
     val multiplier: Double = 1.0,
 )
 
-@Serializable data class ListIn(val weeks: List<String>, val people: Int = 4)
+/** [staples]: ids of the ticked weekly staples; the server merges them into the list like recipe lines. */
+@Serializable data class ListIn(val weeks: List<String>, val people: Int = 4, val staples: List<Int> = emptyList())
 @Serializable data class ListItem(
     val key: String, val name: String, val qty: Double? = null, val unit: String? = null, val prep: String? = null,
     val likelyOnHand: Boolean = false, val needed: Boolean = true, val recipes: List<String> = emptyList(),
+    // A weekly staple is (part of) this line; staplePacks = "at least this many packs". Sent back as is in
+    // POST /drafts so the server's planner keeps the floor.
+    val staple: Boolean = false, val staplePacks: Int? = null,
+) {
+    /** A line that is only a staple (no recipe needs it): the Staples section stands for it. */
+    val onlyStaple: Boolean get() = staple && recipes.all { it == STAPLES }
+    companion object { const val STAPLES = "Staples" }
+}
+
+/** A weekly staple. qty without a unit counts packs ("1" = one carton); with a unit it is an amount. */
+@Serializable data class Staple(
+    val id: Int, val name: String, val qty: Double? = null, val unit: String? = null, val weekly: Boolean = true,
+    val position: Int = 0, val lastBought: String? = null, val createdAt: String? = null,
 )
+@Serializable data class StapleIn(val name: String, val qty: Double? = null, val unit: String? = null, val weekly: Boolean = true)
 @Serializable data class DefaultWeek(val week: String? = null)
 
 @Serializable data class Product(
@@ -66,6 +81,7 @@ import kotlinx.serialization.Serializable
     // Purchase planner (absent from older servers): fewest packs that cover the need, whether the server
     // couldn't confirm that, and its one-line explanation ("Need ⅚ cup → 1 × 1 L").
     val packsMin: Int? = null, val needsCheck: Boolean = false, val why: String? = null,
+    val staple: Boolean = false, val staplePacks: Int? = null,
 )
 @Serializable data class Progress(val done: Int = 0, val total: Int = 0)
 @Serializable data class Draft(

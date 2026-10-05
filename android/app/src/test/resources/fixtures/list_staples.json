@@ -1,0 +1,4 @@
+[{"key": "onion|each", "name": "onion", "qty": 3.0, "unit": null, "prep": "diced", "likely_on_hand": false, "needed": true, "recipes": ["Chili", "Fish soup"], "staple": false, "staple_packs": null},
+ {"key": "2% milk|vol", "name": "2% milk", "qty": 1.0, "unit": "cup", "prep": null, "likely_on_hand": false, "needed": true, "recipes": ["Pancakes", "Staples"], "staple": true, "staple_packs": 1},
+ {"key": "olive oil|vol", "name": "olive oil", "qty": 2.0, "unit": "tbsp", "prep": null, "likely_on_hand": true, "needed": false, "recipes": ["Chili"], "staple": false, "staple_packs": null},
+ {"key": "egg|each", "name": "eggs", "qty": null, "unit": null, "prep": null, "likely_on_hand": false, "needed": true, "recipes": ["Staples"], "staple": true, "staple_packs": 1}]

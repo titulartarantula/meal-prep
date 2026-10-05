@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import java.io.IOException
+import java.time.DayOfWeek
 import java.time.LocalTime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -23,6 +24,8 @@ data class NotifPrefs(
     val rate: Boolean = true, val rateAt: LocalTime = LocalTime.of(9, 0),
     val tonight: Boolean = false, val tonightAt: LocalTime = LocalTime.of(16, 0),
     val cartReady: Boolean = true,
+    /** "Time to check the staples" (off unless chosen): a weekly local notification that opens the shopping list. */
+    val staples: Boolean = false, val staplesDay: DayOfWeek = DayOfWeek.SATURDAY, val staplesAt: LocalTime = LocalTime.of(9, 0),
 )
 
 data class Settings(
@@ -55,6 +58,8 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
         val rate = booleanPreferencesKey("n_rate"); val rateAt = intPreferencesKey("n_rate_at")
         val tonight = booleanPreferencesKey("n_tonight"); val tonightAt = intPreferencesKey("n_tonight_at")
         val cartReady = booleanPreferencesKey("n_cart_ready")
+        val staples = booleanPreferencesKey("n_staples"); val staplesDay = intPreferencesKey("n_staples_day")
+        val staplesAt = intPreferencesKey("n_staples_at")
         val signedOut = booleanPreferencesKey("lob_signed_out"); val hideWv = booleanPreferencesKey("lob_hide_wv")
         val asked = booleanPreferencesKey("asked_notif")
     }
@@ -71,6 +76,9 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
                 rate = p[K.rate] ?: n.rate, rateAt = t(p[K.rateAt], n.rateAt),
                 tonight = p[K.tonight] ?: n.tonight, tonightAt = t(p[K.tonightAt], n.tonightAt),
                 cartReady = p[K.cartReady] ?: n.cartReady,
+                staples = p[K.staples] ?: n.staples,
+                staplesDay = p[K.staplesDay]?.takeIf { it in 1..7 }?.let(DayOfWeek::of) ?: n.staplesDay,
+                staplesAt = t(p[K.staplesAt], n.staplesAt),
             ),
             loblawsSignedOutStart = p[K.signedOut] ?: d.loblawsSignedOutStart,
             loblawsHideWebViewMarker = p[K.hideWv] ?: d.loblawsHideWebViewMarker,
@@ -84,6 +92,7 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
         p[K.rate] = s.notif.rate; p[K.rateAt] = m(s.notif.rateAt)
         p[K.tonight] = s.notif.tonight; p[K.tonightAt] = m(s.notif.tonightAt)
         p[K.cartReady] = s.notif.cartReady
+        p[K.staples] = s.notif.staples; p[K.staplesDay] = s.notif.staplesDay.value; p[K.staplesAt] = m(s.notif.staplesAt)
         p[K.signedOut] = s.loblawsSignedOutStart; p[K.hideWv] = s.loblawsHideWebViewMarker
         p[K.asked] = s.askedNotificationPermission
     }

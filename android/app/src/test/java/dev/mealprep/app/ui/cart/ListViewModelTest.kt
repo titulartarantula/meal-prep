@@ -8,6 +8,7 @@ import dev.mealprep.app.MainDispatcherRule
 import dev.mealprep.app.TestEnv
 import dev.mealprep.app.await
 import dev.mealprep.app.data.api.ListItem
+import dev.mealprep.app.data.api.Staple
 import dev.mealprep.app.fixture
 import dev.mealprep.app.ui.common.WeekOption
 import dev.mealprep.app.work.JobWatcher
@@ -44,7 +45,7 @@ class ListViewModelTest {
         env.on("GET", "/cart/default-week", body = """{"week":"2026-10-18"}""")
         val s = vm(emptyList()).state.await { !it.loading }
         assertEquals(setOf(LocalDate.parse("2026-10-18")), s.weeks)
-        assertEquals("""{"weeks":["2026-10-18"],"people":4}""", env.bodies("POST", "/list").single())
+        assertEquals("""{"weeks":["2026-10-18"],"people":4,"staples":[]}""", env.bodies("POST", "/list").single())
         assertEquals(listOf("onion"), s.toBuy.map { it.name })
         assertEquals(listOf("olive oil"), s.probablyHave.map { it.name })
         assertEquals(1, s.neededCount)
@@ -69,7 +70,7 @@ class ListViewModelTest {
         vm.state.await { !it.loading }
         vm.toggleWeek(LocalDate.parse("2026-10-11"))
         vm.state.await { !it.loading && it.weeks.size == 2 }
-        assertEquals("""{"weeks":["2026-10-11","2026-10-18"],"people":4}""", env.bodies("POST", "/list").last())
+        assertEquals("""{"weeks":["2026-10-11","2026-10-18"],"people":4,"staples":[]}""", env.bodies("POST", "/list").last())
     }
 
     @Test fun `the last week can't be unticked`() = runTest {
@@ -106,6 +107,89 @@ class ListViewModelTest {
         assertNull(s.draftId)
         assertTrue(s.canBuild)
         assertEquals(2, s.items.size)
+    }
+
+    @Test fun `weekly staples start ticked and are merged in by the server`() = runTest {
+        env.on("GET", "/staples", body = fixture("staples.json"))
+        env.on("POST", "/list", body = fixture("list_staples.json"))
+        val s = vm(listOf("2026-10-11")).state.await { !it.loading && it.items.isNotEmpty() }
+        assertEquals(listOf("2% milk", "eggs", "lemonade"), s.staples.map { it.name })
+        assertEquals(setOf(1, 2), s.ticked)                                        // lemonade isn't weekly
+        assertEquals("""{"weeks":["2026-10-11"],"people":4,"staples":[1,2]}""", env.bodies("POST", "/list").single())
+        // eggs is only a staple: its staple row stands for it. Milk is in a recipe too, so it stays in "To buy".
+        assertEquals(listOf("onion", "2% milk"), s.toBuy.map { it.name })
+        assertEquals(listOf("olive oil"), s.probablyHave.map { it.name })
+        assertEquals(3, s.neededCount)
+        assertFalse(s.onlyStaples)
+    }
+
+    @Test fun `unticking a staple reloads the list without it and keeps the other ticks`() = runTest {
+        env.on("GET", "/staples", body = fixture("staples.json"))
+        env.on("POST", "/list", body = fixture("list_staples.json"))
+        val vm = vm(listOf("2026-10-11"))
+        vm.state.await { !it.loading && it.items.isNotEmpty() }
+        vm.toggle("olive oil|vol")                                                // the shopper wants oil this week
+        env.on("POST", "/list", body = fixture("list.json"))
+        vm.toggleStaple(2)
+        vm.toggleStaple(1)
+        val s = vm.state.await { !it.loading && it.ticked.isEmpty() && it.items.size == 2 }
+        assertEquals("""{"weeks":["2026-10-11"],"people":4,"staples":[]}""", env.bodies("POST", "/list").last())
+        assertTrue(s.items.single { it.key == "olive oil|vol" }.needed)
+    }
+
+    @Test fun `building sends staple lines with their pack floor`() = runTest {
+        env.on("GET", "/staples", body = fixture("staples.json"))
+        env.on("POST", "/list", body = fixture("list_staples.json"))
+        env.on("POST", "/drafts", code = 202, body = """{"id":8,"status":"building"}""")
+        val vm = vm(listOf("2026-10-11"))
+        vm.state.await { !it.loading && it.items.isNotEmpty() }
+        vm.buildCart()
+        vm.state.await { it.draftId != null }
+        val body = env.bodies("POST", "/drafts").single()
+        assertTrue(body, body.contains(""""key":"egg|each","name":"eggs","likely_on_hand":false,"needed":true,"recipes":["Staples"],"staple":true,"staple_packs":1"""))
+    }
+
+    @Test fun `only staples and no recipes still makes a cart`() = runTest {
+        env.on("GET", "/staples", body = fixture("staples.json"))
+        env.on("POST", "/list", body = """[{"key":"egg|each","name":"eggs","needed":true,"recipes":["Staples"],"staple":true,"staple_packs":1}]""")
+        val s = vm(listOf("2026-11-01")).state.await { !it.loading && it.items.isNotEmpty() }
+        assertTrue(s.onlyStaples)
+        assertNull(s.error)
+        assertTrue(s.canBuild)
+        assertEquals(1, s.neededCount)
+    }
+
+    @Test fun `a server without staples just has no section`() = runTest {
+        val s = vm(listOf("2026-10-11")).state.await { !it.loading }
+        assertTrue(s.staples.isEmpty())
+        assertNull(s.stapleError)
+        assertEquals(2, s.items.size)
+    }
+
+    @Test fun `a cart already made for the week is offered`() = runTest {
+        env.on("GET", "/weeks/2026-10-11/draft", body = fixture("draft_3_sent.json"))
+        val s = vm(listOf("2026-10-11")).state.await { !it.loading }
+        assertEquals("sent", s.existing?.status)
+        assertEquals("A cart for this week was already sent to Loblaws.", existingCartText(s.existing!!))
+        assertTrue(s.canBuild)                                                     // another cart can still be built
+    }
+
+    @Test fun `last bought reads in days, then weeks`() {
+        val today = LocalDate.parse("2026-10-07")
+        assertEquals("Not bought through the app yet", lastBoughtText(null, today))
+        assertEquals("Last bought today", lastBoughtText("2026-10-07", today))
+        assertEquals("Last bought yesterday", lastBoughtText("2026-10-06", today))
+        assertEquals("Last bought 6 days ago", lastBoughtText("2026-10-01", today))
+        assertEquals("Last bought 3 weeks ago", lastBoughtText("2026-09-14", today))
+        assertEquals("Last bought today", lastBoughtText("2026-10-09", today))      // another phone's clock ahead
+    }
+
+    @Test fun `staple amounts count packs without a unit`() {
+        val s = Staple(1, "eggs")
+        assertEquals("1 pack", stapleAmount(s.copy(qty = 1.0)))
+        assertEquals("1 pack", stapleAmount(s.copy(qty = null)))
+        assertEquals("2 packs", stapleAmount(s.copy(qty = 2.0)))
+        assertEquals("2 l", stapleAmount(s.copy(qty = 2.0, unit = "l")))
     }
 
     @Test fun `a selected week outside the picker is still shown`() {

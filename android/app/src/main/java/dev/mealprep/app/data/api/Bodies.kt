@@ -12,6 +12,15 @@ object Bodies {
         if (multiplier != null) put("multiplier", multiplier)
     }
 
+    /** Staple edit: only what is given; with [amount] qty and unit are sent even when null (null clears them). */
+    fun staplePatch(name: String? = null, qty: Double? = null, unit: String? = null, weekly: Boolean? = null,
+                    amount: Boolean = false, position: Int? = null): JsonObject = buildJsonObject {
+        if (name != null) put("name", name)
+        if (amount) { if (qty != null) put("qty", qty) else put("qty", JsonNull); if (unit != null) put("unit", unit) else put("unit", JsonNull) }
+        if (weekly != null) put("weekly", weekly)
+        if (position != null) put("position", position)
+    }
+
     fun linePatch(productCode: String? = null, quantity: Int? = null, removed: Boolean? = null): JsonObject = buildJsonObject {
         if (productCode != null) put("product_code", productCode)
         if (quantity != null) put("quantity", quantity)

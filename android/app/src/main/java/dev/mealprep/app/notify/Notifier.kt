@@ -100,6 +100,10 @@ class Notifier(private val context: Context) {
         post("$kind-$id", CH_JOBS, title, text, if (draft) Nav.draft(id) else Nav.prep(week))
     }
 
+    /** The weekly staples reminder (StaplesReminderWorker): opens the shopping list. */
+    fun staplesReminder() = post("staples-reminder", CH_REMINDERS, "Time to check the staples",
+        "Untick what you don't need this week, then build the cart.", Nav.list())
+
     @SuppressLint("MissingPermission")
     fun post(tag: String, channel: String, title: String, text: String, nav: String?) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
