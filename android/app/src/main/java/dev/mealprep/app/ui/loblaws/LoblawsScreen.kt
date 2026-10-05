@@ -14,9 +14,15 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -30,12 +36,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
 import dev.mealprep.app.data.settings.Settings
@@ -52,40 +62,105 @@ fun bannerText(step: HandoffStep): String = when (step) {
     HandoffStep.UNREACHABLE -> "Couldn't open loblaws.ca. Check the phone's connection, then try again."
 }
 
+/** The line beside Close: what closing leaves behind. */
+fun closeHint(step: HandoffStep): String? = when (step) {
+    HandoffStep.READY -> "Your cart stays in Loblaws."
+    HandoffStep.BLOCKED, HandoffStep.FAILED, HandoffStep.UNREACHABLE -> "You can open the cart again from the week."
+    else -> null
+}
+
+const val CLOSE_CONFIRM = "Still loading your cart. Close anyway?"
+
+private val STOPPED = setOf(HandoffStep.BLOCKED, HandoffStep.FAILED, HandoffStep.UNREACHABLE)
+
 @Composable
-fun HandoffBanner(step: HandoffStep, onRetry: () -> Unit, onCopy: () -> Unit, onDone: () -> Unit) {
+fun HandoffBanner(
+    step: HandoffStep,
+    details: String?,
+    onRetry: () -> Unit,
+    onCopy: () -> Unit,
+    onCopyDetails: () -> Unit,
+    onClose: () -> Unit,
+) {
+    var showDetails by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(8.dp)) {
-        Text(bannerText(step), style = MaterialTheme.typography.bodyMedium)
-        if (step in setOf(HandoffStep.LOADING, HandoffStep.INJECTING, HandoffStep.RELOADING, HandoffStep.VERIFYING)) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClose) { Text("Close") }
+            closeHint(step)?.let { Text(it, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall) }
         }
-        Row {
-            if (step == HandoffStep.BLOCKED || step == HandoffStep.FAILED || step == HandoffStep.UNREACHABLE) {
+        Text(bannerText(step), style = MaterialTheme.typography.bodyMedium)
+        if (step.working) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (step in STOPPED) {
+            Row {
                 TextButton(onRetry) { Text("Try again") }
                 TextButton(onCopy) { Text("Copy cart ID") }
+                if (details != null) TextButton({ showDetails = !showDetails }) { Text(if (showDetails) "Hide details" else "Details") }
             }
-            TextButton(onDone) { Text("Done") }
+            if (details != null && showDetails) {
+                Text(details, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                TextButton(onCopyDetails) { Text("Copy details") }
+            }
         }
     }
+}
+
+@Composable
+fun CloseConfirmDialog(onClose: () -> Unit, onStay: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onStay,
+        text = { Text(CLOSE_CONFIRM) },
+        confirmButton = { TextButton(onClose) { Text("Close") } },
+        dismissButton = { TextButton(onStay) { Text("Keep waiting") } },
+    )
 }
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
     if (!LoblawsHandoff.isCartId(cartId)) {
-        Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {
             Text("That isn't a Loblaws cart. Open the cart again from the week and tap Open in Loblaws.")
-            TextButton(onDone) { Text("Done") }
+            TextButton(onDone) { Text("Close") }
         }
         return
     }
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     val machine = remember(cartId) { HandoffMachine(cartId) }
     var step by remember { mutableStateOf(machine.step) }
     var attempt by remember { mutableIntStateOf(0) }
     var web by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
     var disposed by remember { mutableStateOf(false) }
+    var pageHost by remember { mutableStateOf<String?>(null) }
+    var confirmClose by remember { mutableStateOf(false) }
+
+    fun copy(label: String, text: String, toast: String) {
+        ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(label, text))
+        Toast.makeText(ctx, toast, Toast.LENGTH_SHORT).show()
+    }
+
+    // Runs what the machine asked for; script results go back to the machine (which may ask for more).
+    fun act(view: WebView, action: HandoffAction) {
+        if (disposed) return
+        val exec = { js: String ->
+            view.evaluateJavascript(js) { res ->
+                if (disposed) return@evaluateJavascript
+                Log.d("MealPrepHandoff", "script result: $res")
+                act(view, machine.onScriptResult(res))
+            }
+        }
+        when (action) {
+            is HandoffAction.Run -> exec(action.js)
+            is HandoffAction.RunLater -> {
+                val tried = attempt
+                scope.launch { delay(action.delayMs); if (tried == attempt && machine.working) exec(action.js) }
+            }
+            HandoffAction.Reload -> view.reload()
+            HandoffAction.None -> Unit
+        }
+        step = machine.step
+    }
 
     fun start(wv: WebView) {
         machine.restart(); step = machine.step; attempt++
@@ -100,20 +175,32 @@ fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
         if (prefs.loblawsSignedOutStart) { WebStorage.getInstance().deleteAllData(); cm.removeAllCookies { load() } } else load()
     }
 
-    // A page that never finishes (or a challenge loop) ends in Failed with Try again, not an endless spinner.
+    // A page that never finishes (or a challenge loop) ends in Failed with Try again, not an endless spinner — but
+    // only after one last look, since the cart may be in even if the page never reported it.
     LaunchedEffect(attempt) {
         if (attempt == 0) return@LaunchedEffect
         delay(LoblawsHandoff.TIMEOUT_MS)
+        val last = machine.onTimeout(); step = machine.step
+        web?.let { act(it, last) }
+        delay(LoblawsHandoff.FINAL_CHECK_MS)
         machine.onTimeout(); step = machine.step
     }
 
-    Column(Modifier.fillMaxSize()) {
-        HandoffBanner(step, onRetry = { web?.let(::start) }, onCopy = {
-            ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("PC Express cart", cartId))
-            Toast.makeText(ctx, "Cart ID copied", Toast.LENGTH_SHORT).show()
-        }, onDone = onDone)
-        AndroidView(modifier = Modifier.weight(1f), factory = { c ->
+    val requestClose = { if (closeNeedsConfirm(step)) confirmClose = true else onDone() }
+    val details = if (step == HandoffStep.READY || step.working) null
+        else handoffDetails(step, machine.stoppedAt, pageHost, machine.lastCheck, machine.checks)
+
+    // safeDrawing: the page and the bar above it stay clear of the status bar, camera cutout and navigation bar.
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
+        HandoffBanner(step, details, onRetry = { web?.let(::start) },
+            onCopy = { copy("PC Express cart", cartId, "Cart ID copied") },
+            onCopyDetails = { details?.let { copy("Loblaws handoff details", it, "Details copied") } },
+            onClose = requestClose)
+        AndroidView(modifier = Modifier.weight(1f).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)), factory = { c ->
             WebView(c).apply {
+                // Compose already keeps this view clear of the system bars; without this the WebView also applies the
+                // window's raw insets to the page itself and its top ends up hidden.
+                ViewCompat.setOnApplyWindowInsetsListener(this) { _, _ -> WindowInsetsCompat.CONSUMED }
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 if (prefs.loblawsHideWebViewMarker) settings.userAgentString = LoblawsHandoff.stripWebViewMarker(settings.userAgentString)
@@ -129,17 +216,8 @@ fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
                     override fun onPageFinished(view: WebView, url: String?) {
                         canGoBack = view.canGoBack()
                         if (disposed) return
-                        when (val action = machine.onPageFinished(url, view.title)) {
-                            is HandoffAction.Run -> view.evaluateJavascript(action.js) { res ->
-                                if (disposed) return@evaluateJavascript
-                                Log.d("MealPrepHandoff", "script result: $res")
-                                if (machine.onScriptResult(res) == HandoffAction.Reload) view.reload()
-                                step = machine.step
-                            }
-                            HandoffAction.Reload -> view.reload()
-                            HandoffAction.None -> Unit
-                        }
-                        step = machine.step
+                        pageHost = LoblawsHandoff.host(url)
+                        act(view, machine.onPageFinished(url, view.title))
                     }
                 }
                 web = this
@@ -147,8 +225,10 @@ fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
             }
         })
     }
-    // Back walks back through her sign-in pages first; at the start it leaves the screen.
+    if (confirmClose) CloseConfirmDialog(onClose = { confirmClose = false; onDone() }, onStay = { confirmClose = false })
+    // Back walks back through her sign-in pages first; at the start it leaves the screen (asking first while working).
     BackHandler(enabled = canGoBack) { web?.goBack() }
+    BackHandler(enabled = !canGoBack && closeNeedsConfirm(step)) { confirmClose = true }
     DisposableEffect(Unit) { onDispose { disposed = true; web?.apply { stopLoading(); destroy() } } }
 }
 
