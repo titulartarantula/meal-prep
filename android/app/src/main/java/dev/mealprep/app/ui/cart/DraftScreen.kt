@@ -109,6 +109,7 @@ private fun LineCard(line: DraftLine, editable: Boolean, busy: Boolean, onQty: (
             val forWhat = if (line.recipes.isEmpty()) "" else "for ${line.recipes.joinToString(", ")} · "
             Text(forWhat + (SOURCE[line.source] ?: line.source), style = MaterialTheme.typography.bodySmall)
             Text(line.product?.let(::productLine) ?: "No product found — tap Swap to search.")
+            line.why?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val hasProduct = line.product != null

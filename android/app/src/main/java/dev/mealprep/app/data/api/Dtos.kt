@@ -63,6 +63,9 @@ import kotlinx.serialization.Serializable
     // Null for unmatched/pending lines (the server sends quantity: null); must not be coerced to 1.
     val quantity: Int? = null, val source: String = "none", val alternatives: List<Product> = emptyList(),
     val removed: Boolean = false, val status: String = "",
+    // Purchase planner (absent from older servers): fewest packs that cover the need, whether the server
+    // couldn't confirm that, and its one-line explanation ("Need ⅚ cup → 1 × 1 L").
+    val packsMin: Int? = null, val needsCheck: Boolean = false, val why: String? = null,
 )
 @Serializable data class Progress(val done: Int = 0, val total: Int = 0)
 @Serializable data class Draft(

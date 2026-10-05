@@ -1,8 +1,8 @@
 {"id": 7, "status": "ready", "error": null, "progress": {"done": 2, "total": 2}, "weeks": ["2026-10-11"],
  "lines": [
   {"id": 31, "item_key": "onion|each", "name": "onion", "qty": 3.0, "unit": null, "prep": "diced", "recipes": ["Chili", "Fish soup"],
-   "product": {"code": "20600927001_KG", "name": "Yellow Onions", "brand": null, "package_size": "1.36 kg bag", "price": 3.99, "stock": "OK"},
-   "quantity": 1, "source": "memory",
+   "product": {"code": "20600927001_KG", "name": "Yellow Onions", "brand": null, "package_size": "1.36 kg bag", "price": 3.99, "stock": "OK", "sold_by": "SOLD_BY_EACH"},
+   "quantity": 1, "source": "memory", "packs_min": 1, "needs_check": false, "why": "Need 3 (≈ 600 g) → 1 × 1.36 kg",
    "alternatives": [{"code": "20107500001_KG", "name": "Onions, Yellow", "brand": "PC", "package_size": "per kg", "price": 2.18, "stock": "OK"}],
    "removed": false, "status": "matched"},
   {"id": 32, "item_key": "ground beef|g", "name": "ground beef", "qty": 900.0, "unit": "g", "prep": null, "recipes": ["Chili"],

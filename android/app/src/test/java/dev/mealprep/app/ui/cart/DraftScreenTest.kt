@@ -63,6 +63,14 @@ class DraftScreenTest {
         compose.onNodeWithText("Send to Loblaws").assertIsNotEnabled()
     }
 
+    @Test fun `planner explanation shows under the product when the server sends it`() {
+        compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions()) }
+        compose.onNodeWithText("Need 3 (≈ 600 g) → 1 × 1.36 kg").assertExists()
+        val (matched, unmatched) = ready.lines
+        assertEquals(Triple(1, false, "Need 3 (≈ 600 g) → 1 × 1.36 kg"), Triple(matched.packsMin, matched.needsCheck, matched.why))
+        assertEquals(Triple(null, false, null), Triple(unmatched.packsMin, unmatched.needsCheck, unmatched.why))  // older server
+    }
+
     @Test fun `need text`() {
         val line = ready.lines[0]
         assertEquals("Need ⅚ cup · warmed", needText(line.copy(qty = 0.83, unit = "cup", prep = "warmed")))
