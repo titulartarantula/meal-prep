@@ -4,15 +4,13 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import dev.mealprep.app.ui.common.TabHeader
+import dev.mealprep.app.ui.library.LibraryScreen
+import dev.mealprep.app.ui.library.RecipeScreen
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -78,11 +76,11 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
                 onOpenDraft = { id -> nav.navigate(DraftRoute(id)) }, onEditStaples = { nav.navigate(StaplesRoute) },
                 menu = mainMenu(), onOpen = open)
         }
-        composable<LibraryRoute> {
-            Column(Modifier.fillMaxSize()) {
-                TabHeader("Recipes", mainMenu(), open)
-                Text(LATER, Modifier.padding(12.dp))
-            }
+        composable<LibraryRoute> { LibraryScreen(mainMenu(), open, onRecipe = { id -> nav.navigate(RecipeRoute(id)) }) }
+        composable<RecipeRoute> { back ->
+            RecipeScreen(back.toRoute<RecipeRoute>().id, onOpen = open,
+                onWeek = { w -> nav.navigate(HomeRoute(w.toString())) { popUpTo<HomeRoute> { inclusive = true } } },
+                onClose = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) })
         }
         composable<DraftRoute> { back ->
             DraftScreen(back.toRoute<DraftRoute>().id,

@@ -26,6 +26,8 @@ import kotlinx.serialization.Serializable
     val id: Int, val title: String, val source: String, val sourceUrl: String? = null, val servings: Int? = null,
     val ingredients: List<Ingredient> = emptyList(), val steps: List<String> = emptyList(),
     val ratings: RatingSummary = RatingSummary(), val history: List<CookedEntry> = emptyList(),
+    /** ISO Sundays from this week on that have this recipe (absent from older servers). */
+    val plannedWeeks: List<String> = emptyList(),
 ) {
     /** Indexes of lines like "Batter for 24 crêpes, page 191" whose page hasn't been attached yet. */
     val missingPages: List<Int> get() = ingredients.indices.filter { ingredients[it].refPage != null && !ingredients[it].expanded }

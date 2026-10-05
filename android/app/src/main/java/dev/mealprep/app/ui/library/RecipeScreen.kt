@@ -1,0 +1,192 @@
+package dev.mealprep.app.ui.library
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.mealprep.app.core.RatingText
+import dev.mealprep.app.core.Weeks
+import dev.mealprep.app.data.api.Recipe
+import dev.mealprep.app.ui.camera.refPrompt
+import dev.mealprep.app.ui.camera.refPromptText
+import dev.mealprep.app.ui.cart.withSelected
+import dev.mealprep.app.ui.common.MessageText
+import dev.mealprep.app.ui.common.OfflineBanner
+import dev.mealprep.app.ui.common.WeekOption
+import dev.mealprep.app.ui.common.WeekPicker
+import dev.mealprep.app.ui.common.graphViewModel
+import dev.mealprep.app.ui.home.refRoute
+import java.time.LocalDate
+
+@Composable
+fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, onClose: () -> Unit) {
+    val vm = graphViewModel(key = "recipe-$id") { g -> RecipeViewModel(g.repo, id) }
+    val state by vm.state.collectAsStateWithLifecycle()
+    RecipeContent(state, onAdd = vm::addToWeek, onWeek = onWeek, onOpen = onOpen, onDismissAdded = vm::dismissAdded,
+        onRetry = vm::load, onClose = onClose)
+}
+
+@Composable
+private fun Section(title: String) =
+    Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp).semantics { heading() })
+
+@Composable
+fun RecipeContent(
+    state: RecipeState,
+    onAdd: (LocalDate, Int?) -> Unit,
+    onWeek: (LocalDate) -> Unit,
+    onOpen: (Any) -> Unit,
+    onDismissAdded: () -> Unit,
+    onRetry: () -> Unit = {},
+    onClose: () -> Unit = {},
+    today: LocalDate = LocalDate.now(),
+) {
+    var picking by remember { mutableStateOf(false) }
+    val r = state.recipe
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(r?.title ?: "Recipe", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+            TextButton(onClose) { Text("Close") }
+        }
+        OfflineBanner(state.offlineSince)
+        MessageText(state.error)
+        if (state.loading || state.adding) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (r == null) {
+            if (!state.loading) TextButton(onRetry) { Text("Try again") }
+        } else RecipeBody(r, state, today, onWeek, onOpen, onDismissAdded, onPick = { picking = true })
+    }
+    if (picking) AddToWeekDialog(state.options, r?.plannedWeeks.orEmpty(), today,
+        onAdd = { w, d -> picking = false; onAdd(w, d) }, onDismiss = { picking = false })
+}
+
+@Composable
+private fun ColumnScope.RecipeBody(
+    r: Recipe, state: RecipeState, today: LocalDate, onWeek: (LocalDate) -> Unit, onOpen: (Any) -> Unit,
+    onDismissAdded: () -> Unit, onPick: () -> Unit,
+) {
+    state.added?.let { a ->
+        Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Column(Modifier.padding(12.dp)) {
+                Text(a.text, color = if (a.ok) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+                Row {
+                    a.week?.let { w -> TextButton({ onWeek(w) }) { Text("Open that week") } }
+                    TextButton(onDismissAdded) { Text("OK") }
+                }
+            }
+        }
+    }
+    Button(onPick, enabled = !state.adding, modifier = Modifier.fillMaxWidth()) { Text("Add to a week") }
+    LazyColumn(Modifier.weight(1f)) {
+        item {
+            val small = MaterialTheme.typography.bodySmall
+            RatingText.summary(r.ratings)?.let { Text(it) } ?: Text("Not rated yet", style = small)
+            plannedText(r.plannedWeeks, today)?.let { Text(it, style = small) }
+            r.sourceUrl?.let { url ->
+                val uri = LocalUriHandler.current
+                TextButton({ runCatching { uri.openUri(url) } }) { Text("Open on NYT Cooking") }
+            }
+            refPrompt(r)?.let { p ->
+                Text(refPromptText(p), style = small)
+                TextButton({ onOpen(refRoute(p)) }) { Text("Add photo of p.${p.page}") }
+            }
+        }
+        if (r.ratings.notes.isNotEmpty()) {
+            item { Section("Notes") }
+            itemsIndexed(r.ratings.notes) { _, n ->
+                Text("“${n.note}”" + (n.date?.let { d -> " — ${runCatching { Weeks.shortDate(LocalDate.parse(d)) }.getOrDefault(d)}" } ?: ""))
+            }
+        }
+        item { Section("Ingredients") }
+        ingredientLines(r).forEach { line ->
+            item { if (line.heading) Text(line.text, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp)) else Text("• ${line.text}") }
+        }
+        if (r.steps.isNotEmpty()) {
+            item { Section("Steps") }
+            itemsIndexed(r.steps) { i, s -> Text("${i + 1}. $s", Modifier.padding(vertical = 2.dp)) }
+        }
+        if (r.history.isNotEmpty()) {
+            item { Section("On the plan") }
+            itemsIndexed(r.history) { _, h ->
+                val week = runCatching { LocalDate.parse(h.week) }.getOrNull()
+                Text(listOfNotNull(week?.let { "Week of ${Weeks.shortDate(it)}" } ?: h.week,
+                    h.day?.let(Weeks::dayLabel) ?: "no night", h.rating?.let { "rated ${it.family}/5" }).joinToString(" · "))
+            }
+        }
+    }
+}
+
+/** Ingredient lines as written; an attached sub-recipe's lines get its name as a heading. Lines whose page was
+ *  attached ("Batter for 24 crêpes, page 191") are left out: the sub-recipe's own lines replace them. */
+data class IngredientLine(val text: String, val heading: Boolean = false)
+
+fun ingredientLines(r: Recipe): List<IngredientLine> {
+    val out = mutableListOf<IngredientLine>()
+    var group: String? = null
+    r.ingredients.filter { !it.expanded }.forEach { ing ->
+        if (ing.subRecipe != group) {
+            group = ing.subRecipe
+            group?.let { out += IngredientLine("$it:", heading = true) }
+        }
+        out += IngredientLine(ing.raw.ifBlank { ing.name })
+    }
+    return out
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AddToWeekDialog(
+    options: List<WeekOption>, planned: List<String>, today: LocalDate, onAdd: (LocalDate, Int?) -> Unit, onDismiss: () -> Unit,
+) {
+    var week by remember { mutableStateOf(Weeks.upcomingSunday(today)) }
+    var night by remember { mutableStateOf<Int?>(null) }
+    val already = week.toString() in planned
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add to a week") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                WeekPicker(withSelected(options.ifEmpty { listOf(WeekOption(week, Weeks.weekChoiceLabel(week, today), null)) }, setOf(week), today),
+                    week) { week = it }
+                Text("Night (optional)")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilterChip(night == null, { night = null }, { Text("No night yet") })
+                    (0..6).forEach { d -> FilterChip(night == d, { night = d }, { Text(Weeks.dayLabel(d)) }) }
+                }
+                if (already) Text("It's already in that week. Pick another week, or move it on the week screen.",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton({ onAdd(week, night) }, enabled = !already) { Text("Add") } },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
+    )
+}
