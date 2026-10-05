@@ -1,0 +1,29 @@
+{"id": 4, "status": "ready", "error": null, "weeks": ["2026-10-11"], "progress": {"done": 2, "total": 2},
+ "created_at": "2026-10-11T14:00:00+00:00", "finished_at": "2026-10-11T14:04:01+00:00", "generation_seconds": 241.0,
+ "total_minutes": 27, "warnings": ["Thu fish soup: cod frozen Sunday"],
+ "sections": [
+  {"key": "knife", "title": "Knife work", "tasks": [
+    {"id": "knife-1", "section": "knife", "text": "Dice 3 onions: 2 for Tue chili, 1 for Thu soup",
+     "serves": [{"entry_id": 21, "recipe_id": 5, "title": "Chili", "night": "Tue", "date": "2026-10-13"},
+                {"entry_id": 22, "recipe_id": 6, "title": "Fish soup", "night": "Thu", "date": "2026-10-15"}],
+     "est_minutes": 10, "shelf_life": "ok", "thaw": null, "contents": [], "flags": [], "done": true, "done_at": "2026-10-11T15:00:00+00:00"},
+    {"id": "knife-2", "section": "knife", "text": "Chop the cilantro",
+     "serves": [{"entry_id": 21, "recipe_id": 5, "title": "Chili", "night": "Tue", "date": "2026-10-13"}],
+     "est_minutes": 3, "shelf_life": "day_of", "thaw": null, "contents": [], "flags": ["delicate herb: chop on the night"], "done": false, "done_at": null}]},
+  {"key": "sauces", "title": "Sauces, dressings & spice blends", "tasks": []},
+  {"key": "proteins", "title": "Proteins", "tasks": [
+    {"id": "proteins-1", "section": "proteins", "text": "Portion the cod and freeze",
+     "serves": [{"entry_id": 22, "recipe_id": 6, "title": "Fish soup", "night": "Thu", "date": "2026-10-15"}],
+     "est_minutes": 7, "shelf_life": "freeze_then_thaw", "thaw": "Freeze Sunday; move it to the fridge Wednesday night.",
+     "contents": [], "flags": ["raw fish for Thu: frozen"], "done": false, "done_at": null}]},
+  {"key": "pack", "title": "Pack & label", "tasks": [
+    {"id": "pack-1", "section": "pack", "text": "TUE – chili kit",
+     "serves": [{"entry_id": 21, "recipe_id": 5, "title": "Chili", "night": "Tue", "date": "2026-10-13"}],
+     "est_minutes": 5, "shelf_life": "ok", "thaw": null, "contents": ["2 diced onions", "spice blend jar"], "flags": [], "done": false, "done_at": null},
+    {"id": "pack-2", "section": "pack", "text": "THU – fish soup kit",
+     "serves": [{"entry_id": 22, "recipe_id": 6, "title": "Fish soup", "night": "Thu", "date": "2026-10-15"}],
+     "est_minutes": 5, "shelf_life": "ok", "thaw": null, "contents": ["1 diced onion"], "flags": [], "done": false, "done_at": null}]}],
+ "entries": [{"entry_id": 21, "recipe_id": 5, "title": "Chili", "night": "Tue", "date": "2026-10-13", "has_card": true},
+             {"entry_id": 22, "recipe_id": 6, "title": "Fish soup", "night": "Thu", "date": "2026-10-15", "has_card": true}],
+ "checklist": {"done": 1, "total": 4, "est_minutes": 27, "first_done_at": "2026-10-11T15:00:00+00:00", "last_done_at": "2026-10-11T15:00:00+00:00", "actual_minutes": null},
+ "stale": false, "last_ready_id": 4}

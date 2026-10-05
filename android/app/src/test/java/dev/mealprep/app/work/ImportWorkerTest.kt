@@ -1,0 +1,144 @@
+package dev.mealprep.app.work
+
+import android.Manifest
+import android.app.Application
+import android.app.Notification
+import android.app.NotificationManager
+import android.content.Context
+import androidx.work.Data
+import androidx.work.ListenableWorker.Result
+import androidx.work.WorkerFactory
+import androidx.work.WorkerParameters
+import androidx.work.workDataOf
+import androidx.work.testing.TestListenableWorkerBuilder
+import dev.mealprep.app.TestEnv
+import dev.mealprep.app.fixture
+import dev.mealprep.app.notify.Notifier
+import java.time.LocalDate
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+
+@RunWith(RobolectricTestRunner::class)
+class ImportWorkerTest {
+    private val env = TestEnv()
+    private val link = ImportQueue.linkInput("https://cooking.nytimes.com/recipes/1-x", LocalDate.parse("2026-10-11"))
+
+    @Before fun setUp() {
+        shadowOf(env.context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        Notifier(env.context).ensureChannels()
+    }
+    @After fun tearDown() = env.close()
+
+    private fun worker(input: Data, attempt: Int = 0, id: UUID = UUID.randomUUID()) = TestListenableWorkerBuilder<ImportWorker>(env.context)
+        .setInputData(input).setRunAttemptCount(attempt).setId(id)
+        .setWorkerFactory(object : WorkerFactory() {
+            override fun createWorker(c: Context, n: String, p: WorkerParameters) = ImportWorker(c, p, env.repo, Notifier(c))
+        }).build()
+
+    private fun notificationText() =
+        notifications().single().extras.getCharSequence(Notification.EXTRA_TEXT).toString()
+
+    private fun notifications() =
+        shadowOf(env.context.getSystemService(NotificationManager::class.java)).allNotifications
+
+    @Test fun `re-shared recipe reports the existing rating and the missing page`() = runTest {
+        env.on("POST", "/recipes/share", body = fixture("share_result.json"))
+        val r = worker(link).doWork()
+        val out = (r as Result.Success).outputData
+        assertEquals(3, out.getInt(ImportWorker.OUT_RECIPE_ID, 0))
+        assertEquals(12, out.getInt(ImportWorker.OUT_ENTRY_ID, 0))
+        assertTrue(out.getBoolean(ImportWorker.OUT_EXISTING, false))
+        assertEquals(1, out.getInt(ImportWorker.OUT_MISSING_LINE, -1))
+        assertEquals(191, out.getInt(ImportWorker.OUT_MISSING_PAGE, 0))
+        assertEquals("2026-10-11", out.getString(ImportWorker.OUT_WEEK))
+        assertEquals(listOf("""{"text":"https://cooking.nytimes.com/recipes/1-x","week":"2026-10-11"}"""),
+            env.bodies("POST", "/recipes/share"))
+        val n = notifications().single()
+        assertEquals("Already in your library: Thai Green Curry Wings", n.extras.getString(Notification.EXTRA_TITLE))
+        val text = n.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
+        assertTrue(text.contains("Family 4.5/5")); assertTrue(text.contains("page 191"))
+    }
+
+    @Test fun `unreachable is retried until the last attempt, then fails with the input echoed`() = runTest {
+        env.offline = true
+        assertTrue(worker(link, attempt = 0).doWork() is Result.Retry)
+        val last = worker(link, attempt = ImportWorker.MAX_ATTEMPTS - 1).doWork() as Result.Failure
+        assertTrue(last.outputData.getString(ImportWorker.ERROR)!!.contains("home Wi-Fi"))
+        assertTrue(last.outputData.getBoolean(ImportWorker.RETRY_SAFE, false))
+        assertEquals(ImportWorker.LINK, last.outputData.getString(ImportWorker.KIND))
+        assertEquals("Couldn't add the recipe", notifications().single().extras.getString(Notification.EXTRA_TITLE))
+        assertEquals("Can't reach the meal-prep server. Are you on home Wi-Fi (or WireGuard)? Open Meal Prep to try again.", notificationText())
+    }
+
+    @Test fun `timed out import is not retried`() = runTest {
+        env.onSlow("POST", "/recipes/share", seconds = 4)     // TestEnv's long-call read timeout is 2 s
+        val r = worker(link).doWork() as Result.Failure
+        assertTrue(r.outputData.getString(ImportWorker.ERROR)!!.contains("taking too long"))
+        assertFalse(r.outputData.getBoolean(ImportWorker.RETRY_SAFE, true))
+    }
+
+    @Test fun `server's import failure is a plain sentence, not the exception name`() = runTest {
+        env.on("POST", "/recipes/share", code = 502, body = """{"detail":"import failed: NotARecipe: no Recipe JSON-LD"}""")
+        val r = worker(link).doWork() as Result.Failure
+        assertEquals("Couldn't read that recipe. Try again later.", r.outputData.getString(ImportWorker.ERROR))
+        assertEquals("Couldn't read that recipe. Try again later. Open Meal Prep to try again.", notificationText())
+    }
+
+    @Test fun `a refusal that is already a sentence is shown as is`() = runTest {
+        env.on("POST", "/recipes/share", code = 422, body = """{"detail":"no NYT Cooking link found"}""")
+        val r = worker(link).doWork() as Result.Failure
+        assertEquals("no NYT Cooking link found", r.outputData.getString(ImportWorker.ERROR))
+        assertEquals("no NYT Cooking link found. Open Meal Prep to try again.", notificationText())
+    }
+
+    @Test fun `a timed-out failure's notification warns instead of inviting a retry`() = runTest {
+        env.onSlow("POST", "/recipes/share", seconds = 4)
+        assertTrue(worker(link).doWork() is Result.Failure)
+        val text = notificationText()
+        assertTrue(text, text.endsWith("check again in a minute. It may have been added already — check the week."))
+        assertFalse(text.contains("try again"))
+    }
+
+    @Test fun `a re-run after an interrupted send does not post again`() = runTest {
+        val gate = CountDownLatch(1)
+        env.onGated("POST", "/recipes/share", gate, fixture("share_result.json"))
+        val id = UUID.randomUUID()
+        val first = launch(Dispatchers.Default) { worker(link, id = id).doWork() }
+        env.awaitBody("POST", "/recipes/share")
+        first.cancelAndJoin()                       // WorkManager stopped the worker mid-request
+        gate.countDown()
+        val again = worker(link, attempt = 1, id = id).doWork() as Result.Failure
+        assertEquals(1, env.count("POST", "/recipes/share"))
+        assertFalse(again.outputData.getBoolean(ImportWorker.RETRY_SAFE, true))
+        assertTrue(notificationText().contains("It may have been added already — check the week."))
+    }
+
+    @Test fun `an unreachable attempt is still re-sent on retry`() = runTest {
+        env.on("POST", "/recipes/share", body = fixture("share_result.json"))
+        val id = UUID.randomUUID()
+        env.offline = true
+        assertTrue(worker(link, attempt = 0, id = id).doWork() is Result.Retry)
+        env.offline = false
+        assertTrue(worker(link, attempt = 1, id = id).doWork() is Result.Success)
+        assertEquals(1, env.count("POST", "/recipes/share"))
+    }
+
+    @Test fun `incomplete input fails with a message instead of crashing`() = runTest {
+        val r = worker(workDataOf(ImportWorker.KIND to ImportWorker.LINK)).doWork() as Result.Failure
+        assertEquals("The shared link was incomplete.", r.outputData.getString(ImportWorker.ERROR))
+        assertEquals(1, notifications().size)
+    }
+}

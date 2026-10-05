@@ -1,0 +1,5 @@
+{"id": 5, "status": "building", "error": null, "weeks": ["2026-10-11"], "progress": {"done": 0, "total": 3},
+ "created_at": "2026-10-11T14:00:00+00:00", "finished_at": null, "generation_seconds": null, "total_minutes": null,
+ "warnings": null, "sections": [], "entries": [],
+ "checklist": {"done": 0, "total": 0, "est_minutes": 0, "first_done_at": null, "last_done_at": null, "actual_minutes": null},
+ "stale": false, "last_ready_id": 4}

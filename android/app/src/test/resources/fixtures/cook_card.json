@@ -1,0 +1,7 @@
+{"entry_id": 21, "recipe_id": 5, "title": "Chili", "night": "Tue", "date": "2026-10-13",
+ "kit": ["2 diced onions", "spice blend jar"], "day_of": ["Chop the cilantro"], "thaw": [],
+ "steps": [{"text": "Brown the beef with the onions", "minutes": 8, "timer_minutes": null},
+           {"text": "Add tomatoes and beans; simmer", "minutes": 20, "timer_minutes": 20},
+           {"text": "Cook the rice", "minutes": 18, "timer_minutes": 18}],
+ "total_minutes": 30, "rating_notes": ["last time: less salt"], "prep_plan_id": 4,
+ "generated_at": "2026-10-11T14:04:01+00:00", "stale": false}

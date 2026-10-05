@@ -1,0 +1,3 @@
+[{"id": 21, "week": "2026-10-11", "recipe_id": 5, "day": 2, "multiplier": 1.0, "rating": null, "title": "Chili"},
+ {"id": 22, "week": "2026-10-11", "recipe_id": 6, "day": 4, "multiplier": 1.5, "rating": {"family": 4, "company": "maybe", "note": "less salt", "rated_at": "2026-10-16T08:00:00+00:00"}, "title": "Fish soup"},
+ {"id": 23, "week": "2026-10-11", "recipe_id": 1, "day": null, "multiplier": 1.0, "rating": null, "title": "Best Chocolate Chip Cookies"}]

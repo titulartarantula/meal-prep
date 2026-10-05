@@ -1,0 +1,9 @@
+{"recipe": {"id": 3, "title": "Thai Green Curry Wings", "source": "photo", "source_url": null, "servings": null,
+  "ingredients": [
+    {"raw": "24 chicken wings", "name": "chicken wing", "qty": 24.0, "unit": null, "prep": null, "likely_on_hand": false, "ref_page": null, "sub_recipe": null, "expanded": false},
+    {"raw": "Batter for 24 crêpes, page 191", "name": "crêpe batter", "qty": 1.0, "unit": null, "prep": null, "likely_on_hand": false, "ref_page": 191, "sub_recipe": null, "expanded": false}],
+  "steps": ["Marinate the wings.", "Grill 30 minutes."],
+  "ratings": {"times_cooked": 2, "times_rated": 2, "avg_family": 4.5, "last_family": 5, "last_rated_at": "2026-09-30T08:12:00+00:00", "company": "yes",
+              "notes": [{"note": "less salt", "date": "2026-09-29", "rated_at": "2026-09-30T08:12:00+00:00"}]}},
+ "entry": {"id": 12, "week": "2026-10-11", "recipe_id": 3, "day": null, "multiplier": 1.0, "rating": null, "title": "Thai Green Curry Wings"},
+ "existing": true}

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cleartext only to the home server (LAN) and its WireGuard address; everything else (loblaws.ca) is HTTPS. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.1.101</domain>
+        <domain includeSubdomains="false">10.8.0.1</domain>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,9 @@
+# Deployed to ~/meal-prep/docker-compose.yml on the server; its own compose project with its own Postgres.
+services:
+  mealprep-db:
+    image: postgres:18
+    container_name: mealprep-db
+    restart: unless-stopped
+    env_file: .env.db          # POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB (mode 600, not in git)
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: ["./pgdata:/var/lib/postgresql"]

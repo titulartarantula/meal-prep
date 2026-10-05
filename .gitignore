@@ -1,0 +1,14 @@
+.venv/
+*.db
+.env*
+pgdata/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.superpowers/
+
+# Kept on disk for the maintainer, not published: internal planning notes and personal config.
+DESIGN.md
+docs/plans/
+docs/provider-bakeoff.md
+android/tools/local.env

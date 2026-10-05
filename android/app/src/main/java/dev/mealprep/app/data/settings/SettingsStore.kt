@@ -1,0 +1,95 @@
+package dev.mealprep.app.data.settings
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStoreFile
+import java.io.IOException
+import java.time.LocalTime
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+
+/** Per-phone notification settings (defaults on, Tonight optional, times adjustable). */
+data class NotifPrefs(
+    val thaw: Boolean = true, val thawAt: LocalTime = LocalTime.of(20, 0),
+    val rate: Boolean = true, val rateAt: LocalTime = LocalTime.of(9, 0),
+    val tonight: Boolean = false, val tonightAt: LocalTime = LocalTime.of(16, 0),
+    val cartReady: Boolean = true,
+)
+
+data class Settings(
+    val serverUrl: String = DEFAULT_SERVER_URL,
+    val token: String = "",
+    val notif: NotifPrefs = NotifPrefs(),
+    val loblawsSignedOutStart: Boolean = true,
+    val loblawsHideWebViewMarker: Boolean = false,
+    val askedNotificationPermission: Boolean = false,
+) {
+    val configured: Boolean get() = token.isNotBlank() && serverUrl.isNotBlank()
+    companion object { const val DEFAULT_SERVER_URL = "http://192.168.1.101:8790" }
+}
+
+fun normalizeServerUrl(s: String): String {
+    val t = s.trim().trimEnd('/')
+    return if (t.startsWith("http://") || t.startsWith("https://")) t else "http://$t"
+}
+
+class SettingsStore(private val ds: DataStore<Preferences>) {
+    val settings: Flow<Settings> = ds.data.catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }.map(::read)
+
+    suspend fun update(f: (Settings) -> Settings) {
+        ds.edit { p -> write(p, f(read(p))) }
+    }
+
+    private object K {
+        val url = stringPreferencesKey("server_url"); val token = stringPreferencesKey("token")
+        val thaw = booleanPreferencesKey("n_thaw"); val thawAt = intPreferencesKey("n_thaw_at")
+        val rate = booleanPreferencesKey("n_rate"); val rateAt = intPreferencesKey("n_rate_at")
+        val tonight = booleanPreferencesKey("n_tonight"); val tonightAt = intPreferencesKey("n_tonight_at")
+        val cartReady = booleanPreferencesKey("n_cart_ready")
+        val signedOut = booleanPreferencesKey("lob_signed_out"); val hideWv = booleanPreferencesKey("lob_hide_wv")
+        val asked = booleanPreferencesKey("asked_notif")
+    }
+
+    private fun t(min: Int?, d: LocalTime) = min?.let { LocalTime.of(it / 60, it % 60) } ?: d
+    private fun m(t: LocalTime) = t.hour * 60 + t.minute
+
+    private fun read(p: Preferences): Settings {
+        val d = Settings(); val n = d.notif
+        return Settings(
+            serverUrl = p[K.url] ?: d.serverUrl, token = p[K.token] ?: "",
+            notif = NotifPrefs(
+                thaw = p[K.thaw] ?: n.thaw, thawAt = t(p[K.thawAt], n.thawAt),
+                rate = p[K.rate] ?: n.rate, rateAt = t(p[K.rateAt], n.rateAt),
+                tonight = p[K.tonight] ?: n.tonight, tonightAt = t(p[K.tonightAt], n.tonightAt),
+                cartReady = p[K.cartReady] ?: n.cartReady,
+            ),
+            loblawsSignedOutStart = p[K.signedOut] ?: d.loblawsSignedOutStart,
+            loblawsHideWebViewMarker = p[K.hideWv] ?: d.loblawsHideWebViewMarker,
+            askedNotificationPermission = p[K.asked] ?: false,
+        )
+    }
+
+    private fun write(p: MutablePreferences, s: Settings) {
+        p[K.url] = s.serverUrl; p[K.token] = s.token
+        p[K.thaw] = s.notif.thaw; p[K.thawAt] = m(s.notif.thawAt)
+        p[K.rate] = s.notif.rate; p[K.rateAt] = m(s.notif.rateAt)
+        p[K.tonight] = s.notif.tonight; p[K.tonightAt] = m(s.notif.tonightAt)
+        p[K.cartReady] = s.notif.cartReady
+        p[K.signedOut] = s.loblawsSignedOutStart; p[K.hideWv] = s.loblawsHideWebViewMarker
+        p[K.asked] = s.askedNotificationPermission
+    }
+
+    companion object {
+        fun create(context: Context) =
+            SettingsStore(PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("settings") })
+    }
+}

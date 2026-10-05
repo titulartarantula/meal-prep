@@ -1,0 +1,2 @@
+[{"key": "onion|each", "name": "onion", "qty": 3.0, "unit": null, "prep": "diced", "likely_on_hand": false, "needed": true, "recipes": ["Chili", "Fish soup"]},
+ {"key": "olive oil|vol", "name": "olive oil", "qty": 2.0, "unit": "tbsp", "prep": null, "likely_on_hand": true, "needed": false, "recipes": ["Chili"]}]

@@ -1,0 +1,88 @@
+package dev.mealprep.app.notify
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.work.ForegroundInfo
+import dev.mealprep.app.MainActivity
+import dev.mealprep.app.R
+import dev.mealprep.app.core.RatingText
+import dev.mealprep.app.core.firstMissingRef
+import dev.mealprep.app.core.Weeks
+import dev.mealprep.app.data.api.ShareResult
+import dev.mealprep.app.ui.nav.Nav
+import java.time.LocalDate
+import java.util.UUID
+
+class Notifier(private val context: Context) {
+    companion object {
+        const val CH_PROGRESS = "progress"
+        const val CH_JOBS = "jobs"
+        const val CH_REMINDERS = "reminders"
+    }
+
+    internal fun failedText(message: String, retrySafe: Boolean): String = sentences(
+        message, if (retrySafe) "Open Meal Prep to try again." else "It may have been added already — check the week.")
+
+    private val nm = NotificationManagerCompat.from(context)
+
+    fun ensureChannels() {
+        nm.createNotificationChannelsCompat(listOf(
+            NotificationChannelCompat.Builder(CH_PROGRESS, NotificationManagerCompat.IMPORTANCE_LOW).setName("Working in the background").build(),
+            NotificationChannelCompat.Builder(CH_JOBS, NotificationManagerCompat.IMPORTANCE_DEFAULT).setName("Recipes, cart and prep plan").build(),
+            NotificationChannelCompat.Builder(CH_REMINDERS, NotificationManagerCompat.IMPORTANCE_HIGH).setName("Reminders").build(),
+        ))
+    }
+
+    fun importProgress(workId: UUID, text: String): ForegroundInfo = ForegroundInfo(
+        workId.hashCode(),
+        builder(CH_PROGRESS, "Meal Prep", text).setOngoing(true).setProgress(0, 0, true).build(),
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+    )
+
+    fun imported(r: ShareResult) {
+        val week = LocalDate.parse(r.entry.week)
+        val missing = r.recipe.firstMissingRef()
+        val title = if (r.existing) "Already in your library: ${r.recipe.title}" else "Added ${r.recipe.title}"
+        val text = listOfNotNull(
+            "Week of ${Weeks.shortDate(week)}",
+            RatingText.summary(r.recipe.ratings),
+            missing?.let { (_, page) -> "Uses page $page — tap to add a photo of it" },
+        ).joinToString(" · ")
+        post("import-${r.entry.id}", CH_JOBS, title, text, if (missing != null) Nav.ref(r.recipe.id, missing.first) else Nav.home(week))
+    }
+
+    /** [retrySafe] false: the request may have reached the server, so warn instead of inviting a retry. */
+    fun importFailed(workId: UUID, message: String, retrySafe: Boolean) =
+        post("import-failed-$workId", CH_JOBS, "Couldn't add the recipe", failedText(message, retrySafe), Nav.home(null))
+
+    @SuppressLint("MissingPermission")
+    fun post(tag: String, channel: String, title: String, text: String, nav: String?) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val id = tag.hashCode()
+        nm.notify(id, builder(channel, title, text).setContentIntent(openIntent(nav, id)).setAutoCancel(true).build())
+    }
+
+    private fun builder(channel: String, title: String, text: String) = NotificationCompat.Builder(context, channel)
+        .setSmallIcon(R.drawable.ic_notification).setContentTitle(title).setContentText(text)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+
+    private fun openIntent(nav: String?, requestCode: Int): PendingIntent = PendingIntent.getActivity(
+        context, requestCode,
+        Intent(context, MainActivity::class.java).putExtra(Nav.EXTRA, nav)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+}
+
+/** Joins sentences with a space, ending each one that lacks it with a period ("no NYT Cooking link found" + …). */
+internal fun sentences(vararg parts: String): String = parts.map(String::trim).filter(String::isNotEmpty)
+    .joinToString(" ") { if (it.last() in ".?!…") it else "$it." }
