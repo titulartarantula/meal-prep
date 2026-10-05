@@ -10,7 +10,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.draganddrop.dragAndDropSource
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -29,8 +28,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -51,6 +48,8 @@ import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -62,6 +61,7 @@ import dev.mealprep.app.data.api.PlanEntry
 import dev.mealprep.app.ui.nav.DraftRoute
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
+import dev.mealprep.app.ui.common.OverflowMenu
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.nav.CardRoute
 import dev.mealprep.app.ui.nav.RatingRoute
@@ -83,7 +83,6 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
     val pager = rememberPagerState(initialPage = initial) { PAGES }
     val imports by vm.imports.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
-    var open by remember { mutableStateOf(false) }
     AskForNotificationsOnce(graph)
 
     // Back on Home (or the app resumed days later): reload the visible week and re-read today's date.
@@ -96,13 +95,8 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(Weeks.weekTitle(current.plusWeeks((pager.currentPage - BACK).toLong()), today),
-                style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            Box {
-                TextButton(onClick = { open = true }) { Text("Menu") }
-                DropdownMenu(open, { open = false }) {
-                    menu.forEach { (label, route) -> DropdownMenuItem({ Text(label) }, { open = false; onOpen(route) }) }
-                }
-            }
+                style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+            OverflowMenu(menu, onOpen)
         }
         message?.let { m ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {

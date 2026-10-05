@@ -21,8 +21,10 @@ class NavTest {
         assertEquals(ListRoute(""), Nav.parse(Nav.list()))
     }
 
-    @Test fun `menu opens the shopping list for the default week`() {
-        assertEquals(listOf("Snap a cookbook recipe" to CameraRoute(), "Shopping list" to ListRoute(""), "Staples" to StaplesRoute, "Settings" to SettingsRoute), homeMenu())
+    @Test fun `the overflow menu keeps the extras, the bottom bar the main screens`() {
+        assertEquals(listOf("Snap a cookbook recipe" to CameraRoute(), "Staples" to StaplesRoute, "Settings" to SettingsRoute), mainMenu())
+        assertEquals(listOf("This week", "Shopping list", "Recipes"), Tab.entries.map { it.label })
+        assertEquals(listOf(HomeRoute(), ListRoute(""), LibraryRoute), Tab.entries.map { it.route })
     }
 
     @Test fun `garbage is ignored`() {

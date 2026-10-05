@@ -17,6 +17,7 @@ import dev.mealprep.app.ui.nav.AppNav
 import dev.mealprep.app.ui.nav.HomeRoute
 import dev.mealprep.app.ui.nav.Nav
 import dev.mealprep.app.ui.nav.SetupRoute
+import dev.mealprep.app.ui.nav.openLink
 import dev.mealprep.app.ui.nav.ShareRoute
 import dev.mealprep.app.ui.theme.MealPrepTheme
 import kotlinx.coroutines.channels.Channel
@@ -38,7 +39,7 @@ class MainActivity : ComponentActivity() {
                         val nav = rememberNavController()
                         AppNav(nav, start, graph)
                         // runCatching: a deep link to a screen this build doesn't have yet must not crash the app.
-                        LaunchedEffect(Unit) { navEvents.receiveAsFlow().collect { runCatching { nav.navigate(it) } } }
+                        LaunchedEffect(Unit) { navEvents.receiveAsFlow().collect { runCatching { nav.openLink(it) } } }
                     }
                 }
             }

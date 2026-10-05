@@ -1,6 +1,7 @@
 package dev.mealprep.app.ui.cart
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -34,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.data.api.ListItem
 import dev.mealprep.app.ui.common.MessageText
+import dev.mealprep.app.ui.common.TabHeader
 import dev.mealprep.app.ui.common.graphViewModel
 import java.time.LocalDate
 import java.util.Locale
@@ -147,11 +149,17 @@ internal fun qty(q: Double): String {
 }
 
 @Composable
-fun ListScreen(weeks: List<LocalDate>, onDraft: (Int) -> Unit, onOpenDraft: (Int) -> Unit, onEditStaples: () -> Unit) {
+fun ListScreen(
+    weeks: List<LocalDate>, onDraft: (Int) -> Unit, onOpenDraft: (Int) -> Unit, onEditStaples: () -> Unit,
+    menu: List<Pair<String, Any>> = emptyList(), onOpen: (Any) -> Unit = {},
+) {
     val vm = graphViewModel(key = "list-$weeks") { g -> ListViewModel(g.repo, g.jobs, weeks) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.draftId) { state.draftId?.let(onDraft) }
     // Back from the Staples screen: pick up added/removed/edited staples.
     LifecycleResumeEffect(Unit) { vm.refreshStaples(); onPauseOrDispose { } }
-    ListContent(state, vm::toggleWeek, vm::toggle, vm::buildCart, vm::retry, vm::toggleStaple, onEditStaples, onOpenDraft)
+    Column(Modifier.fillMaxSize()) {
+        TabHeader("Shopping list", menu, onOpen)
+        Box(Modifier.weight(1f)) { ListContent(state, vm::toggleWeek, vm::toggle, vm::buildCart, vm::retry, vm::toggleStaple, onEditStaples, onOpenDraft) }
+    }
 }

@@ -1,8 +1,18 @@
 package dev.mealprep.app.ui.nav
 
 import android.widget.Toast
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
+import androidx.navigation.compose.currentBackStackEntryAsState
+import dev.mealprep.app.ui.common.TabHeader
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -29,6 +39,18 @@ import dev.mealprep.app.ui.setup.SetupScreen
 
 @Composable
 fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
+    val entry by nav.currentBackStackEntryAsState()
+    val tab = tabOf(entry?.destination)
+    val ctx = LocalContext.current
+    val open: (Any) -> Unit = { r -> runCatching { nav.navigate(r) }.onFailure { Toast.makeText(ctx, LATER, Toast.LENGTH_SHORT).show() } }
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) { Screens(nav, start, graph, open) }
+        tab?.let { t -> MainTabs(t) { nav.openTab(it) } }
+    }
+}
+
+@Composable
+private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (Any) -> Unit) {
     NavHost(nav, startDestination = start) {
         composable<SetupRoute> {
             SetupScreen(graph, onDone = { nav.navigate(HomeRoute()) { popUpTo<SetupRoute> { inclusive = true } } })
@@ -39,8 +61,6 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
         composable<StaplesRoute> { StaplesScreen(onDone = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) }) }
         composable<HomeRoute> { back ->
             val ctx = LocalContext.current
-            val open: (Any) -> Unit = { r -> runCatching { nav.navigate(r) }.onFailure {
-                Toast.makeText(ctx, LATER, Toast.LENGTH_SHORT).show() } }
             HomeScreen(graph, back.toRoute<HomeRoute>().week?.let(LocalDate::parse),
                 onAction = { a ->
                     when (val route = contextRoute(a)) {
@@ -49,13 +69,20 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
                     }
                 },
                 onOpen = open,
-                menu = homeMenu())
+                menu = mainMenu())
         }
         composable<ListRoute> { back ->
             val weeks = back.toRoute<ListRoute>().weeks.split(",").filter { it.isNotBlank() }
                 .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
             ListScreen(weeks, onDraft = { id -> nav.navigate(DraftRoute(id)) { popUpTo<ListRoute> { inclusive = true } } },
-                onOpenDraft = { id -> nav.navigate(DraftRoute(id)) }, onEditStaples = { nav.navigate(StaplesRoute) })
+                onOpenDraft = { id -> nav.navigate(DraftRoute(id)) }, onEditStaples = { nav.navigate(StaplesRoute) },
+                menu = mainMenu(), onOpen = open)
+        }
+        composable<LibraryRoute> {
+            Column(Modifier.fillMaxSize()) {
+                TabHeader("Recipes", mainMenu(), open)
+                Text(LATER, Modifier.padding(12.dp))
+            }
         }
         composable<DraftRoute> { back ->
             DraftScreen(back.toRoute<DraftRoute>().id,
@@ -116,6 +143,12 @@ fun contextToast(a: ContextAction): String? = when (a) {
 
 const val LATER = "That arrives in a later update."
 
-/** Home "Menu" items (label to route). */
-fun homeMenu(): List<Pair<String, Any>> =
-    listOf("Snap a cookbook recipe" to CameraRoute(), "Shopping list" to ListRoute(""), "Staples" to StaplesRoute, "Settings" to SettingsRoute)
+/** The ⋮ menu on the main screens (label to route); the bottom bar has This week, Shopping list and Recipes. */
+fun mainMenu(): List<Pair<String, Any>> =
+    listOf("Snap a cookbook recipe" to CameraRoute(), "Staples" to StaplesRoute, "Settings" to SettingsRoute)
+
+/** A link from a notification: a tab opens as that tab (no second copy); anything else goes on top. */
+fun NavController.openLink(route: Any) {
+    val t = Tab.entries.firstOrNull { it.route::class == route::class && route !is HomeRoute }
+    if (t != null) navigate(route) { popUpTo<HomeRoute>(); launchSingleTop = true } else navigate(route)
+}
