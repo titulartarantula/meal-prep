@@ -56,6 +56,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.PlanEntry
+import dev.mealprep.app.ui.nav.DraftRoute
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.graphViewModel
@@ -175,7 +176,7 @@ fun WeekContent(
     val dropTo: (Int?) -> (Int) -> Unit = { day -> { id -> all.firstOrNull { it.id == id }?.let { onPlace(it, day) } } }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { OfflineBanner(ui.offlineSince); MessageText(ui.error) }
-        item { StatusStripRow(ui.strip) }
+        item { StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } }) }
         item { Button(onClick = { onAction(ui.action) }, modifier = Modifier.fillMaxWidth()) { Text(ui.action.label) } }
         val view = ui.view
         if (view != null) {
@@ -207,11 +208,14 @@ fun WeekContent(
 }
 
 @Composable
-private fun StatusStripRow(s: StatusStrip) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         listOf("Planned" to s.planned, "Cart sent" to s.cartSent, "Prep done" to s.prepDone).forEach { (label, done) ->
-            Text((if (done) "✓ " else "○ ") + label,
-                color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            val text = (if (done) "✓ " else "○ ") + label
+            val color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            // A sent cart can be reopened (to open it in Loblaws again).
+            if (label == "Cart sent" && onCart != null) TextButton(onClick = onCart) { Text(text, color = color) }
+            else Text(text, color = color)
         }
     }
 }

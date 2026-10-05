@@ -8,6 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import dev.mealprep.app.AppGraph
+import dev.mealprep.app.ui.cart.DraftScreen
 import dev.mealprep.app.ui.cart.ListScreen
 import dev.mealprep.app.ui.home.ContextAction
 import dev.mealprep.app.ui.home.HomeScreen
@@ -43,6 +44,11 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
             ListScreen(weeks, onDraft = { id ->
                 runCatching { nav.navigate(DraftRoute(id)) { popUpTo<ListRoute> { inclusive = true } } }
             })
+        }
+        composable<DraftRoute> { back ->
+            DraftScreen(back.toRoute<DraftRoute>().id,
+                onLoblaws = { cart -> runCatching { nav.navigate(LoblawsRoute(cart)) } },
+                onRebuild = { weeks -> nav.navigate(ListRoute(weeks.joinToString(","))) { popUpTo<DraftRoute> { inclusive = true } } })
         }
         composable<ShareRoute> {
             ShareScreen(graph,

@@ -35,6 +35,8 @@ data class WeekUi(
     val view: WeekView? = null,
     val strip: StatusStrip = StatusStrip(false, false, false),
     val action: ContextAction = ContextAction.AddRecipes,
+    /** The week's sent cart draft, so "Cart sent" can reopen it (Open in Loblaws again). */
+    val sentDraftId: Int? = null,
     val loading: Boolean = true,
     val offlineSince: Instant? = null,
     val error: String? = null,
@@ -85,6 +87,7 @@ class HomeViewModel(
             view = list?.let { weekView(w, it) } ?: prev.view,
             strip = statusStrip(list.orEmpty(), carted, p),
             action = contextAction(w, today(), list.orEmpty(), carted, d, p),
+            sentDraftId = d?.takeIf { it.status == "sent" }?.id,
             loading = false,
             offlineSince = e.offlineSince,
             error = if (list == null) e.error?.userMessage() else e.errorMessage,

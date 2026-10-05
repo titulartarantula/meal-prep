@@ -46,4 +46,12 @@ class HomeScreenTest {
         compose.onNodeWithText("Cancel").performClick()
         assertEquals(id, cancelled)
     }
+
+    @Test fun `a sent cart can be reopened from the status strip`() {
+        var opened: Any? = null
+        val sent = ui.copy(strip = statusStrip(entries, true, null), sentDraftId = 9)
+        compose.setContent { WeekContent(sent, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, { opened = it }, {}) }
+        compose.onNodeWithText("✓ Cart sent").performClick()
+        assertEquals(dev.mealprep.app.ui.nav.DraftRoute(9), opened)
+    }
 }
