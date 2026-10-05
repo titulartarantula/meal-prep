@@ -300,12 +300,15 @@ def test_ai_too_few_packs_is_raised_to_the_floor(conn):
     _, line = one_line(conn, MILK, [sized("L1", "1 l"), sized("L4", "4 l")], ai)
     assert line["quantity"] == 2 and line["packs_min"] == 2 and line["needs_check"] is False
     assert line["why"] == "Need 6 cups → 2 × 1 L"
-    assert '"min_packs": 2' in ai.prompts[0] and "at least its min_packs" in ai.prompts[0]
+    assert '"min_packs": 2' in ai.prompts[0] and "exactly that is bought" in ai.prompts[0]
 
 
-def test_ai_more_packs_than_needed_is_kept(conn):
+def test_ai_more_packs_than_needed_is_the_floor(conn):
     _, line = one_line(conn, MILK, [sized("L1", "1 l")], QtyAI("L1", 3))
-    assert line["quantity"] == 3 and line["why"] == "Need 6 cups → 3 × 1 L"
+    assert line["quantity"] == 2 and line["why"] == "Need 6 cups → 2 × 1 L"
+    it = MILK.model_copy(update={"qty": 2})
+    _, line = one_line(conn, it, [sized("L1", "1 l")], QtyAI("L1", 3))
+    assert line["quantity"] == 1                                  # AI says 3, floor 1 on a comparable pack
 
 
 def test_milk_five_sixths_cup_is_one_pack(conn):
@@ -338,6 +341,40 @@ def test_unmatched_line_has_no_plan(conn):
     assert (line["packs_min"], line["needs_check"], line["why"]) == (None, False, None)
 
 
+# Draft 5 (week 2026-10-11) sent 5 × 1 kg salt, 5 × vanilla and 5 × 170 g chocolate: remembered quantities.
+REGRESSION = [(ListItem(key="coarse sea salt|vol", name="coarse sea salt", qty=1.5, unit="tsp"), "1 kg", 1),
+              (ListItem(key="vanilla extract|vol", name="vanilla extract", qty=2, unit="tsp"), "46 ml", 1),
+              (ListItem(key="bittersweet chocolate|mass", name="bittersweet chocolate", qty=1.25, unit="lb"), "170 g", 4)]
+
+
+class FiveAI(FakeAI):
+    """Picks the regression products and always asks for 5 packages."""
+    def __init__(self): super().__init__({it.name: it.name[:4].upper() for it, _, _ in REGRESSION})
+    def complete_json(self, prompt, images=None): return {**super().complete_json(prompt), "quantity": 5}
+
+
+def _regression_draft(conn, ai):
+    items = [it for it, _, _ in REGRESSION]
+    pcx = FakePcx({it.name: [sized(it.name[:4].upper(), size, "SOLD_BY_EACH")] for it, size, _ in REGRESSION})
+    return build(conn, items, pcx, ai), [want for _, _, want in REGRESSION]
+
+
+def test_regression_remembered_quantity_five_becomes_the_floor(conn):
+    did, want = _regression_draft(conn, FiveAI())                  # the AI's 5 → the floor
+    assert [l["quantity"] for l in drafts.get_draft(conn, did)["lines"]] == want
+    for line in drafts.get_draft(conn, did)["lines"]:            # the user buys 5 of each this week …
+        drafts.update_line(conn, did, line["id"], quantity=5)
+    drafts.send_draft(conn, did, FakePcx({}))
+    ai = FiveAI()
+    did, want = _regression_draft(conn, ai)                       # … next week the remembered picks are the floor
+    lines = drafts.get_draft(conn, did)["lines"]
+    assert [(l["source"], l["quantity"]) for l in lines] == [("memory", w) for w in want] and ai.n == 0
+    assert all("you chose" not in l["why"] for l in lines)
+    out = drafts.update_line(conn, did, lines[1]["id"], quantity=5)   # a user edit stays
+    assert out["quantity"] == 5 and out["why"] == "Need 2 tsp → 5 × 46 mL (you chose 5)"
+    assert drafts.get_draft(conn, did)["lines"][1]["quantity"] == 5
+
+
 def test_user_set_quantity_is_never_changed(conn):
     did, line = one_line(conn, MILK, [sized("L1", "1 l")], QtyAI("L1", 1))
     out = drafts.update_line(conn, did, line["id"], quantity=1)
@@ -345,15 +382,22 @@ def test_user_set_quantity_is_never_changed(conn):
     assert drafts.get_draft(conn, did)["lines"][0]["quantity"] == 1
 
 
-def test_swap_raises_to_the_new_products_floor_but_never_lowers(conn):
+def test_swap_moves_the_planners_quantity_to_the_new_products_floor(conn):
     did, line = one_line(conn, MILK, [sized("L4", "4 l"), sized("L1", "1 l")], QtyAI("L4", 1))
     assert line["quantity"] == 1
     out = drafts.update_line(conn, did, line["id"], product_code="L1")
     assert out["quantity"] == 2 and out["why"] == "Need 6 cups → 2 × 1 L"
     out = drafts.update_line(conn, did, line["id"], product_code="L4")
-    assert out["quantity"] == 2                                   # not reduced
+    assert out["quantity"] == 1                                   # the floor again, not the 1 L's 2
     out = drafts.update_line(conn, did, line["id"], product_code="L1", quantity=1)
     assert out["quantity"] == 1                                   # explicit quantity wins
+
+
+def test_swap_keeps_a_users_own_quantity_raised_to_the_floor(conn):
+    did, line = one_line(conn, MILK, [sized("L4", "4 l"), sized("L1", "1 l")], QtyAI("L1", 1))
+    drafts.update_line(conn, did, line["id"], quantity=3)
+    out = drafts.update_line(conn, did, line["id"], product_code="L4")
+    assert out["quantity"] == 3 and out["why"] == "Need 6 cups → 3 × 4 L (you chose 3)"
 
 
 def test_swap_keeps_pricing_type_from_the_search_snapshot(conn):

@@ -10,7 +10,7 @@ from psycopg.types.json import Jsonb
 
 from . import db, planner
 from .ingredients import item_key, split_prep
-from .matcher import OUT_OF_STOCK, _choose, scale_remembered
+from .matcher import OUT_OF_STOCK, _choose
 from .models import ListItem, Product
 
 log = logging.getLogger(__name__)
@@ -75,18 +75,18 @@ def search_term(name: str) -> str:
 def _match(pcx, provider, it, pick, last):
     """Worker (no DB): search, then remembered pick or AI choice. Returns (found, cands, code, qty, source).
 
-    `last` is the remembered pick's last purchase (`db.last_purchase`). Either way the quantity is at least the
-    planner's floor (the fewest packs that cover the need)."""
+    `last` is the remembered pick's last purchase (`db.last_purchase`). Either way the quantity is the planner's
+    floor (the fewest packs that cover the need) when it has one; see `planner.default_quantity`."""
     found = pcx.search(search_term(it.name))
     cands = [p for p in found if p.stock not in OUT_OF_STOCK]
     if not cands:
         return found, cands, None, None, "none"
     by_code = {p.code: p for p in cands}
     if pick and pick[0] in by_code:
-        return found, cands, pick[0], scale_remembered(it, last, by_code[pick[0]]), "memory"
+        return found, cands, pick[0], planner.remembered_quantity(it, by_code[pick[0]], last), "memory"
     code, qty = _choose(provider, it, cands)
     if code in by_code:
-        qty = planner.floor_quantity(it, by_code[code], qty)
+        qty = planner.default_quantity(it, by_code[code], qty)
     return found, cands, code, qty, "ai"
 
 
@@ -247,9 +247,12 @@ def update_line(conn, draft_id: int, line_id: int, product_code=_UNSET, quantity
             alts = [a for a in line["alternatives"] if a["code"] != new.code]
             if old and old["code"] != new.code:
                 alts = [old] + alts
-            qty = qty or 1
-            if quantity is _UNSET or quantity is None:   # cover the need with the new pack; never lower
-                qty = planner.floor_quantity(_line_item(line), new, qty)
+            if quantity is _UNSET or quantity is None:   # cover the need with the new pack
+                it = _line_item(line)
+                if not qty or not old or qty == planner.default_quantity(it, old, qty):
+                    qty = planner.default_quantity(it, new, qty)   # the build's number → the new product's
+                else:
+                    qty = planner.floor_quantity(it, new, qty)     # the user's own number, raised to the floor
             sets += ["product=%s", "product_code=%s", "source='user'", "status='matched'", "alternatives=%s"]
             vals += [_pj(new), new.code, Jsonb(alts)]
             db.set_pick(conn, line["item_key"], new.code, chosen_by="user")

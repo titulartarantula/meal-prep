@@ -106,7 +106,7 @@ def test_cart_weeks_and_lines_recorded_incl_unmatched(conn):
                         "FROM cart_lines ORDER BY id").fetchall()
     assert rows == [("sumac|each", "sumac", 1.0, None, None, None, "unmatched", "none"),
                     ("chicken thigh|each", "chicken thigh", 1.0, "A", 1, 15.0, "added", "memory"),
-                    ("beef|each", "beef", 1.0, "B", 2, 21.0, "added", "ai")]
+                    ("beef|each", "beef", 1.0, "B", 1, 21.0, "added", "ai")]      # size unknown: 1, not the AI's 2
 
 
 def test_same_week_carted_twice_records_two_carts(conn):
@@ -141,12 +141,13 @@ def test_ai_pick_no_longer_listed_is_replaced(conn):
     assert db.get_pick(conn, "chicken thigh|each") == "B"
 
 
-def test_remembered_pick_scales_quantity_from_last_cart(conn):
-    pcx, ai = FakePcx({"chicken thigh": [P1, P2]}), FakeAI({"code": "B", "quantity": 2})
+def test_remembered_pick_follows_the_floor_from_week_to_week(conn):
+    each = [p.model_copy(update={"package_size": "1 ea"}) for p in (P1, P2)]
+    pcx, ai = FakePcx({"chicken thigh": each}), FakeAI({"code": "B", "quantity": 3})
     it = ListItem(key="chicken thigh|each", name="chicken thigh", qty=2, unit=None)
-    fc([it], pcx, ai, conn)                                        # AI: 2 packs for qty 2
+    fc([it], pcx, ai, conn)                                        # AI: 3 packs for 2 pieces → the floor, 2
     assert pcx.added == {"B": 2}
-    pcx = FakePcx({"chicken thigh": [P1, P2]})
+    pcx = FakePcx({"chicken thigh": each})
     fc([it.model_copy(update={"qty": 4})], pcx, ai, conn)          # remembered: double the need → 4 packs
     assert pcx.added == {"B": 4} and ai.n == 1
 
@@ -161,9 +162,9 @@ def test_total_search_outage_raises_and_sends_nothing(conn):
     assert conn.execute("SELECT count(*) FROM cart_weeks").fetchone()[0] == 0 and pcx.added == {}
 
 
-# --- remembered quantities scale by packs, not by raw need ------------------------------------------------------
+# --- remembered quantities: the planner's floor, history only where it can't compare -----------------------------
 
-from mealprep.matcher import scale_remembered
+from mealprep.planner import remembered_quantity
 
 VANILLA = Product(code="V", name="Vanilla Extract", package_size="46 ml", stock="OK", price=9)
 
@@ -173,27 +174,27 @@ def need(qty, unit, name="vanilla extract"):
 
 
 def test_remembered_one_bottle_stays_one_bottle_for_a_bigger_small_need():
-    assert scale_remembered(need(2, "tsp"), (0.44, 1, "tsp"), VANILLA) == 1     # was 5 by raw need ratio
+    assert remembered_quantity(need(2, "tsp"), VANILLA, (0.44, 1, "tsp")) == 1
 
 
-def test_remembered_surplus_is_kept():
-    assert scale_remembered(need(2, "tsp"), (0.44, 2, "tsp"), VANILLA) == 2
+def test_remembered_surplus_is_not_carried_forward():
+    assert remembered_quantity(need(2, "tsp"), VANILLA, (0.44, 2, "tsp")) == 1
 
 
 def test_remembered_grows_with_the_floor():
     choc = Product(code="C", name="Dark Chocolate Bar", package_size="170 g", stock="OK")
     it = ListItem(key="bittersweet chocolate|mass", name="bittersweet chocolate", qty=1.25, unit="lb")
-    assert scale_remembered(it, (0.28, 1, "lb"), choc) == 4
+    assert remembered_quantity(it, choc, (0.28, 1, "lb")) == 4
 
 
-def test_remembered_without_a_usable_size_scales_by_need_with_units():
+def test_remembered_without_a_usable_size_is_one():
     nosize = VANILLA.model_copy(update={"package_size": None})
-    assert scale_remembered(need(4, "tsp"), (2, 1, "tsp"), nosize) == 2
-    assert scale_remembered(need(2, "tbsp"), (2, 1, "tsp"), nosize) == 3        # 6 tsp vs 2 tsp
-    assert scale_remembered(need(2, "tsp"), None, nosize) == 1
-    assert scale_remembered(need(None, None), (2, 3, "tsp"), nosize) == 3
+    assert remembered_quantity(need(4, "tsp"), nosize, (2, 1, "tsp")) == 1
+    assert remembered_quantity(need(2, "tbsp"), nosize, (2, 1, "tsp")) == 1
+    assert remembered_quantity(need(2, "tsp"), nosize, None) == 1
+    assert remembered_quantity(need(None, None), nosize, (2, 3, "tsp")) == 1
 
 
 def test_remembered_is_raised_to_the_floor():
     milk = Product(code="M", name="Milk", package_size="1 l", stock="OK")
-    assert scale_remembered(need(6, "cup", "whole milk"), None, milk) == 2
+    assert remembered_quantity(need(6, "cup", "whole milk"), milk, None) == 2

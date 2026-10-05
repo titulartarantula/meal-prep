@@ -169,6 +169,65 @@ def test_absurd_pack_count_is_flagged_not_enforced():
     assert p.needs_check and not p.enforce and p.packs_min == 30
 
 
+# --- draft quantities: exactly the floor when the planner is sure ------------------------------------------------
+
+SALT, VANILLA, CHOC = li("coarse sea salt", 1.5, "tsp"), li("vanilla extract", 2, "tsp"), li("bittersweet chocolate", 1.25, "lb")
+SALT_P, VANILLA_P, CHOC_P = (prod(s, sold_by="SOLD_BY_EACH") for s in ("1 kg", "46 ml", "170 g"))
+
+
+def test_regression_remembered_five_is_the_floor():
+    """Draft 5 (2026-10-11): remembered quantity 5 on 1 kg of salt, a 46 mL vanilla and 170 g bars → 1 / 1 / 4."""
+    assert planner.remembered_quantity(SALT, SALT_P, (1.5, 5, "tsp")) == 1
+    assert planner.remembered_quantity(SALT, SALT_P, (0.33, 1, "tsp")) == 1        # was 5: tsp ratio on a 1 kg bag
+    assert planner.remembered_quantity(VANILLA, VANILLA_P, (2, 5, "tsp")) == 1
+    assert planner.remembered_quantity(VANILLA, VANILLA_P, (0.44, 1, "tsp")) == 1
+    assert planner.remembered_quantity(CHOC, CHOC_P, (1.25, 5, "lb")) == 4
+    assert planner.remembered_quantity(CHOC, CHOC_P, (0.28, 1, "lb")) == 4
+
+
+def test_ai_more_than_a_comparable_floor_is_the_floor():
+    assert planner.default_quantity(VANILLA, VANILLA_P, 3) == 1
+    assert planner.default_quantity(CHOC, CHOC_P, 5) == 4
+    assert planner.default_quantity(CHOC, CHOC_P, 1) == 4
+
+
+def test_eggs_by_the_dozen_unaffected():
+    eggs, dozen = li("egg", 14), prod("12 ea")
+    assert planner.default_quantity(eggs, dozen, 1) == 2
+    assert planner.remembered_quantity(eggs, dozen, (12, 1, None)) == 2
+    assert planner.remembered_quantity(eggs, dozen, None) == 2
+
+
+def test_uncomparable_need_is_one_pack():
+    assert planner.default_quantity(SALT, SALT_P, 5) == 1                          # tsp vs a 1 kg bag
+    assert planner.default_quantity(li("whole milk", 2, "cup"), prod("family size"), 3) == 1
+    assert planner.default_quantity(li("beef brisket", 2, "lb"), prod("per kg"), 3) == 1
+    assert planner.default_quantity(SALT, None, 3) == 1
+
+
+def test_uncomparable_need_on_a_pack_sold_by_the_piece_keeps_a_plausible_number():
+    onion = prod("", sold_by="SOLD_BY_EACH_PRICED_BY_WEIGHT")
+    assert planner.default_quantity(li("red onion", 500, "g"), onion, 3) == 3
+    assert planner.default_quantity(li("red onion", 500, "g"), onion, 40) == 1   # implausible
+    assert planner.default_quantity(li("red onion", 500, "g"), onion, None) == 1
+
+
+def test_remembered_on_a_piece_pack_scales_in_base_units_and_stays_sane():
+    onion, it = prod("", sold_by="SOLD_BY_EACH_PRICED_BY_WEIGHT"), li("red onion", 1, "kg")
+    assert planner.remembered_quantity(it, onion, (500, 1, "g")) == 2              # 1 kg vs 500 g
+    assert planner.remembered_quantity(it, onion, (1, 2, "kg")) == 2
+    assert planner.remembered_quantity(it, onion, (1, 5, "kg")) == 1               # > 2 × max(1, floor): ignored
+    assert planner.remembered_quantity(it, onion, (500, 2, "g")) == 1              # scales past the guard
+    assert planner.remembered_quantity(it, onion, (2, 1, "cup")) == 1              # can't scale cups to kg
+
+
+def test_why_says_when_the_user_chose_more():
+    p = planner.plan(VANILLA, VANILLA_P)
+    assert p.why(1) == "Need 2 tsp → 1 × 46 mL"
+    assert p.why(5) == "Need 2 tsp → 5 × 46 mL (you chose 5)"
+    assert "you chose" not in planner.plan(SALT, SALT_P).why(3)                    # no floor to compare with
+
+
 def test_floor_quantity_raises_too_few_and_keeps_too_many():
     it, milk = li("whole milk", 6, "cup"), prod("1 L")
     assert planner.floor_quantity(it, milk, 1) == 2

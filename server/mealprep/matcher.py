@@ -1,6 +1,5 @@
-import json, math
+import json
 from . import db, planner
-from .ingredients import BASE
 from .ai.base import AIError
 from .models import CartLine, CartResult
 
@@ -11,7 +10,7 @@ Need: {need}
 Candidates (JSON; min_packs = the fewest packages of that product that cover the need, worked out from its
 package_size; 1 where that can't be worked out): {cands}
 Prefer: the plain/standard version, the smallest package that covers the amount, regular brands over specialty.
-Quantity: at least its min_packs (it is enforced); more only if the need clearly calls for it.
+Quantity: its min_packs (where it was worked out, exactly that is bought); otherwise the packages the need calls for, usually 1.
 Return ONLY JSON: {{"code": candidate code, "quantity": integer packages}}"""
 
 
@@ -21,7 +20,7 @@ def _need(it):
 
 
 def _choose(provider, it, cands):
-    """AI pick (code, packages). The caller enforces the planner's floor with `planner.floor_quantity`."""
+    """AI pick (code, packages). The caller settles the quantity with `planner.default_quantity`."""
     mins = planner.min_packs(it, cands)
     try:
         ch = provider.complete_json(PROMPT.format(need=_need(it), cands=json.dumps(
@@ -36,33 +35,6 @@ def _choose(provider, it, cands):
     except (TypeError, ValueError):
         qty = 1
     return ch.get("code"), qty
-
-
-def scale_remembered(it, last, product=None) -> int:
-    """Scale the last purchase of this product for this list line (`last` = (need_qty, quantity, need_unit))
-    to this week's need, never below the planner's floor.
-
-    Packages don't scale with the need (one bottle of vanilla covers ½ tsp and 2 tsp alike), so when the
-    planner can size both needs against this product the history is scaled by its floors: what was bought
-    over the floor last time (a deliberate spare) is kept. Otherwise it is scaled by the need itself."""
-    if not last:
-        return planner.floor_quantity(it, product, 1)
-    need, qty, unit = last
-    qty = max(1, int(qty or 1))
-    if it.qty is None or not need:
-        return planner.floor_quantity(it, product, qty)
-    if product is not None:
-        then = planner.plan(it.model_copy(update={"qty": need, "unit": unit}), product)
-        now = planner.plan(it, product)
-        if then and now and then.enforce and now.enforce:
-            return max(now.packs_min, math.ceil(qty * now.packs_min / then.packs_min - 1e-9))
-    if unit == it.unit:
-        ratio = it.qty / need
-    elif unit in BASE and it.unit in BASE and BASE[unit][0] == BASE[it.unit][0]:
-        ratio = it.qty * BASE[it.unit][1] / (need * BASE[unit][1])
-    else:
-        ratio = 1.0                       # different units: the history can't be scaled
-    return planner.floor_quantity(it, product, max(1, math.ceil(qty * ratio - 1e-9)))
 
 
 def fill_cart(items, pcx, provider, conn, weeks, provider_name: str | None = None, store_id: str = "1092",

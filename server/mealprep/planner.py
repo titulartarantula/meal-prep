@@ -4,7 +4,8 @@ The need (the merged list line: qty + unit, units from `ingredients`) and the pr
 ("2 L", "6 x 355 mL", "12 ea", "per kg") are both put into one base: ml (volume), g (weight) or a count. When the
 families differ a small, conservative table converts (cups of flour → g, butter sticks → g, onions → g each);
 without a confident conversion the plan falls back to 1 pack and `needs_check`. The AI sees `min_packs` as a
-hint; `floor_quantity` enforces it, except for produce/meat priced by weight (quantity kept, `needs_check`).
+hint; the build uses exactly that floor (`default_quantity`), never more: a user who wants spares edits the line.
+Where the planner can't compare (`needs_check`) the build buys 1, or the AI's number for a pack sold by the piece.
 
 The tables below are the maintained data; extend them rather than special-casing call sites."""
 from dataclasses import dataclass
@@ -190,6 +191,8 @@ class Plan:
             out += f" (check: {self.note})"
         elif self.enforce and q < self.packs_min:
             out += " (short)"
+        elif self.enforce and q > self.packs_min:
+            out += f" (you chose {q})"
         return out
 
 
@@ -273,10 +276,64 @@ def _plan(need: float, per_pack: float, shown: str, pack: Pack) -> Plan:
 
 
 def floor_quantity(it, product, quantity: int | None) -> int:
-    """The quantity to put in the draft: never below the reliable floor, never below 1, never reduced."""
+    """A quantity the user chose, raised to the reliable floor (never below 1, never reduced)."""
     q = max(1, int(quantity or 0))
     p = plan(it, product)
     return max(q, p.packs_min) if p and p.enforce else q
+
+
+def _int(q) -> int:
+    try:
+        return int(q or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def default_quantity(it, product, suggested=None) -> int:
+    """The quantity the build puts on an AI or remembered line (user edits are kept elsewhere).
+
+    Reliable floor → exactly that floor, never more. Otherwise 1, except for a pack sold by the piece (onions
+    each, a 3-count of garlic) where the suggested number is kept if it is plausible (1–MAX_PACKS)."""
+    p = plan(it, product)
+    if p is None:
+        return 1
+    if p.enforce:
+        return p.packs_min
+    q = _int(suggested)
+    if 1 <= q <= MAX_PACKS and parse_pack(_get(product, "package_size"), _get(product, "sold_by")).family == "count":
+        return q
+    return 1
+
+
+def _scale(qty: int, need, unit, it) -> int | None:
+    """Last purchase scaled to this week's need, in the planner's base units; None when they can't be compared."""
+    if it.qty is None or not need:
+        return qty
+    if unit == it.unit:
+        ratio = it.qty / need
+    elif unit in BASE and it.unit in BASE and BASE[unit][0] == BASE[it.unit][0]:
+        ratio = _to_base(it.qty, it.unit)[1] / _to_base(need, unit)[1]
+    else:
+        return None
+    return max(1, math.ceil(qty * ratio - 1e-9))
+
+
+def remembered_quantity(it, product, last) -> int:
+    """The quantity for a remembered pick. `last` = (need_qty, quantity, need_unit) of its last sent line.
+
+    With a reliable floor the history is ignored (the floor, as for an AI pick): a one-off edit, or a
+    quantity from before the planner, never becomes the household's normal amount. Without one, the
+    history counts only for a pack sold by the piece, scaled by the need, and only if it is sane: more than
+    2 × max(1, packs_min) is stale or a one-off and is ignored."""
+    p = plan(it, product)
+    if p is None or p.enforce or not last:
+        return default_quantity(it, product)
+    need, qty, unit = last
+    qty, cap = max(1, _int(qty)), 2 * max(1, p.packs_min)
+    scaled = _scale(qty, need, unit, it) if qty <= cap else None
+    if scaled is None or scaled > cap:
+        return default_quantity(it, product)
+    return default_quantity(it, product, scaled)
 
 
 def min_packs(it, cands) -> dict[str, int]:
