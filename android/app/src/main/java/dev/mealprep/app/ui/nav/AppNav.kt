@@ -2,7 +2,9 @@ package dev.mealprep.app.ui.nav
 
 import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -11,6 +13,8 @@ import dev.mealprep.app.AppGraph
 import dev.mealprep.app.ui.cart.DraftScreen
 import dev.mealprep.app.ui.cart.ListScreen
 import dev.mealprep.app.ui.home.ContextAction
+import dev.mealprep.app.ui.loblaws.LoblawsScreen
+import dev.mealprep.app.ui.loblaws.LoblawsSettings
 import dev.mealprep.app.ui.home.HomeScreen
 import dev.mealprep.app.ui.setup.SettingsScreen
 import dev.mealprep.app.ui.share.ShareScreen
@@ -23,7 +27,7 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
         composable<SetupRoute> {
             SetupScreen(graph, onDone = { nav.navigate(HomeRoute()) { popUpTo<SetupRoute> { inclusive = true } } })
         }
-        composable<SettingsRoute> { SettingsScreen(graph, onDone = { nav.popBackStack() }) }
+        composable<SettingsRoute> { SettingsScreen(graph, onDone = { nav.popBackStack() }) { LoblawsSettings(graph) } }
         composable<HomeRoute> { back ->
             val ctx = LocalContext.current
             val open: (Any) -> Unit = { r -> runCatching { nav.navigate(r) }.onFailure {
@@ -41,14 +45,17 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
         composable<ListRoute> { back ->
             val weeks = back.toRoute<ListRoute>().weeks.split(",").filter { it.isNotBlank() }
                 .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
-            ListScreen(weeks, onDraft = { id ->
-                runCatching { nav.navigate(DraftRoute(id)) { popUpTo<ListRoute> { inclusive = true } } }
-            })
+            ListScreen(weeks, onDraft = { id -> nav.navigate(DraftRoute(id)) { popUpTo<ListRoute> { inclusive = true } } })
         }
         composable<DraftRoute> { back ->
             DraftScreen(back.toRoute<DraftRoute>().id,
-                onLoblaws = { cart -> runCatching { nav.navigate(LoblawsRoute(cart)) } },
+                onLoblaws = { cart -> nav.navigate(LoblawsRoute(cart)) },
                 onRebuild = { weeks -> nav.navigate(ListRoute(weeks.joinToString(","))) { popUpTo<DraftRoute> { inclusive = true } } })
+        }
+        composable<LoblawsRoute> { back ->
+            val prefs by graph.settings.collectAsStateWithLifecycle()
+            LoblawsScreen(back.toRoute<LoblawsRoute>().cartId, prefs,
+                onDone = { nav.navigate(HomeRoute()) { popUpTo<HomeRoute> { inclusive = true } } })
         }
         composable<ShareRoute> {
             ShareScreen(graph,
