@@ -43,6 +43,7 @@ class Product(BaseModel):
     package_size: str | None = None
     price: float | None = None
     stock: str | None = None
+    sold_by: str | None = None   # PC Express pricing type: "SOLD_BY_EACH", "SOLD_BY_EACH_PRICED_BY_WEIGHT", …
 
 
 class CartLine(BaseModel):

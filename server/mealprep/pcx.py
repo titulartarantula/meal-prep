@@ -30,7 +30,7 @@ class Pcx:
         return [Product(code=x["code"], name=x.get("name") or "", brand=x.get("brand"),
                         package_size=x.get("packageSize"),
                         price=((x.get("prices") or {}).get("price") or {}).get("value"),
-                        stock=x.get("stockStatus"))
+                        stock=x.get("stockStatus"), sold_by=(x.get("pricingUnits") or {}).get("type"))
                 for x in r.json().get("results") or []]
 
     def create_cart(self) -> str:
