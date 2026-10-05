@@ -2,7 +2,7 @@ import os
 import pytest
 
 TEST_DSN = os.environ.get("MEALPREP_TEST_DSN")
-TABLES = "prep_task_events, cook_cards, prep_tasks, prep_plans, rating_history, ratings, cart_lines, cart_weeks, carts, pick_history, picks, price_observations, products, plan, recipes"
+TABLES = "staples, prep_task_events, cook_cards, prep_tasks, prep_plans, rating_history, ratings, cart_lines, cart_weeks, carts, pick_history, picks, price_observations, products, plan, recipes"
 
 
 @pytest.fixture

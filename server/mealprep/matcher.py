@@ -16,7 +16,9 @@ Return ONLY JSON: {{"code": candidate code, "quantity": integer packages}}"""
 
 def _need(it):
     q = f"{it.qty:g} {it.unit or ''}".strip() if it.qty is not None else "some"
-    return f"{q} {it.name}" + (f" ({it.prep})" if it.prep else "")
+    out = f"{q} {it.name}" + (f" ({it.prep})" if it.prep else "")
+    sp = getattr(it, "staple_packs", None)
+    return out + (f" — weekly staple: at least {sp} package{'' if sp == 1 else 's'}" if sp else "")
 
 
 def _choose(provider, it, cands):

@@ -160,9 +160,11 @@ def _line_out(row) -> dict:
     item = item or {}
     if product is None and code:   # carts from before drafts only kept the product code
         product = {"code": code, "name": pname, "brand": pbrand, "package_size": psize, "price": None, "stock": None}
-    plan = planner.plan(ListItem(key=key or "", name=name or "", qty=qty, unit=unit, prep=item.get("prep")), product)
+    plan = planner.plan(ListItem(key=key or "", name=name or "", qty=qty, unit=unit, prep=item.get("prep"),
+                                 staple_packs=item.get("staple_packs")), product)
     return {"id": lid, "item_key": key, "name": name, "qty": qty, "unit": unit, "prep": item.get("prep"),
-            "recipes": item.get("recipes", []), "product": product, "quantity": quantity, "source": source,
+            "recipes": item.get("recipes", []), "staple": bool(item.get("staple")),
+            "staple_packs": item.get("staple_packs"), "product": product, "quantity": quantity, "source": source,
             "alternatives": alts or [], "removed": removed, "status": status,
             "packs_min": plan.packs_min if plan else None, "needs_check": bool(plan and plan.needs_check),
             "why": plan.why(quantity) if plan else None}
@@ -226,7 +228,7 @@ _UNSET = object()
 
 def _line_item(line: dict) -> ListItem:
     return ListItem(key=line["item_key"] or "", name=line["name"] or "", qty=line["qty"], unit=line["unit"],
-                    prep=line["prep"])
+                    prep=line["prep"], staple_packs=line.get("staple_packs"))
 
 
 def update_line(conn, draft_id: int, line_id: int, product_code=_UNSET, quantity=_UNSET, removed=_UNSET) -> dict:

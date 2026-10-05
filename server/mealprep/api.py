@@ -7,14 +7,14 @@ import psycopg
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, field_validator
 
-from . import db, drafts, prepplan, subrecipe
+from . import db, drafts, prepplan, staples, subrecipe
 from .ai import AIError, get_provider
 from .config import Settings
 from .importers.nyt import extract_nyt_url, fetch_nyt, parse_nyt_html
 from .importers.photo import import_photo, import_subrecipe
 from .importers.structure import structure_ingredients
 from .matcher import fill_cart
-from .models import ListItem, PlanEntry, Recipe, RecipeDetail, RecipeOut
+from .models import ListItem, PlanEntry, Recipe, RecipeDetail, RecipeOut, Staple
 from .pcx import Pcx
 from .shopping import build_list
 
@@ -47,6 +47,52 @@ class RatingIn(BaseModel):
 class ListIn(BaseModel):
     weeks: list[date]
     people: int = 4
+    staples: list[int] = []      # staple ids to merge in (the ones ticked on the list); unknown ids are skipped
+
+
+def _staple_name(v):
+    if v is None:
+        raise ValueError("name can't be null")
+    v = " ".join(v.split())
+    if not v:
+        raise ValueError("name can't be blank")
+    return v
+
+
+class StapleIn(BaseModel):
+    name: Annotated[str, Field(max_length=100)]
+    qty: Annotated[float, Field(gt=0, le=1000)] | None = None
+    unit: str | None = None
+    weekly: Annotated[bool, Field(strict=True)] = True
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v):
+        return _staple_name(v)
+
+    @field_validator("unit")
+    @classmethod
+    def _unit(cls, v):
+        return staples.normalise_unit(v)
+
+
+class StaplePatch(BaseModel):   # partial update: omitted fields are left unchanged; null clears qty/unit/last_bought
+    name: Annotated[str, Field(max_length=100)] | None = None
+    qty: Annotated[float, Field(gt=0, le=1000)] | None = None
+    unit: str | None = None
+    weekly: Annotated[bool, Field(strict=True)] | None = None
+    last_bought: date | None = None
+    position: Annotated[int, Field(ge=0)] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v):
+        return _staple_name(v)
+
+    @field_validator("unit")
+    @classmethod
+    def _unit(cls, v):
+        return staples.normalise_unit(v)
 
 
 class CartIn(BaseModel):
@@ -273,7 +319,36 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                 r = db.get_recipe(c, e.recipe_id)
                 if r is not None:
                     entries.append((r, e.multiplier))
-        return build_list(entries, body.people)
+        chosen = staples.list_staples(c, body.staples) if body.staples else []
+        return build_list(entries, body.people, chosen)
+
+    @app.get("/staples", dependencies=A)
+    def get_staples(c=Depends(get_conn)) -> list[Staple]:
+        return staples.list_staples(c)
+
+    def _staple_call(fn, *args, **kw):
+        try:
+            return fn(*args, **kw)
+        except staples.StapleNotFound as e:
+            raise HTTPException(404, str(e))
+        except staples.StapleExists as e:
+            raise HTTPException(409, str(e))
+
+    @app.post("/staples", status_code=201, dependencies=A)
+    def add_staple(body: StapleIn, c=Depends(get_conn)) -> Staple:
+        return _staple_call(staples.create_staple, c, body.name, body.qty, body.unit, body.weekly)
+
+    @app.patch("/staples/{staple_id}", dependencies=A)
+    def patch_staple(staple_id: int, body: StaplePatch, c=Depends(get_conn)) -> Staple:
+        fields = body.model_dump(include=body.model_fields_set)   # only what the client sent
+        for f in ("weekly", "position"):
+            if f in fields and fields[f] is None:
+                raise HTTPException(422, f"{f} can't be null")
+        return _staple_call(staples.update_staple, c, staple_id, **fields)
+
+    @app.delete("/staples/{staple_id}", status_code=204, dependencies=A)
+    def remove_staple(staple_id: int, c=Depends(get_conn)):
+        staples.delete_staple(c, staple_id)
 
     @app.get("/cart/default-week", dependencies=A)
     def cart_default_week(c=Depends(get_conn)):

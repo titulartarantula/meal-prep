@@ -34,6 +34,19 @@ class ListItem(BaseModel):
     likely_on_hand: bool = False
     needed: bool = True          # the shopper's checkbox
     recipes: list[str] = []
+    staple: bool = False         # a weekly staple is (part of) this line; recipes then include "Staples"
+    staple_packs: int | None = None  # a staple counted in packs ("1 carton of milk"): buy at least this many
+
+
+class Staple(BaseModel):
+    id: int
+    name: str
+    qty: float | None = None     # no unit: packs ("1" = one carton); with a unit: an amount like a recipe line
+    unit: str | None = None
+    weekly: bool = True          # ticked on the shopping list by default
+    position: int = 0
+    last_bought: str | None = None   # ISO date: newest sent cart with this item, or the manual hint if later
+    created_at: str
 
 
 class Product(BaseModel):

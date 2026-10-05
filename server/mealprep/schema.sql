@@ -179,3 +179,31 @@ CREATE TABLE IF NOT EXISTS cook_cards(
   UNIQUE(prep_plan_id, plan_id)
 );
 CREATE INDEX IF NOT EXISTS cook_cards_plan_idx ON cook_cards(plan_id);
+
+-- Weekly staples (2026-10-05, milestone B2): items bought most weeks (milk, eggs …), offered at the top of the
+-- shopping list and merged into it like recipe lines (POST /list {staples: [ids]}). qty without a unit = packs
+-- ("1" = one carton); with a unit it is an amount. last_bought is a manual hint; GET /staples prefers the newest
+-- sent cart line for the item. The three starter rows are seeded once (a household that deletes them all keeps
+-- an empty list): `seeds` records which one-time seeds have run.
+CREATE TABLE IF NOT EXISTS staples(
+  id serial PRIMARY KEY,
+  name text NOT NULL,
+  qty numeric,
+  unit text,
+  weekly boolean NOT NULL DEFAULT true,
+  position int NOT NULL DEFAULT 0,
+  last_bought date,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS seeds(
+  name text PRIMARY KEY,
+  at timestamptz NOT NULL DEFAULT now()
+);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM seeds WHERE name = 'staples') THEN
+    IF NOT EXISTS (SELECT 1 FROM staples) THEN
+      INSERT INTO staples(name, qty, position) VALUES ('2% milk', 1, 0), ('eggs', 1, 1), ('lemonade', 1, 2);
+    END IF;
+    INSERT INTO seeds(name) VALUES ('staples') ON CONFLICT DO NOTHING;
+  END IF;
+END $$;

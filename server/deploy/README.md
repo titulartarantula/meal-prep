@@ -63,6 +63,11 @@ and off → deletes the entries, the prep plan and its task events.
 
 | Endpoint | Purpose |
 |---|---|
+| `POST /list` `{weeks, people?, staples?: [ids]}` | the merged shopping list for the weeks (plan entries placed or not); `staples` = the ticked weekly staples to merge in (see below) |
+| `GET /staples` | weekly staples in the household's order: `id, name, qty, unit, weekly, position, last_bought, created_at` |
+| `POST /staples` `{name, qty?, unit?, weekly?}` | add one at the end → 201; 409 if the item is already a staple, 422 for an unknown unit |
+| `PATCH /staples/{id}` `{name?, qty?, unit?, weekly?, last_bought?, position?}` | partial update (null clears qty/unit/last_bought); `position` moves it there and renumbers |
+| `DELETE /staples/{id}` | remove → 204 (idempotent) |
 | `POST /drafts` `{weeks, items}` | start a draft → 202 `{id, status:"building"}`; matching runs in the background (`MEALPREP_MATCH_WORKERS`, default 6) |
 | `GET /drafts/{id}` | status `building/ready/failed/sent`, progress, lines (product, quantity, source, ≤5 alternatives, removed, `packs_min`, `needs_check`, `why` — see below), `estimated_total`, `pcx_cart_id` |
 | `GET /weeks/{date}/draft` | newest draft (any status) covering that week — same shape as `GET /drafts/{id}`; 404 if none (lets either phone find this week's cart) |
@@ -99,3 +104,16 @@ number to the new product's floor and raises a user's own number to it. Each lin
 unmatched), `needs_check` and `why` ("Need ⅚ cup → 1 × 1 L", "… (short)" below the floor, "… (you chose 3)" above
 it, "… (check: priced by weight)").
 Products carry `sold_by` (PC Express pricing type) in search snapshots.
+
+### Weekly staples (`mealprep/staples.py`)
+
+Items bought most weeks (milk, eggs …). A staple's `qty` without a `unit` counts packs ("1" = one carton); with a
+unit it is an amount. The app ticks `weekly` staples at the top of its shopping list and sends the ticked ids to
+`POST /list`, which merges them like recipe lines (same clean-up, merge keys, planner and remembered picks), so
+`POST /drafts {weeks, items}` is unchanged. An amount adds to the recipes' amount of the same item (never scaled
+by people); a pack count joins a line for the same item in any unit as a floor: the line keeps the recipe amount,
+gets `staple_packs` and is bought in at least that many packs ("Need 1 cup; staple: at least 1 pack → 1 × 2 L"),
+or stands alone ("Need 1 pack (weekly staple) → 1 × 2 L"). Lines with a staple are `staple: true`, needed, and list
+"Staples" among their `recipes`; draft lines carry `staple` and `staple_packs` too. `last_bought` is the local date
+of the newest *sent* cart with an added line for the item (any unit; drafts never sent and removed lines don't
+count), or the manual `last_bought` hint when that is later. Three starter staples are seeded once.

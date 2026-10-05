@@ -215,7 +215,14 @@ def plan(it, product) -> Plan | None:
         return None
 
 
+def _packs_text(n: int) -> str:
+    return f"{n} pack{'' if n == 1 else 's'}"
+
+
 def _plan_line(it, product) -> Plan:
+    sp = getattr(it, "staple_packs", None)
+    if sp:
+        return _plan_staple(it, product, sp)
     pack = parse_pack(_get(product, "package_size"), _get(product, "sold_by"))
     if it.qty is None or it.qty <= 0:
         return Plan(1, True, False, None, pack.label)
@@ -266,6 +273,16 @@ def _plan_line(it, product) -> Plan:
     if need is None or fam != pack.family:
         return unsure(f"can't compare {unit or 'pieces'} with {pack.label}")
     return _plan(need, pack.total, shown, pack)
+
+
+def _plan_staple(it, product, sp: int) -> Plan:
+    """A weekly staple counted in packs is a floor: on its own it is exactly that many packs; merged with a recipe
+    amount the line covers the amount and is at least that many packs (`shopping.build_list`)."""
+    base = _plan_line(it.model_copy(update={"staple_packs": None}), product)
+    if base.need is None:
+        return Plan(sp, True, False, f"{_packs_text(sp)} (weekly staple)", base.pack)
+    return Plan(max(base.packs_min, sp), True, base.needs_check, f"{base.need}; staple: at least {_packs_text(sp)}",
+                base.pack, base.note)
 
 
 def _plan(need: float, per_pack: float, shown: str, pack: Pack) -> Plan:
