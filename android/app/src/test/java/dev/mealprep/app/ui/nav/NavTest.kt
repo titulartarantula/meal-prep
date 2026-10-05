@@ -19,7 +19,7 @@ class NavTest {
     }
 
     @Test fun `menu opens the shopping list for the default week`() {
-        assertEquals(listOf("Shopping list" to ListRoute(""), "Settings" to SettingsRoute), homeMenu())
+        assertEquals(listOf("Snap a cookbook recipe" to CameraRoute(), "Shopping list" to ListRoute(""), "Settings" to SettingsRoute), homeMenu())
     }
 
     @Test fun `garbage is ignored`() {
@@ -30,7 +30,8 @@ class NavTest {
         val wk = LocalDate.parse("2026-10-11")
         assertEquals(ListRoute("2026-10-11"), contextRoute(ContextAction.BuildCart(wk)))
         assertNull(contextToast(ContextAction.BuildCart(wk)))
-        assertEquals("Share a recipe from NYT Cooking to add it.", contextToast(ContextAction.AddRecipes))
+        assertEquals("Share a recipe from NYT Cooking or a photo of a cookbook page, or use Menu → Snap a cookbook recipe.",
+            contextToast(ContextAction.AddRecipes))
         assertNull(contextToast(ContextAction.AllSet))
         assertNull(contextToast(ContextAction.StartPrep(wk)))   // has a route: navigating handles it
     }

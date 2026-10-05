@@ -17,6 +17,9 @@ import dev.mealprep.app.fixture
 import dev.mealprep.app.notify.Notifier
 import dev.mealprep.app.work.ImportQueue
 import dev.mealprep.app.work.ImportWorker
+import dev.mealprep.app.ui.camera.PageStore
+import android.net.Uri
+import org.junit.rules.TemporaryFolder
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -37,6 +40,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class ShareViewModelTest {
     @get:Rule val main = MainDispatcherRule()
+    @get:Rule val tmp = TemporaryFolder()
     private val env = TestEnv()
     private lateinit var wm: WorkManager
 
@@ -50,7 +54,14 @@ class ShareViewModelTest {
     }
     @After fun tearDown() = env.close()
 
-    private fun vm(today: String) = ShareViewModel(env.repo, ImportQueue(wm), configured = { true }, today = { LocalDate.parse(today) })
+    private fun vm(today: String) = ShareViewModel(
+        env.repo, ImportQueue(wm), PageStore(tmp.root),
+        copy = { uri, out -> if (uri.toString().contains("bad")) error("gone") else out.writeText("img-${uri.lastPathSegment}") },
+        configured = { true }, today = { LocalDate.parse(today) })
+    private suspend fun awaitWork(id: java.util.UUID): WorkInfo = withContext(Dispatchers.Default) {
+        withTimeout(5_000) { while (!wm.getWorkInfoById(id).get()!!.state.isFinished) delay(20) }
+        wm.getWorkInfoById(id).get()!!
+    }
     private val nyt = ShareInput.NytLink("https://cooking.nytimes.com/recipes/1015819-x", "Cookies https://cooking.nytimes.com/recipes/1015819-x")
 
     @Test fun `NYT link defaults to the coming Sunday and the import posts the url to that week`() = runTest {
@@ -97,5 +108,64 @@ class ShareViewModelTest {
         assertEquals(8, s.options.size)
         assertTrue(s.options.all { it.detail == null })
         assertEquals(LocalDate.parse("2026-10-11"), s.selected)
+    }
+
+    @Test fun `shared photos are copied in at once, can be reordered, and import in that order`() = runTest {
+        env.on("GET", "/weeks", body = fixture("weeks.json"))
+        env.on("POST", "/recipes/photo", body = fixture("share_result.json"))
+        val vm = vm("2026-10-07")
+        vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/1"), Uri.parse("content://m/2"))))
+        vm.state.await { it.pages.pages.size == 2 && !it.copying && it.weeksChecked }
+        vm.movePage(1, -1)
+        vm.setTitle("  Lemon Bars ")
+        val id = vm.confirm()!!
+        WorkManagerTestInitHelper.getTestDriver(env.context)!!.setAllConstraintsMet(id)
+        assertEquals(WorkInfo.State.SUCCEEDED, awaitWork(id).state)
+        val body = env.bodies("POST", "/recipes/photo").single()
+        assertTrue(body.indexOf("img-2") in 0 until body.indexOf("img-1"))
+        assertTrue(body.contains("filename=\"page01.jpg\""))
+        assertTrue(body.contains("2026-10-11"))
+        assertTrue(body.contains("\r\n\r\nLemon Bars\r\n"))       // trimmed title hint
+        assertTrue(tmp.root.listFiles()!!.isEmpty())               // pages deleted once the server has the recipe
+    }
+
+    @Test fun `more than ten pages must be trimmed first`() = runTest {
+        val vm = vm("2026-10-07")
+        vm.start(ShareInput.Photos((1..11).map { Uri.parse("content://m/$it") }))
+        val s = vm.state.await { it.pages.pages.size == 11 && !it.copying }
+        assertFalse(s.canConfirm)
+        assertEquals(ShareViewModel.TOO_MANY, s.message)
+        assertNull(vm.confirm())
+        vm.removePage(10)
+        assertTrue(vm.state.value.canConfirm)
+        assertNull(vm.state.value.message)
+        vm.state.await { it.weeksChecked }
+    }
+
+    @Test fun `unreadable photos are left out and said so, and none readable means nothing to send`() = runTest {
+        val vm = vm("2026-10-07")
+        vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/1"), Uri.parse("content://m/bad"))))
+        val s = vm.state.await { !it.copying && it.dir != null && it.weeksChecked }
+        assertEquals(1, s.pages.pages.size)
+        assertEquals(ShareViewModel.someUnreadable(1, 2), s.message)
+        assertTrue(s.canConfirm)
+        vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/bad"))))
+        val none = vm.state.await { !it.copying && it.dir != null && it.weeksChecked }
+        assertEquals(ShareViewModel.UNREADABLE, none.message)
+        assertFalse(none.canConfirm)
+        assertEquals(1, tmp.root.listFiles()!!.size)                 // the first share's pages were discarded
+    }
+
+    @Test fun `camera pages arrive numbered and a cancelled share deletes them`() = runTest {
+        val store = PageStore(tmp.root)
+        val dir = store.newBatch()
+        store.commitOrder(dir, listOf(store.newFile(dir).apply { writeText("a") }, store.newFile(dir).apply { writeText("b") }))
+        val vm = vm("2026-10-07")
+        vm.start(ShareInput.Pages(dir))
+        val s = vm.state.await { it.weeksChecked }
+        assertEquals(listOf("a", "b"), s.pages.pages.map { it.readText() })
+        assertTrue(s.canConfirm)
+        vm.start(ShareInput.NotARecipe("hello"))                     // replaced by another share before confirming
+        assertFalse(dir.exists())
     }
 }

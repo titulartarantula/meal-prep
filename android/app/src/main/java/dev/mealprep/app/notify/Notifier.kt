@@ -19,6 +19,7 @@ import dev.mealprep.app.core.firstMissingRef
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.ShareResult
 import dev.mealprep.app.ui.nav.Nav
+import dev.mealprep.app.work.ImportWorker
 import dev.mealprep.app.work.JobWatchWorker
 import java.time.LocalDate
 import java.util.UUID
@@ -30,8 +31,12 @@ class Notifier(private val context: Context) {
         const val CH_REMINDERS = "reminders"
     }
 
-    internal fun failedText(message: String, retrySafe: Boolean): String = sentences(
-        message, if (retrySafe) "Open Meal Prep to try again." else "It may have been added already — check the week.")
+    internal fun failedText(message: String, retrySafe: Boolean, kind: String? = ImportWorker.LINK): String = sentences(
+        message, when {
+            retrySafe -> "Open Meal Prep to try again."
+            kind == ImportWorker.PAGES -> "It may have been added already — check the shopping list."
+            else -> "It may have been added already — check the week."
+        })
 
     private val nm = NotificationManagerCompat.from(context)
 
@@ -62,8 +67,9 @@ class Notifier(private val context: Context) {
     }
 
     /** [retrySafe] false: the request may have reached the server, so warn instead of inviting a retry. */
-    fun importFailed(workId: UUID, message: String, retrySafe: Boolean) =
-        post("import-failed-$workId", CH_JOBS, "Couldn't add the recipe", failedText(message, retrySafe), Nav.home(null))
+    fun importFailed(workId: UUID, message: String, retrySafe: Boolean, kind: String? = ImportWorker.LINK) =
+        post("import-failed-$workId", CH_JOBS, if (kind == ImportWorker.PAGES) "Couldn't add the page" else "Couldn't add the recipe",
+            failedText(message, retrySafe, kind), Nav.home(null))
 
     /** A cart draft or prep plan left "building" (JobWatchWorker). [error] is the server's reason when it failed. */
     fun jobDone(kind: String, id: Int, week: LocalDate, ok: Boolean, error: String?) {

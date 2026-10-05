@@ -1,6 +1,8 @@
 package dev.mealprep.app
 
 import android.content.Context
+import android.graphics.ImageDecoder
+import android.net.Uri
 import androidx.room.Room
 import androidx.work.WorkManager
 import androidx.work.WorkerFactory
@@ -9,6 +11,8 @@ import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.SettingsApiProvider
 import dev.mealprep.app.data.cache.CacheDb
 import dev.mealprep.app.data.settings.SettingsStore
+import dev.mealprep.app.ui.camera.ImageScaler
+import dev.mealprep.app.ui.camera.PageStore
 import dev.mealprep.app.work.MealPrepWorkerFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +22,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /** Hand-wired dependencies (one per process). */
 class AppGraph(val context: Context) {
@@ -32,6 +38,16 @@ class AppGraph(val context: Context) {
     val notifier = dev.mealprep.app.notify.Notifier(context)
     val imports: dev.mealprep.app.work.ImportQueue by lazy { dev.mealprep.app.work.ImportQueue(workManager) }
     val jobs: dev.mealprep.app.work.JobWatcher by lazy { dev.mealprep.app.work.JobWatcher(workManager) }
+    /** Cookbook pages waiting to be read, one folder per recipe (filesDir/pages; see FileProvider paths). */
+    val pages = PageStore(File(context.filesDir, "pages"))
+    /** Copies one shared or picked image into a page file: shrunk to 2000 px and upright. */
+    val copyPage: suspend (Uri, File) -> Unit = { uri, out ->
+        withContext(Dispatchers.IO) { ImageScaler.toJpeg(ImageDecoder.createSource(context.contentResolver, uri), out) }
+    }
+    /** Shrinks a camera capture into a page file. */
+    val scalePage: suspend (File, File) -> Unit = { raw, out ->
+        withContext(Dispatchers.IO) { ImageScaler.toJpeg(ImageDecoder.createSource(raw), out) }
+    }
     /** A share that arrived (MainActivity) and is waiting for the Share screen. */
     val pendingShare = MutableStateFlow<ShareInput?>(null)
 

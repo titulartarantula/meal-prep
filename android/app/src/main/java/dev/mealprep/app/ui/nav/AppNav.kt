@@ -10,7 +10,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import dev.mealprep.app.AppGraph
+import dev.mealprep.app.core.ShareInput
+import dev.mealprep.app.ui.camera.CameraScreen
+import dev.mealprep.app.ui.camera.CameraViewModel
 import dev.mealprep.app.ui.cart.DraftScreen
+import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.cart.ListScreen
 import dev.mealprep.app.ui.home.ContextAction
 import dev.mealprep.app.ui.loblaws.LoblawsScreen
@@ -57,6 +61,15 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
             LoblawsScreen(back.toRoute<LoblawsRoute>().cartId, prefs,
                 onDone = { nav.navigate(HomeRoute()) { popUpTo<HomeRoute> { inclusive = true } } })
         }
+        composable<CameraRoute> { back ->
+            val vm = graphViewModel(key = "camera-${back.id}") { g -> CameraViewModel(g.pages, g.scalePage, g.copyPage) }
+            CameraScreen(vm, title = "Photograph the recipe, page by page",
+                onDone = { dir ->
+                    graph.pendingShare.value = ShareInput.Pages(dir)
+                    nav.navigate(ShareRoute) { popUpTo<CameraRoute> { inclusive = true } }
+                },
+                onCancel = { nav.popBackStack() })
+        }
         composable<ShareRoute> {
             ShareScreen(graph,
                 onQueued = { week -> nav.navigate(HomeRoute(week.toString())) { popUpTo<ShareRoute> { inclusive = true } } },
@@ -78,11 +91,12 @@ fun contextRoute(a: ContextAction): Any? = when (a) {
 
 /** What tapping a context button with no screen to open says (null = it opens [contextRoute], or does nothing). */
 fun contextToast(a: ContextAction): String? = when (a) {
-    ContextAction.AddRecipes -> "Share a recipe from NYT Cooking to add it."
+    ContextAction.AddRecipes -> "Share a recipe from NYT Cooking or a photo of a cookbook page, or use Menu → Snap a cookbook recipe."
     else -> null
 }
 
 const val LATER = "That arrives in a later update."
 
 /** Home "Menu" items (label to route). */
-fun homeMenu(): List<Pair<String, Any>> = listOf("Shopping list" to ListRoute(""), "Settings" to SettingsRoute)
+fun homeMenu(): List<Pair<String, Any>> =
+    listOf("Snap a cookbook recipe" to CameraRoute(), "Shopping list" to ListRoute(""), "Settings" to SettingsRoute)

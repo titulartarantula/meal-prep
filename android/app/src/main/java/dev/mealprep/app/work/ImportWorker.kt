@@ -12,6 +12,8 @@ import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.ShareResult
 import dev.mealprep.app.data.api.userMessage
 import dev.mealprep.app.notify.Notifier
+import dev.mealprep.app.ui.camera.PageStore
+import java.io.File
 import java.time.LocalDate
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -38,26 +40,50 @@ class ImportWorker(
         const val MAX_ATTEMPTS = 10
         const val INTERRUPTED = "Sending the recipe was interrupted."
 
+        const val PAGES_GONE = "The photos are gone from the phone. Take or share them again."
+        const val PHOTO_UNREADABLE = "Couldn't read a recipe in those photos. Check that each whole page is in the " +
+            "picture, sharp and well lit, then try again."
+
         /** The server's 502 on an import means it couldn't fetch or read the recipe. */
-        fun importMessage(e: ApiError): String =
-            if (e is ApiError.Http && e.code == 502) "Couldn't read that recipe. Try again later." else e.userMessage()
+        fun importMessage(e: ApiError, kind: String? = LINK): String = when {
+            e is ApiError.Http && e.code == 502 && kind == PHOTO -> PHOTO_UNREADABLE
+            e is ApiError.Http && e.code == 502 -> "Couldn't read that recipe. Try again later."
+            else -> e.userMessage()
+        }
+
+        fun progressText(kind: String?): String = when (kind) {
+            PHOTO -> "Reading cookbook pages…"
+            else -> "Reading recipe…"
+        }
     }
+
+    private val kind: String? get() = inputData.getString(KIND)
 
     override suspend fun doWork(): Result {
         // Best effort: Android refuses a foreground service if this attempt started while the app was in the background.
         try {
-            setForeground(notifier.importProgress(id, "Reading recipe…"))
+            setForeground(notifier.importProgress(id, progressText(kind)))
         } catch (e: CancellationException) {
             throw e   // java's CancellationException is an IllegalStateException: never swallow it below
         } catch (e: IllegalStateException) {
             // Refused (e.g. ForegroundServiceStartNotAllowedException is an IllegalStateException): carry on unannounced.
         }
-        return when (inputData.getString(KIND)) {
+        val week = runCatching { LocalDate.parse(inputData.getString(WEEK)) }.getOrNull()
+        return when (kind) {
             LINK -> {
                 val text = inputData.getString(TEXT)
-                val week = runCatching { LocalDate.parse(inputData.getString(WEEK)) }.getOrNull()
                 if (text == null || week == null) fail("The shared link was incomplete.", retrySafe = false)
                 else send { importer.shareLink(text, week) }
+            }
+            PHOTO -> {
+                val dir = inputData.getString(DIR)?.let(::File)
+                val pages = dir?.let(PageStore::pagesIn).orEmpty()
+                when {
+                    dir == null || week == null -> fail("The photo import was incomplete.", retrySafe = false)
+                    pages.isEmpty() -> fail(PAGES_GONE, retrySafe = false)
+                    // The pages stay on the phone until the server has the recipe, so "Try again" can resend them.
+                    else -> send(cleanup = dir) { importer.importPhotos(pages, week, inputData.getString(TITLE)) }
+                }
             }
             else -> fail("Unknown import type.")
         }
@@ -65,12 +91,16 @@ class ImportWorker(
 
     /** Sends at most once per job: if WorkManager stopped an earlier run mid-request and runs the job again, the
      *  server may already have added the recipe to the week, so this run reports that instead of sending again. */
-    private suspend fun send(call: suspend () -> ApiResult<ShareResult>): Result {
+    private suspend fun send(cleanup: File? = null, call: suspend () -> ApiResult<ShareResult>): Result {
         if (!importer.markSending(id)) return fail(INTERRUPTED, retrySafe = false)
         val r = call()
         if (r is ApiResult.Err && r.error == ApiError.Unreachable) importer.clearSending(id)
         return when (r) {
-            is ApiResult.Ok -> { notifier.imported(r.value); Result.success(shareOutput(r.value)) }
+            is ApiResult.Ok -> {
+                cleanup?.deleteRecursively()
+                notifier.imported(r.value)
+                Result.success(shareOutput(r.value))
+            }
             is ApiResult.Err -> retryOrFail(r.error)
         }
     }
@@ -79,10 +109,10 @@ class ImportWorker(
      *  and sending it again would add the recipe (or the week entry) twice. */
     private fun retryOrFail(e: ApiError): Result =
         if (e == ApiError.Unreachable && runAttemptCount < MAX_ATTEMPTS - 1) Result.retry()
-        else fail(importMessage(e), retrySafe = e != ApiError.TimedOut && e !is ApiError.Other)
+        else fail(importMessage(e, kind), retrySafe = e != ApiError.TimedOut && e !is ApiError.Other)
 
     private fun fail(message: String, retrySafe: Boolean = false): Result {
-        notifier.importFailed(id, message, retrySafe)
+        notifier.importFailed(id, message, retrySafe, kind)
         return Result.failure(Data.Builder().putAll(inputData).putString(ERROR, message).putBoolean(RETRY_SAFE, retrySafe).build())
     }
 

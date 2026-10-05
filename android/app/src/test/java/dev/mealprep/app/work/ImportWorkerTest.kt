@@ -26,6 +26,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
+import java.io.File
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -34,6 +37,7 @@ import org.robolectric.Shadows.shadowOf
 @RunWith(RobolectricTestRunner::class)
 class ImportWorkerTest {
     private val env = TestEnv()
+    @get:Rule val tmp = TemporaryFolder()
     private val link = ImportQueue.linkInput("https://cooking.nytimes.com/recipes/1-x", LocalDate.parse("2026-10-11"))
 
     @Before fun setUp() {
@@ -140,5 +144,57 @@ class ImportWorkerTest {
         val r = worker(workDataOf(ImportWorker.KIND to ImportWorker.LINK)).doWork() as Result.Failure
         assertEquals("The shared link was incomplete.", r.outputData.getString(ImportWorker.ERROR))
         assertEquals(1, notifications().size)
+    }
+
+    private fun batch(name: String, vararg pages: String) = tmp.newFolder(name).also { dir ->
+        pages.forEachIndexed { i, text -> File(dir, "page%02d.jpg".format(i + 1)).writeText(text) }
+    }
+
+    @Test fun `photo pages upload in order and are deleted after success`() = runTest {
+        env.on("POST", "/recipes/photo", body = fixture("share_result.json"))
+        val dir = batch("batch", "first", "second")
+        val r = worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), null)).doWork()
+        assertTrue(r is Result.Success)
+        assertEquals(191, (r as Result.Success).outputData.getInt(ImportWorker.OUT_MISSING_PAGE, 0))
+        val body = env.bodies("POST", "/recipes/photo").single()
+        assertTrue(body.indexOf("first") in 0 until body.indexOf("second"))
+        assertFalse(body.contains("name=\"title\""))            // no title: the part is left out
+        assertFalse(dir.exists())
+    }
+
+    @Test fun `unreadable photo keeps the pages for Try again`() = runTest {
+        env.on("POST", "/recipes/photo", code = 502, body = """{"detail":"couldn't read recipe: AIError: no ingredients"}""")
+        val dir = batch("batch2", "x")
+        val r = worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), "Lemon Bars")).doWork() as Result.Failure
+        assertEquals(ImportWorker.PHOTO_UNREADABLE, r.outputData.getString(ImportWorker.ERROR))
+        assertTrue(r.outputData.getBoolean(ImportWorker.RETRY_SAFE, false))     // the server saved nothing
+        assertEquals(dir.path, r.outputData.getString(ImportWorker.DIR))         // "Try again" re-sends the same pages
+        assertTrue(File(dir, "page01.jpg").exists())
+    }
+
+    @Test fun `a timed-out photo import is not re-sent and keeps its pages`() = runTest {
+        env.onSlow("POST", "/recipes/photo", seconds = 4)     // TestEnv's long-call read timeout is 2 s
+        val dir = batch("batch3", "x")
+        val id = UUID.randomUUID()
+        val r = worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), null), id = id).doWork() as Result.Failure
+        assertFalse(r.outputData.getBoolean(ImportWorker.RETRY_SAFE, true))
+        assertTrue(File(dir, "page01.jpg").exists())
+        // WorkManager running the same job again must not post the photos twice.
+        assertTrue(worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), null), attempt = 1, id = id).doWork() is Result.Failure)
+        assertEquals(1, env.count("POST", "/recipes/photo"))
+    }
+
+    @Test fun `photos deleted from under the job fail with a message`() = runTest {
+        val dir = tmp.newFolder("empty")
+        val r = worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), null)).doWork() as Result.Failure
+        assertEquals(ImportWorker.PAGES_GONE, r.outputData.getString(ImportWorker.ERROR))
+        assertEquals(0, env.count("POST", "/recipes/photo"))
+    }
+
+    @Test fun `waiting for the home network keeps the pages and retries`() = runTest {
+        env.offline = true
+        val dir = batch("batch4", "x")
+        assertTrue(worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), null)).doWork() is Result.Retry)
+        assertTrue(File(dir, "page01.jpg").exists())
     }
 }

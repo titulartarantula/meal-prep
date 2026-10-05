@@ -139,7 +139,7 @@ fun ImportCards(
                         Text("Waiting for the home network — it will be sent automatically.")
                         Row { TextButton({ onCancel(i.id) }) { Text("Cancel") } }
                     }
-                    is ImportUi.Reading -> { Text("Reading recipe…"); LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                    is ImportUi.Reading -> { Text(readingText(i.kind)); LinearProgressIndicator(Modifier.fillMaxWidth()) }
                     is ImportUi.Failed -> {
                         Text(i.message)
                         if (!i.retrySafe) Text("This may have been added already — check the week before trying again.")

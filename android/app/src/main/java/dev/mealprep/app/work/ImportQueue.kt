@@ -8,6 +8,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import java.io.File
 import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -16,15 +17,25 @@ import kotlinx.coroutines.flow.Flow
 class ImportQueue(private val wm: WorkManager) {
     companion object {
         const val TAG = "import"
+        /** Tags each job with its kind, so the home screen can say what is being read while it runs. */
+        const val KIND_TAG = "import-kind:"
+        fun kindOf(tags: Set<String>): String =
+            tags.firstOrNull { it.startsWith(KIND_TAG) }?.removePrefix(KIND_TAG) ?: ImportWorker.LINK
+
         fun linkInput(text: String, week: LocalDate): Data =
             workDataOf(ImportWorker.KIND to ImportWorker.LINK, ImportWorker.TEXT to text, ImportWorker.WEEK to week.toString())
+        /** Cookbook pages in [dir] (page01.jpg …, in reading order) → a new recipe in [week]. */
+        fun photoInput(dir: File, week: LocalDate, title: String?): Data = workDataOf(
+            ImportWorker.KIND to ImportWorker.PHOTO, ImportWorker.DIR to dir.path, ImportWorker.WEEK to week.toString(),
+            ImportWorker.TITLE to title)
     }
 
     fun enqueueLink(text: String, week: LocalDate): UUID = enqueue(linkInput(text, week))
+    fun enqueuePhotos(dir: File, week: LocalDate, title: String?): UUID = enqueue(photoInput(dir, week, title))
 
     fun enqueue(input: Data): UUID {
         val req = OneTimeWorkRequestBuilder<ImportWorker>()
-            .setInputData(input).addTag(TAG)
+            .setInputData(input).addTag(TAG).addTag(KIND_TAG + (input.getString(ImportWorker.KIND) ?: ImportWorker.LINK))
             .setConstraints(Constraints(requiredNetworkType = NetworkType.CONNECTED))
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
             .build()

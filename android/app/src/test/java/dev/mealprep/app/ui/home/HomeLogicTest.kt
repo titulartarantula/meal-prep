@@ -91,4 +91,14 @@ class HomeLogicTest {
         assertEquals(false, shouldAskForNotifications(granted = false, alreadyAsked = true))   // asked before: never again
         assertEquals(false, shouldAskForNotifications(granted = true, alreadyAsked = false))
     }
+
+    @Test fun `a running photo import says it takes longer`() {
+        val a = UUID.randomUUID()
+        val ui = importUi(listOf(ImportJob(a, WorkInfo.State.RUNNING, workDataOf(), kind = ImportWorker.PHOTO)), emptySet())
+        assertEquals(listOf(ImportUi.Reading(a, ImportWorker.PHOTO)), ui)
+        assertEquals("Reading the cookbook pages… (about a minute)", readingText(ImportWorker.PHOTO))
+        assertEquals("Reading recipe…", readingText(ImportWorker.LINK))
+        assertEquals(ImportWorker.PHOTO, dev.mealprep.app.work.ImportQueue.kindOf(setOf("import", "import-kind:photo")))
+        assertEquals(ImportWorker.LINK, dev.mealprep.app.work.ImportQueue.kindOf(setOf("import")))   // jobs from before tags
+    }
 }

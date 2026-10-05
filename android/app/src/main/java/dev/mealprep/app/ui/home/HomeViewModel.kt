@@ -46,7 +46,8 @@ class HomeViewModel(
     private val repo: Repository,
     private val queue: ImportQueue,
     private val today: () -> LocalDate = LocalDate::now,
-    jobs: Flow<List<ImportJob>> = queue.recent.map { infos -> infos.map { ImportJob(it.id, it.state, it.outputData, it.runAttemptCount) } },
+    jobs: Flow<List<ImportJob>> = queue.recent.map { infos -> infos.map {
+        ImportJob(it.id, it.state, it.outputData, it.runAttemptCount, ImportQueue.kindOf(it.tags)) } },
 ) : ViewModel() {
     private val weeks = mutableMapOf<LocalDate, MutableStateFlow<WeekUi>>()   // main thread only
     private val _message = MutableStateFlow<String?>(null)
