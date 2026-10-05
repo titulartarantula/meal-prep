@@ -161,3 +161,15 @@ def test_resharing_existing_recipe_shows_current_rating(conn, monkeypatch):
     assert again["existing"] is True
     s = again["recipe"]["ratings"]
     assert s["last_family"] == 5 and s["company"] == "maybe" and s["notes"][0]["note"] == "kids loved it"
+
+
+def test_recipes_list_the_weeks_they_are_planned_in_from_this_week_on(conn):
+    rid, other = setup(conn, "Chili"), setup(conn, "Soup")
+    c = client(conn, today=TODAY)
+    placed(conn, rid, week="2026-10-04", day=1)                      # last week: history only
+    placed(conn, rid, week="2026-10-18", day=None)                   # in the tray still counts
+    placed(conn, rid, day=2)
+    placed(conn, rid, day=4)                                         # twice in one week: listed once
+    rs = {r["id"]: r for r in c.get("/recipes", headers=H).json()}
+    assert rs[rid]["planned_weeks"] == ["2026-10-11", "2026-10-18"] and rs[other]["planned_weeks"] == []
+    assert c.get(f"/recipes/{rid}", headers=H).json()["planned_weeks"] == ["2026-10-11", "2026-10-18"]

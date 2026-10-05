@@ -234,6 +234,14 @@ def rating_summaries(conn, today: date, recipe_ids: list[int] | None = None) -> 
     return out
 
 
+def planned_weeks(conn, today: date, recipe_ids: list[int] | None = None) -> dict[int, list[str]]:
+    """{recipe_id: [ISO week, …]} for weeks from today's week on that have the recipe (placed or not), soonest first."""
+    rows = conn.execute("SELECT recipe_id, array_agg(DISTINCT week ORDER BY week) FROM plan WHERE week >= %(w)s"
+                        + ("" if recipe_ids is None else " AND recipe_id = ANY(%(ids)s)") + " GROUP BY recipe_id",
+                        {"w": week_start(today), "ids": recipe_ids})
+    return {rid: [w.isoformat() for w in weeks] for rid, weeks in rows}
+
+
 def recipe_history(conn, recipe_id: int) -> list[dict]:
     """Every plan entry for a recipe (newest week first) with its rating."""
     rows = conn.execute(

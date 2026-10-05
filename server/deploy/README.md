@@ -78,8 +78,9 @@ and off → deletes the entries, the prep plan and its task events.
 | `PUT /plan/{entry}/rating` `{family 1–5, company? yes/maybe/no, note?}` | rate one time cooked → 204; re-rating overwrites (every change logged in `rating_history`); 404 unknown entry, 422 bad values |
 | `DELETE /plan/{entry}/rating` | remove the rating → 204 (idempotent) |
 | `GET /ratings/pending?today=YYYY-MM-DD` | unrated entries placed on a night before today, last 14 days, newest first (morning-after prompt) |
-| `GET /recipes?sort=newest\|favourites` | library with `ratings` summary (times cooked/rated, avg family, last, company verdict, ≤5 notes) |
-| `GET /recipes/{id}` | one recipe + `ratings` summary + `history` (every plan entry with its rating) |
+| `GET /recipes?sort=newest\|favourites` | library with `ratings` summary (times cooked/rated, avg family, last, company verdict, ≤5 notes) and `planned_weeks` (ISO Sundays from this week on that have it) |
+| `GET /recipes/{id}` | one recipe + `ratings` summary + `planned_weeks` + `history` (every plan entry with its rating) |
+| `POST /weeks/{date}/entries` `{recipe_id}` | add a library recipe to a week (not on a night yet) → the entry; no duplicate check (the app checks first) |
 | `GET /weeks/{date}` | that week's plan entries, each with `title` and `rating` or null |
 | `POST /prep-plans` `{weeks}` | generate the Sunday prep plan + cook cards → 202 `{id, status:"building"}` (422 if nothing is planned); runs in the background (~4 min for 2 recipes with Claude CLI) |
 | `GET /prep-plans/{id}` | status `building/ready/failed`, progress, `sections` (knife → sauces → proteins → pack, each task with `id`, `text`, `serves` [recipe + night], `est_minutes`, `shelf_life` ok/day_of/freeze_then_thaw, `thaw`, `contents`, `flags`, `done`), `total_minutes`, `warnings`, `entries`, `checklist` (done/total, est vs actual minutes), `stale` |

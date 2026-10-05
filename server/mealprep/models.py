@@ -107,6 +107,7 @@ class RatingSummary(BaseModel):
 
 class RecipeOut(Recipe):
     ratings: RatingSummary = RatingSummary()
+    planned_weeks: list[str] = []    # ISO Sundays from this week on that have this recipe (the library shows them)
 
 
 class CookedEntry(BaseModel):

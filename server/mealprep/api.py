@@ -252,8 +252,9 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.get("/recipes", dependencies=A)
     def recipes(sort: Literal["newest", "favourites"] = "newest", c=Depends(get_conn)) -> list[RecipeOut]:
-        summaries = db.rating_summaries(c, today())
-        out = [RecipeOut(**r.model_dump(), ratings=summaries.get(r.id, {})) for r in db.list_recipes(c)]  # newest first
+        summaries, planned = db.rating_summaries(c, today()), db.planned_weeks(c, today())
+        out = [RecipeOut(**r.model_dump(), ratings=summaries.get(r.id, {}), planned_weeks=planned.get(r.id, []))
+               for r in db.list_recipes(c)]  # newest first
         if sort == "favourites":   # avg family desc (unrated last), then times cooked; stable → newest breaks ties
             out.sort(key=lambda r: (r.ratings.avg_family is None, -(r.ratings.avg_family or 0), -r.ratings.times_cooked))
         return out
@@ -264,6 +265,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         if r is None:
             raise HTTPException(404, f"recipe {recipe_id}")
         return RecipeDetail(**r.model_dump(), ratings=db.rating_summaries(c, today(), [recipe_id])[recipe_id],
+                            planned_weeks=db.planned_weeks(c, today(), [recipe_id]).get(recipe_id, []),
                             history=db.recipe_history(c, recipe_id))
 
     @app.get("/ratings/pending", dependencies=A)
