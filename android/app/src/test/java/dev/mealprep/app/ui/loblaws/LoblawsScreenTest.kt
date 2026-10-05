@@ -6,6 +6,9 @@ import androidx.compose.ui.test.performClick
 import dev.mealprep.app.data.settings.Settings
 import org.junit.Assert.assertEquals
 import org.junit.Rule
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -88,5 +91,19 @@ class LoblawsScreenTest {
         compose.onNodeWithText("Hide in-app browser marker (if Loblaws blocks the page)").assertExists()
         assertEquals(true, Settings().loblawsSignedOutStart)   // signed-out start is the default (only confirmed merge path)
         assertEquals(null, signedOut)
+    }
+
+    @Test fun `keep PC id device trust is off by default and needs the signed-out start`() {
+        assertEquals(false, Settings().loblawsKeepDeviceTrust)
+        var keep: Boolean? = null
+        var prefs by mutableStateOf(Settings())
+        compose.setContent { LoblawsSettingsContent(prefs, onSignedOut = {}, onHideMarker = {}, onKeepTrust = { keep = it }) }
+        compose.onNodeWithText("Keep PC id device trust (experimental)").performClick()
+        assertEquals(true, keep)
+        prefs = Settings(loblawsSignedOutStart = false)
+        compose.onNodeWithText("Only used with “Sign out before loading the cart”.").assertExists()
+        keep = null
+        compose.onNodeWithText("Keep PC id device trust (experimental)").performClick()
+        assertEquals(null, keep)                                             // disabled
     }
 }

@@ -225,10 +225,12 @@ class HandoffMachine(private val cartId: String) {
  * The "Details" text shown (and copied) when the handoff stops short: the step, the page's host and, for each store,
  * whether it held the cart id plus the value's first 8 characters. No paths, query strings, cookies or other site data.
  */
-fun handoffDetails(step: HandoffStep, stoppedAt: HandoffStep?, pageHost: String?, check: CartCheck?, checks: Int): String =
+fun handoffDetails(step: HandoffStep, stoppedAt: HandoffStep?, pageHost: String?, check: CartCheck?, checks: Int,
+                   start: StartClear? = null): String =
     buildString {
         append("Step: ").append(step.name)
         if (stoppedAt != null) append(" (stopped while ").append(stoppedAt.name).append(")")
+        if (start != null) append("\nStart: ").append(start.details)
         append("\nPage: ").append(pageHost ?: "none")
         append("\nChecks: ").append(checks)
         if (check == null) { append("\nNo storage check ran."); return@buildString }

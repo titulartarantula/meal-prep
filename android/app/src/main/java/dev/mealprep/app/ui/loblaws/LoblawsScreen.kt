@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -41,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -127,6 +130,7 @@ fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val machine = remember(cartId) { HandoffMachine(cartId) }
+    val clear = startClear(prefs.loblawsSignedOutStart, prefs.loblawsKeepDeviceTrust)
     var step by remember { mutableStateOf(machine.step) }
     var attempt by remember { mutableIntStateOf(0) }
     var web by remember { mutableStateOf<WebView?>(null) }
@@ -172,7 +176,18 @@ fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
             }
         }
         // Signed-out start = the only merge path confirmed (anonymous cart → sign in). Only Loblaws uses this WebView.
-        if (prefs.loblawsSignedOutStart) { WebStorage.getInstance().deleteAllData(); cm.removeAllCookies { load() } } else load()
+        when (clear) {
+            StartClear.ALL -> { WebStorage.getInstance().deleteAllData(); cm.removeAllCookies { load() } }
+            StartClear.SITE_ONLY -> {
+                // Experimental: sign loblaws.ca out but keep accounts.pcid.ca's cookies ("remember this device").
+                SiteReset.ORIGINS.forEach(WebStorage.getInstance()::deleteOrigin)
+                val expire = SiteReset.plan(cm::getCookie)
+                var left = expire.size
+                if (left == 0) load()
+                expire.forEach { (url, c) -> cm.setCookie(url, c) { if (--left == 0) { cm.flush(); load() } } }
+            }
+            StartClear.NONE -> load()
+        }
     }
 
     // A page that never finishes (or a challenge loop) ends in Failed with Try again, not an endless spinner — but
@@ -188,7 +203,7 @@ fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
 
     val requestClose = { if (closeNeedsConfirm(step)) confirmClose = true else onDone() }
     val details = if (step == HandoffStep.READY || step.working) null
-        else handoffDetails(step, machine.stoppedAt, pageHost, machine.lastCheck, machine.checks)
+        else handoffDetails(step, machine.stoppedAt, pageHost, machine.lastCheck, machine.checks, clear)
 
     // safeDrawing: the page and the bar above it stay clear of the status bar, camera cutout and navigation bar.
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
@@ -239,20 +254,33 @@ fun LoblawsSettings(graph: AppGraph) {
     val scope = rememberCoroutineScope()
     LoblawsSettingsContent(s,
         onSignedOut = { v -> scope.launch { graph.settingsStore.update { it.copy(loblawsSignedOutStart = v) } } },
-        onHideMarker = { v -> scope.launch { graph.settingsStore.update { it.copy(loblawsHideWebViewMarker = v) } } })
+        onHideMarker = { v -> scope.launch { graph.settingsStore.update { it.copy(loblawsHideWebViewMarker = v) } } },
+        onKeepTrust = { v -> scope.launch { graph.settingsStore.update { it.copy(loblawsKeepDeviceTrust = v) } } })
 }
 
 @Composable
-fun LoblawsSettingsContent(s: Settings, onSignedOut: (Boolean) -> Unit, onHideMarker: (Boolean) -> Unit) {
+fun LoblawsSettingsContent(s: Settings, onSignedOut: (Boolean) -> Unit, onHideMarker: (Boolean) -> Unit, onKeepTrust: (Boolean) -> Unit = {}) {
     Column {
         Text("Loblaws", style = MaterialTheme.typography.titleMedium)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Sign out before loading the cart (recommended)", Modifier.weight(1f))
-            Switch(s.loblawsSignedOutStart, onSignedOut)
+        SwitchRow("Sign out before loading the cart (recommended)", null, s.loblawsSignedOutStart, onSignedOut)
+        SwitchRow("Keep PC id device trust (experimental)",
+            if (s.loblawsSignedOutStart) "Signs out of loblaws.ca only, so PC id may remember this phone and skip the code. " +
+                "If the cart doesn't move into your account, turn this off."
+            else "Only used with “Sign out before loading the cart”.",
+            s.loblawsKeepDeviceTrust, onKeepTrust, enabled = s.loblawsSignedOutStart)
+        SwitchRow("Hide in-app browser marker (if Loblaws blocks the page)", null, s.loblawsHideWebViewMarker, onHideMarker)
+    }
+}
+
+/** A whole-row switch (48 dp, one control for TalkBack). */
+@Composable
+private fun SwitchRow(title: String, detail: String?, checked: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title)
+            detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Hide in-app browser marker (if Loblaws blocks the page)", Modifier.weight(1f))
-            Switch(s.loblawsHideWebViewMarker, onHideMarker)
-        }
+        Switch(checked, onCheckedChange = null, enabled = enabled)
     }
 }

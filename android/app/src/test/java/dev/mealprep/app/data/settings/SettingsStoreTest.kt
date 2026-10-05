@@ -36,9 +36,11 @@ class SettingsStoreTest {
     }
 
     // One update per store: on the Windows build host a second quick write can fail to rename DataStore's temp file.
-    @Test fun `staples reminder round trip`() = runTest {
+    @Test fun `staples reminder and keep-device-trust round trip`() = runTest {
         val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "r.preferences_pb") })
-        store.update { it.copy(notif = it.notif.copy(staples = true, staplesDay = java.time.DayOfWeek.FRIDAY, staplesAt = LocalTime.of(18, 15))) }
+        store.update { it.copy(loblawsKeepDeviceTrust = true,
+            notif = it.notif.copy(staples = true, staplesDay = java.time.DayOfWeek.FRIDAY, staplesAt = LocalTime.of(18, 15))) }
+        assertTrue(store.settings.first().loblawsKeepDeviceTrust)
         val r = store.settings.first().notif
         assertTrue(r.staples)
         assertEquals(java.time.DayOfWeek.FRIDAY, r.staplesDay)
