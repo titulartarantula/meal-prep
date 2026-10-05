@@ -63,17 +63,33 @@ private fun ItemRow(item: ListItem, onToggle: (String) -> Unit) {
         Checkbox(item.needed, { onToggle(item.key) })
         Column {
             Text(itemText(item))
+            item.prep?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (item.recipes.isNotEmpty()) Text(item.recipes.joinToString(", "), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
-/** "3 onion, diced", "2 tbsp olive oil". */
-internal fun itemText(item: ListItem): String =
-    listOfNotNull(item.qty?.let(::qty), item.unit, item.name).joinToString(" ") + (item.prep?.let { ", $it" } ?: "")
+/** "3 onion", "⅚ cup whole milk" — the prep note ("diced") is shown on its own line under it. */
+internal fun itemText(item: ListItem): String = listOfNotNull(amountText(item.qty, item.unit), item.name).joinToString(" ")
 
-internal fun qty(q: Double): String =
-    if (q % 1.0 == 0.0) q.toLong().toString() else String.format(Locale.US, "%.2f", q).trimEnd('0').trimEnd('.')
+/** "⅚ cup", "1½ tbsp", "3"; null when there's no amount. */
+internal fun amountText(q: Double?, unit: String?): String? =
+    q?.let { listOfNotNull(qty(it), unit).joinToString(" ") }
+
+private val FRACTIONS = listOf(1.0 / 8 to "⅛", 1.0 / 6 to "⅙", 1.0 / 4 to "¼", 1.0 / 3 to "⅓", 3.0 / 8 to "⅜", 1.0 / 2 to "½",
+    5.0 / 8 to "⅝", 2.0 / 3 to "⅔", 3.0 / 4 to "¾", 5.0 / 6 to "⅚", 7.0 / 8 to "⅞")
+
+/** Kitchen amounts: 0.83 → "⅚", 1.5 → "1½", 2.0 → "2"; anything else to two decimals ("0.9"). */
+internal fun qty(q: Double): String {
+    val whole = kotlin.math.floor(q)
+    val frac = q - whole
+    if (frac < 0.02) return whole.toLong().toString()
+    if (frac > 0.98) return (whole.toLong() + 1).toString()
+    FRACTIONS.firstOrNull { kotlin.math.abs(it.first - frac) < 0.02 }?.let { (_, f) ->
+        return if (whole == 0.0) f else "${whole.toLong()}$f"
+    }
+    return String.format(Locale.US, "%.2f", q).trimEnd('0').trimEnd('.')
+}
 
 @Composable
 fun ListScreen(weeks: List<LocalDate>, onDraft: (Int) -> Unit) {

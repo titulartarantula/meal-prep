@@ -27,6 +27,8 @@ class DraftScreenTest {
         compose.onNodeWithText("Yellow Onions · 1.36 kg bag  $3.99").assertExists()
         compose.onNodeWithText("No product found — tap Swap to search.").assertExists()
         compose.onNodeWithText("About $3.99 · 1 item").assertExists()
+        compose.onNodeWithText("Need 3 · diced").assertExists()        // amount and prep under the item name
+        compose.onNodeWithText("Need 900 g").assertExists()
         compose.onNodeWithText("Send to Loblaws").performClick()
         assertEquals(1, sent)
     }
@@ -59,5 +61,12 @@ class DraftScreenTest {
         val none = ready.copy(lines = ready.lines.map { it.copy(removed = true) })
         compose.setContent { DraftContent(DraftState(none, loading = false), DraftActions()) }
         compose.onNodeWithText("Send to Loblaws").assertIsNotEnabled()
+    }
+
+    @Test fun `need text`() {
+        val line = ready.lines[0]
+        assertEquals("Need ⅚ cup · warmed", needText(line.copy(qty = 0.83, unit = "cup", prep = "warmed")))
+        assertEquals("finely grated", needText(line.copy(qty = null, unit = null, prep = "finely grated")))
+        assertEquals(null, needText(line.copy(qty = null, unit = null, prep = null)))
     }
 }

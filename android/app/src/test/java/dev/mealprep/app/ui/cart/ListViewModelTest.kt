@@ -115,9 +115,25 @@ class ListViewModelTest {
         assertEquals(listOf(LocalDate.parse("2026-10-04"), far), withSelected(opts, setOf(far), today).map { it.week })
     }
 
-    @Test fun `item text`() {
-        assertEquals("3 onion, diced", itemText(ListItem("k", "onion", qty = 3.0, prep = "diced")))
-        assertEquals("0.5 cup rice", itemText(ListItem("k", "rice", qty = 0.5, unit = "cup")))
+    @Test fun `item text leaves the prep note for its own line`() {
+        assertEquals("3 onion", itemText(ListItem("k", "onion", qty = 3.0, prep = "diced")))
+        assertEquals("½ cup rice", itemText(ListItem("k", "rice", qty = 0.5, unit = "cup")))
+        assertEquals("⅚ cup whole milk", itemText(ListItem("k", "whole milk", qty = 0.83, unit = "cup", prep = "warmed")))
         assertEquals("salt", itemText(ListItem("k", "salt")))
+    }
+
+    @Test fun `quantities read like a recipe`() {
+        assertEquals("2", qty(2.0))
+        assertEquals("⅓", qty(0.33))
+        assertEquals("⅔", qty(0.67))
+        assertEquals("1½", qty(1.5))
+        assertEquals("1⅛", qty(1.12))
+        assertEquals("1⅝", qty(1.62))
+        assertEquals("0.9", qty(0.9))
+        assertEquals("2.45", qty(2.45))
+        assertEquals("3", qty(2.99))
+        assertEquals("¼", amountText(0.25, null))
+        assertEquals("1¼ lb", amountText(1.25, "lb"))
+        assertEquals(null, amountText(null, "cup"))
     }
 }

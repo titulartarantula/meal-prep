@@ -94,6 +94,10 @@ fun DraftContent(s: DraftState, a: DraftActions) {
     s.swap?.let { swap -> SwapDialog(swap, a.onSearch, a.onChoose, a.onCloseSwap) }
 }
 
+/** What the recipes need, under the item name: "Need ⅚ cup · warmed"; null when there's nothing to say. */
+internal fun needText(line: DraftLine): String? =
+    listOfNotNull(amountText(line.qty, line.unit)?.let { "Need $it" }, line.prep).joinToString(" · ").ifEmpty { null }
+
 @Composable
 private fun LineCard(line: DraftLine, editable: Boolean, busy: Boolean, onQty: (Int) -> Unit, onRemove: () -> Unit, onSwap: () -> Unit) {
     val q = line.quantity ?: 0
@@ -101,6 +105,7 @@ private fun LineCard(line: DraftLine, editable: Boolean, busy: Boolean, onQty: (
         Column(Modifier.padding(10.dp)) {
             Text(line.name, style = MaterialTheme.typography.titleSmall,
                 textDecoration = if (line.removed) TextDecoration.LineThrough else null)
+            needText(line)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             val forWhat = if (line.recipes.isEmpty()) "" else "for ${line.recipes.joinToString(", ")} · "
             Text(forWhat + (SOURCE[line.source] ?: line.source), style = MaterialTheme.typography.bodySmall)
             Text(line.product?.let(::productLine) ?: "No product found — tap Swap to search.")
