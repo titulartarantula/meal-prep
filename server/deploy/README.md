@@ -89,10 +89,13 @@ A restart marks in-flight (`building`) drafts and prep plans `failed`; start a n
 
 Each draft line's quantity covers the list need. The need (qty + unit) and the product's `package_size` ("2 l",
 "12x355.0 ml", "12 ea", "per kg") go into ml, g or a count; a small density / piece-weight table converts cups of
-flour or onions to grams. The AI sees each candidate's `min_packs` and the build raises its quantity (and a
-remembered pick's) to that floor; a remembered pick scales its last purchase by the floors, so one bottle of vanilla
-stays one bottle. Never lowered; user edits are kept (a product swap without a quantity is raised to the new
-product's floor). Products priced by weight, unknown sizes and units it can't compare keep the AI quantity and set
-`needs_check`. Each line reports `packs_min` (null when unmatched), `needs_check` and `why`
-("Need ⅚ cup → 1 × 1 L", "… (short)" when the quantity is below the floor, "… (check: priced by weight)").
+flour or onions to grams. The AI sees each candidate's `min_packs`. When the planner can size the need against the
+pack, AI and remembered picks get exactly that floor, never more (one bottle of vanilla stays one bottle, whatever
+was bought last time). When it can't (priced by weight, unknown sizes, units it can't compare: teaspoons of salt
+against a 1 kg bag) the line gets 1 and `needs_check`, except a pack sold by the piece (onions each), which keeps
+the AI's number (1–12) or a remembered one scaled by the need in base units; a remembered quantity above
+2 × max(1, floor) is ignored as stale. User edits are kept; a product swap without a quantity moves the planner's
+number to the new product's floor and raises a user's own number to it. Each line reports `packs_min` (null when
+unmatched), `needs_check` and `why` ("Need ⅚ cup → 1 × 1 L", "… (short)" below the floor, "… (you chose 3)" above
+it, "… (check: priced by weight)").
 Products carry `sold_by` (PC Express pricing type) in search snapshots.
