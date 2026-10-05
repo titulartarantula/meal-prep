@@ -159,3 +159,41 @@ def test_total_search_outage_raises_and_sends_nothing(conn):
         fc([item("a"), item("b")], pcx, FakeAI({}), conn)
     assert conn.execute("SELECT status, pcx_cart_id FROM carts").fetchall() == [("failed", None)]
     assert conn.execute("SELECT count(*) FROM cart_weeks").fetchone()[0] == 0 and pcx.added == {}
+
+
+# --- remembered quantities scale by packs, not by raw need ------------------------------------------------------
+
+from mealprep.matcher import scale_remembered
+
+VANILLA = Product(code="V", name="Vanilla Extract", package_size="46 ml", stock="OK", price=9)
+
+
+def need(qty, unit, name="vanilla extract"):
+    return ListItem(key=f"{name}|vol", name=name, qty=qty, unit=unit)
+
+
+def test_remembered_one_bottle_stays_one_bottle_for_a_bigger_small_need():
+    assert scale_remembered(need(2, "tsp"), (0.44, 1, "tsp"), VANILLA) == 1     # was 5 by raw need ratio
+
+
+def test_remembered_surplus_is_kept():
+    assert scale_remembered(need(2, "tsp"), (0.44, 2, "tsp"), VANILLA) == 2
+
+
+def test_remembered_grows_with_the_floor():
+    choc = Product(code="C", name="Dark Chocolate Bar", package_size="170 g", stock="OK")
+    it = ListItem(key="bittersweet chocolate|mass", name="bittersweet chocolate", qty=1.25, unit="lb")
+    assert scale_remembered(it, (0.28, 1, "lb"), choc) == 4
+
+
+def test_remembered_without_a_usable_size_scales_by_need_with_units():
+    nosize = VANILLA.model_copy(update={"package_size": None})
+    assert scale_remembered(need(4, "tsp"), (2, 1, "tsp"), nosize) == 2
+    assert scale_remembered(need(2, "tbsp"), (2, 1, "tsp"), nosize) == 3        # 6 tsp vs 2 tsp
+    assert scale_remembered(need(2, "tsp"), None, nosize) == 1
+    assert scale_remembered(need(None, None), (2, 3, "tsp"), nosize) == 3
+
+
+def test_remembered_is_raised_to_the_floor():
+    milk = Product(code="M", name="Milk", package_size="1 l", stock="OK")
+    assert scale_remembered(need(6, "cup", "whole milk"), None, milk) == 2

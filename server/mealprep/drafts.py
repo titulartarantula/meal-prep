@@ -8,9 +8,9 @@ import logging
 import httpx
 from psycopg.types.json import Jsonb
 
-from . import db
+from . import db, planner
 from .ingredients import item_key, split_prep
-from .matcher import OUT_OF_STOCK, _choose, _remembered_qty
+from .matcher import OUT_OF_STOCK, _choose, scale_remembered
 from .models import ListItem, Product
 
 log = logging.getLogger(__name__)
@@ -72,15 +72,21 @@ def search_term(name: str) -> str:
     return split_prep(name)[0] or name
 
 
-def _match(pcx, provider, it, pick, remembered_qty):
-    """Worker (no DB): search, then remembered pick or AI choice. Returns (found, cands, code, qty, source)."""
+def _match(pcx, provider, it, pick, last):
+    """Worker (no DB): search, then remembered pick or AI choice. Returns (found, cands, code, qty, source).
+
+    `last` is the remembered pick's last purchase (`db.last_purchase`). Either way the quantity is at least the
+    planner's floor (the fewest packs that cover the need)."""
     found = pcx.search(search_term(it.name))
     cands = [p for p in found if p.stock not in OUT_OF_STOCK]
     if not cands:
         return found, cands, None, None, "none"
-    if pick and pick[0] in {p.code for p in cands}:
-        return found, cands, pick[0], remembered_qty, "memory"
+    by_code = {p.code: p for p in cands}
+    if pick and pick[0] in by_code:
+        return found, cands, pick[0], scale_remembered(it, last, by_code[pick[0]]), "memory"
     code, qty = _choose(provider, it, cands)
+    if code in by_code:
+        qty = planner.floor_quantity(it, by_code[code], qty)
     return found, cands, code, qty, "ai"
 
 
@@ -104,10 +110,10 @@ def _build(conn, draft_id, pcx, provider, store_id, workers):
         pick = found[:2] if found else None
         if found and found[2] != it.key:
             db.copy_pick(conn, found[2], it.key)
-        jobs.append((lid, it, pick, _remembered_qty(conn, it, pick[0], found[2]) if pick else None))
+        jobs.append((lid, it, pick, db.last_purchase(conn, found[2], pick[0]) if pick else None))
     errors, last_error = 0, None
     with ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix=f"draft{draft_id}") as pool:
-        futs = {pool.submit(_match, pcx, provider, it, pick, rq): (lid, it, pick) for lid, it, pick, rq in jobs}
+        futs = {pool.submit(_match, pcx, provider, it, pick, last): (lid, it, pick) for lid, it, pick, last in jobs}
         for fut in as_completed(futs):
             lid, it, pick = futs[fut]
             try:
@@ -154,9 +160,12 @@ def _line_out(row) -> dict:
     item = item or {}
     if product is None and code:   # carts from before drafts only kept the product code
         product = {"code": code, "name": pname, "brand": pbrand, "package_size": psize, "price": None, "stock": None}
+    plan = planner.plan(ListItem(key=key or "", name=name or "", qty=qty, unit=unit, prep=item.get("prep")), product)
     return {"id": lid, "item_key": key, "name": name, "qty": qty, "unit": unit, "prep": item.get("prep"),
             "recipes": item.get("recipes", []), "product": product, "quantity": quantity, "source": source,
-            "alternatives": alts or [], "removed": removed, "status": status}
+            "alternatives": alts or [], "removed": removed, "status": status,
+            "packs_min": plan.packs_min if plan else None, "needs_check": bool(plan and plan.needs_check),
+            "why": plan.why(quantity) if plan else None}
 
 
 _LINE_SQL = ("SELECT l.id, l.item, l.item_key, l.item_name, l.need_qty, l.need_unit, l.product, l.product_code, "
@@ -215,6 +224,11 @@ def _current_product(conn, code: str) -> Product | None:
 _UNSET = object()
 
 
+def _line_item(line: dict) -> ListItem:
+    return ListItem(key=line["item_key"] or "", name=line["name"] or "", qty=line["qty"], unit=line["unit"],
+                    prep=line["prep"])
+
+
 def update_line(conn, draft_id: int, line_id: int, product_code=_UNSET, quantity=_UNSET, removed=_UNSET) -> dict:
     """Swap product (remembered as the household's pick), change quantity (0 = remove), or remove/restore a line."""
     with conn.transaction():
@@ -226,11 +240,16 @@ def update_line(conn, draft_id: int, line_id: int, product_code=_UNSET, quantity
             new = _current_product(conn, product_code)
             if new is None:
                 raise UnknownProduct(product_code)
+            seen = next((a for a in line["alternatives"] if a["code"] == new.code), None)
+            if seen and seen.get("sold_by"):   # the pricing type is only in search snapshots, not in products
+                new.sold_by = seen["sold_by"]
             old = line["product"]
             alts = [a for a in line["alternatives"] if a["code"] != new.code]
             if old and old["code"] != new.code:
                 alts = [old] + alts
             qty = qty or 1
+            if quantity is _UNSET or quantity is None:   # cover the need with the new pack; never lower
+                qty = planner.floor_quantity(_line_item(line), new, qty)
             sets += ["product=%s", "product_code=%s", "source='user'", "status='matched'", "alternatives=%s"]
             vals += [_pj(new), new.code, Jsonb(alts)]
             db.set_pick(conn, line["item_key"], new.code, chosen_by="user")

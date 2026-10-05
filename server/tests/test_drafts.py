@@ -272,3 +272,93 @@ def test_search_term_has_no_prep_words(conn):
     pcx = FakePcx({"whole milk": [prod("M")]})
     build(conn, [item("whole milk warmed"), item("finely grated parmesan")], pcx, FakeAI({}))
     assert sorted(pcx.searches) == ["parmesan", "whole milk"]
+
+
+# --- purchase planner: the quantity covers the need --------------------------------------------------------------
+
+class QtyAI:
+    """Always picks `code` × `quantity`; keeps the prompts."""
+    def __init__(self, code, quantity): self.code, self.quantity, self.prompts = code, quantity, []
+    def complete_json(self, prompt, images=None):
+        self.prompts.append(prompt); return {"code": self.code, "quantity": self.quantity}
+
+
+def sized(code, size, sold_by=None):
+    return Product(code=code, name=f"P{code}", brand="PC", package_size=size, price=4.0, stock="OK", sold_by=sold_by)
+
+
+MILK = ListItem(key="whole milk|vol", name="whole milk", qty=6, unit="cup", recipes=["Pudding"])
+
+
+def one_line(conn, it, cands, ai):
+    did = build(conn, [it], FakePcx({it.name: cands}), ai)
+    return did, drafts.get_draft(conn, did)["lines"][0]
+
+
+def test_ai_too_few_packs_is_raised_to_the_floor(conn):
+    ai = QtyAI("L1", 1)
+    _, line = one_line(conn, MILK, [sized("L1", "1 l"), sized("L4", "4 l")], ai)
+    assert line["quantity"] == 2 and line["packs_min"] == 2 and line["needs_check"] is False
+    assert line["why"] == "Need 6 cups → 2 × 1 L"
+    assert '"min_packs": 2' in ai.prompts[0] and "at least its min_packs" in ai.prompts[0]
+
+
+def test_ai_more_packs_than_needed_is_kept(conn):
+    _, line = one_line(conn, MILK, [sized("L1", "1 l")], QtyAI("L1", 3))
+    assert line["quantity"] == 3 and line["why"] == "Need 6 cups → 3 × 1 L"
+
+
+def test_milk_five_sixths_cup_is_one_pack(conn):
+    it = MILK.model_copy(update={"qty": 0.83})
+    _, line = one_line(conn, it, [sized("L1", "1 l"), sized("L2", "2 l"), sized("L4", "4 l")], QtyAI("L2", 1))
+    assert line["quantity"] == 1 and line["why"] == "Need ⅚ cup → 1 × 2 L"
+
+
+def test_remembered_pick_gets_the_floor_too(conn):
+    db.set_pick(conn, MILK.key, "L1", chosen_by="user")
+    ai = QtyAI("L4", 1)
+    _, line = one_line(conn, MILK, [sized("L1", "1 l"), sized("L4", "4 l")], ai)
+    assert line["source"] == "memory" and line["quantity"] == 2 and ai.prompts == []
+
+
+def test_priced_by_weight_keeps_ai_quantity_and_flags(conn):
+    it = ListItem(key="red onion|mass", name="red onion", qty=500, unit="g")
+    _, line = one_line(conn, it, [sized("O", "", sold_by="SOLD_BY_EACH_PRICED_BY_WEIGHT")], QtyAI("O", 3))
+    assert line["quantity"] == 3 and line["needs_check"] is True and "priced by weight" in line["why"]
+    assert line["product"]["sold_by"] == "SOLD_BY_EACH_PRICED_BY_WEIGHT"
+
+
+def test_unparseable_size_is_one_pack_and_flagged(conn):
+    _, line = one_line(conn, MILK, [sized("F", "family size")], QtyAI("F", 1))
+    assert line["quantity"] == 1 and line["needs_check"] is True and "check" in line["why"]
+
+
+def test_unmatched_line_has_no_plan(conn):
+    _, line = one_line(conn, MILK, [], QtyAI("F", 1))
+    assert (line["packs_min"], line["needs_check"], line["why"]) == (None, False, None)
+
+
+def test_user_set_quantity_is_never_changed(conn):
+    did, line = one_line(conn, MILK, [sized("L1", "1 l")], QtyAI("L1", 1))
+    out = drafts.update_line(conn, did, line["id"], quantity=1)
+    assert out["quantity"] == 1 and out["why"] == "Need 6 cups → 1 × 1 L (short)"
+    assert drafts.get_draft(conn, did)["lines"][0]["quantity"] == 1
+
+
+def test_swap_raises_to_the_new_products_floor_but_never_lowers(conn):
+    did, line = one_line(conn, MILK, [sized("L4", "4 l"), sized("L1", "1 l")], QtyAI("L4", 1))
+    assert line["quantity"] == 1
+    out = drafts.update_line(conn, did, line["id"], product_code="L1")
+    assert out["quantity"] == 2 and out["why"] == "Need 6 cups → 2 × 1 L"
+    out = drafts.update_line(conn, did, line["id"], product_code="L4")
+    assert out["quantity"] == 2                                   # not reduced
+    out = drafts.update_line(conn, did, line["id"], product_code="L1", quantity=1)
+    assert out["quantity"] == 1                                   # explicit quantity wins
+
+
+def test_swap_keeps_pricing_type_from_the_search_snapshot(conn):
+    it = ListItem(key="red onion|each", name="red onion", qty=2, unit=None)
+    did, line = one_line(conn, it, [sized("BAG", "1.36 kg"), sized("O", "", sold_by="SOLD_BY_EACH_PRICED_BY_WEIGHT")],
+                         QtyAI("BAG", 1))
+    out = drafts.update_line(conn, did, line["id"], product_code="O")
+    assert out["product"]["sold_by"] == "SOLD_BY_EACH_PRICED_BY_WEIGHT" and out["quantity"] == 2

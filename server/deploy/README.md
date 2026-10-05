@@ -64,7 +64,7 @@ and off → deletes the entries, the prep plan and its task events.
 | Endpoint | Purpose |
 |---|---|
 | `POST /drafts` `{weeks, items}` | start a draft → 202 `{id, status:"building"}`; matching runs in the background (`MEALPREP_MATCH_WORKERS`, default 6) |
-| `GET /drafts/{id}` | status `building/ready/failed/sent`, progress, lines (product, quantity, source, ≤5 alternatives, removed), `estimated_total`, `pcx_cart_id` |
+| `GET /drafts/{id}` | status `building/ready/failed/sent`, progress, lines (product, quantity, source, ≤5 alternatives, removed, `packs_min`, `needs_check`, `why` — see below), `estimated_total`, `pcx_cart_id` |
 | `GET /weeks/{date}/draft` | newest draft (any status) covering that week — same shape as `GET /drafts/{id}`; 404 if none (lets either phone find this week's cart) |
 | `PATCH /drafts/{id}/lines/{line}` `{product_code?, quantity?, removed?}` | edit while `ready` (409 otherwise); a product swap is remembered as the household's pick |
 | `POST /drafts/{id}/lines/{line}/search` `{term}` | free-text candidates for a swap (409 unless `ready`) |
@@ -84,3 +84,15 @@ and off → deletes the entries, the prep plan and its task events.
 | `POST /recipes/{id}/pages` multipart `files` (1–10) + optional `for_line` | read a cross-referenced sub-recipe page ("Batter for 24 crêpes, page 191") and add its ingredients/steps to the recipe (sync, ~25–30 s); 422 if the line is ambiguous, 409 if already attached |
 
 A restart marks in-flight (`building`) drafts and prep plans `failed`; start a new one.
+
+### Purchase planner (`mealprep/planner.py`)
+
+Each draft line's quantity covers the list need. The need (qty + unit) and the product's `package_size` ("2 l",
+"12x355.0 ml", "12 ea", "per kg") go into ml, g or a count; a small density / piece-weight table converts cups of
+flour or onions to grams. The AI sees each candidate's `min_packs` and the build raises its quantity (and a
+remembered pick's) to that floor; a remembered pick scales its last purchase by the floors, so one bottle of vanilla
+stays one bottle. Never lowered; user edits are kept (a product swap without a quantity is raised to the new
+product's floor). Products priced by weight, unknown sizes and units it can't compare keep the AI quantity and set
+`needs_check`. Each line reports `packs_min` (null when unmatched), `needs_check` and `why`
+("Need ⅚ cup → 1 × 1 L", "… (short)" when the quantity is below the floor, "… (check: priced by weight)").
+Products carry `sold_by` (PC Express pricing type) in search snapshots.

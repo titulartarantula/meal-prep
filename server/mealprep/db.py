@@ -64,9 +64,9 @@ def copy_pick(conn, old_key: str, new_key: str) -> None:
                  "updated_at FROM picks WHERE key=%s ON CONFLICT(key) DO NOTHING", (new_key, old_key))
 
 
-def last_purchase(conn, key: str, code: str) -> tuple[float | None, int] | None:
-    """(need_qty, quantity) of the most recent added cart line for this list key + product."""
-    return conn.execute("SELECT need_qty, quantity FROM cart_lines WHERE item_key=%s AND product_code=%s "
+def last_purchase(conn, key: str, code: str) -> tuple[float | None, int, str | None] | None:
+    """(need_qty, quantity, need_unit) of the most recent added cart line for this list key + product."""
+    return conn.execute("SELECT need_qty, quantity, need_unit FROM cart_lines WHERE item_key=%s AND product_code=%s "
                         "AND status='added' ORDER BY id DESC LIMIT 1", (key, code)).fetchone()
 
 
