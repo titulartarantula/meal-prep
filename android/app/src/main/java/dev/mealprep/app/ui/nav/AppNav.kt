@@ -8,6 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import dev.mealprep.app.AppGraph
+import dev.mealprep.app.ui.cart.ListScreen
 import dev.mealprep.app.ui.home.ContextAction
 import dev.mealprep.app.ui.home.HomeScreen
 import dev.mealprep.app.ui.setup.SettingsScreen
@@ -36,6 +37,13 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
                 onOpen = open,
                 menu = homeMenu())
         }
+        composable<ListRoute> { back ->
+            val weeks = back.toRoute<ListRoute>().weeks.split(",").filter { it.isNotBlank() }
+                .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ListScreen(weeks, onDraft = { id ->
+                runCatching { nav.navigate(DraftRoute(id)) { popUpTo<ListRoute> { inclusive = true } } }
+            })
+        }
         composable<ShareRoute> {
             ShareScreen(graph,
                 onQueued = { week -> nav.navigate(HomeRoute(week.toString())) { popUpTo<ShareRoute> { inclusive = true } } },
@@ -47,7 +55,7 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
 
 /** Where the home screen's context button goes (null = nothing to open). */
 fun contextRoute(a: ContextAction): Any? = when (a) {
-    is ContextAction.BuildCart -> null        // Task 10
+    is ContextAction.BuildCart -> ListRoute(a.week.toString())
     is ContextAction.ReviewCart -> DraftRoute(a.draftId)
     is ContextAction.StartPrep -> PrepRoute(a.week.toString())
     is ContextAction.ContinuePrep -> PrepRoute(a.week.toString())
@@ -58,11 +66,10 @@ fun contextRoute(a: ContextAction): Any? = when (a) {
 /** What tapping a context button with no screen to open says (null = it opens [contextRoute], or does nothing). */
 fun contextToast(a: ContextAction): String? = when (a) {
     ContextAction.AddRecipes -> "Share a recipe from NYT Cooking to add it."
-    is ContextAction.BuildCart -> LATER
     else -> null
 }
 
 const val LATER = "That arrives in a later update."
 
 /** Home "Menu" items (label to route). */
-fun homeMenu(): List<Pair<String, Any>> = listOf("Settings" to SettingsRoute)
+fun homeMenu(): List<Pair<String, Any>> = listOf("Shopping list" to ListRoute(""), "Settings" to SettingsRoute)

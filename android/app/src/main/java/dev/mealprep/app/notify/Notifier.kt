@@ -19,6 +19,7 @@ import dev.mealprep.app.core.firstMissingRef
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.ShareResult
 import dev.mealprep.app.ui.nav.Nav
+import dev.mealprep.app.work.JobWatchWorker
 import java.time.LocalDate
 import java.util.UUID
 
@@ -63,6 +64,23 @@ class Notifier(private val context: Context) {
     /** [retrySafe] false: the request may have reached the server, so warn instead of inviting a retry. */
     fun importFailed(workId: UUID, message: String, retrySafe: Boolean) =
         post("import-failed-$workId", CH_JOBS, "Couldn't add the recipe", failedText(message, retrySafe), Nav.home(null))
+
+    /** A cart draft or prep plan left "building" (JobWatchWorker). [error] is the server's reason when it failed. */
+    fun jobDone(kind: String, id: Int, week: LocalDate, ok: Boolean, error: String?) {
+        val draft = kind == JobWatchWorker.DRAFT
+        val title = when {
+            draft && ok -> "Cart ready to review"
+            draft -> "Cart couldn't be built"
+            ok -> "Prep plan ready"
+            else -> "Prep plan failed"
+        }
+        val text = when {
+            !ok -> error?.takeIf(String::isNotBlank) ?: "Open Meal Prep to try again."
+            draft -> "Week of ${Weeks.shortDate(week)}: check the picks, then Send to Loblaws."
+            else -> "Week of ${Weeks.shortDate(week)}: your Sunday checklist and cook cards are in."
+        }
+        post("$kind-$id", CH_JOBS, title, text, if (draft) Nav.draft(id) else Nav.prep(week))
+    }
 
     @SuppressLint("MissingPermission")
     fun post(tag: String, channel: String, title: String, text: String, nav: String?) {

@@ -18,14 +18,18 @@ class NavTest {
         assertEquals(PrepRoute("2026-10-11"), Nav.parse(Nav.prep(wk)))
     }
 
+    @Test fun `menu opens the shopping list for the default week`() {
+        assertEquals(listOf("Shopping list" to ListRoute(""), "Settings" to SettingsRoute), homeMenu())
+    }
+
     @Test fun `garbage is ignored`() {
         assertNull(Nav.parse(null)); assertNull(Nav.parse("card/x")); assertNull(Nav.parse("nope/1"))
     }
 
     @Test fun `context buttons without a screen yet say so`() {
         val wk = LocalDate.parse("2026-10-11")
-        assertNull(contextRoute(ContextAction.BuildCart(wk)))
-        assertEquals("That arrives in a later update.", contextToast(ContextAction.BuildCart(wk)))
+        assertEquals(ListRoute("2026-10-11"), contextRoute(ContextAction.BuildCart(wk)))
+        assertNull(contextToast(ContextAction.BuildCart(wk)))
         assertEquals("Share a recipe from NYT Cooking to add it.", contextToast(ContextAction.AddRecipes))
         assertNull(contextToast(ContextAction.AllSet))
         assertNull(contextToast(ContextAction.StartPrep(wk)))   // has a route: navigating handles it

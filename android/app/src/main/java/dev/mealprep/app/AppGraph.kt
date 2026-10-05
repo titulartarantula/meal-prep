@@ -31,6 +31,7 @@ class AppGraph(val context: Context) {
     val workManager: WorkManager by lazy { WorkManager.getInstance(context) }
     val notifier = dev.mealprep.app.notify.Notifier(context)
     val imports: dev.mealprep.app.work.ImportQueue by lazy { dev.mealprep.app.work.ImportQueue(workManager) }
+    val jobs: dev.mealprep.app.work.JobWatcher by lazy { dev.mealprep.app.work.JobWatcher(workManager) }
     /** A share that arrived (MainActivity) and is waiting for the Share screen. */
     val pendingShare = MutableStateFlow<ShareInput?>(null)
 
