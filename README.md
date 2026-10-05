@@ -85,4 +85,4 @@ These drive a remote Windows build host and a Linux server over SSH. Copy `local
 
 ## License
 
-License: not yet chosen. Until one is added, all rights are reserved.
+Meal Prep is licensed under the GNU General Public License v3.0 (GPL-3.0). See [LICENSE](LICENSE).
