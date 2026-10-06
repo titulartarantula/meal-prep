@@ -18,6 +18,11 @@ object RatingText {
     /** For TalkBack: "Family 4.5 out of 5" (it reads "4.5/5" as "4.5 slash 5"). */
     fun spoken(text: String): String = text.replace(Regex("""(\d+(?:\.\d+)?)/5\b"""), "$1 out of 5")
 
+    /** "incl. 2 from another library" when some ratings came with an imported recipe (they count like the household's
+     *  own); null when none did. [spoken]: "including …" for TalkBack. */
+    fun imported(r: RatingSummary, spoken: Boolean = false): String? =
+        r.importedRatings.takeIf { it > 0 }?.let { "${if (spoken) "including" else "incl."} $it from another library" }
+
     /** 4.0 → "4", 4.5 → "4.5". */
     fun number(d: Double) = fmt(d)
 

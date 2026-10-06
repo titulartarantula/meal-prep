@@ -56,6 +56,12 @@ import dev.mealprep.app.ui.camera.refPrompt
 import dev.mealprep.app.ui.camera.refPromptText
 import dev.mealprep.app.ui.cart.withSelected
 import dev.mealprep.app.ui.common.BackTopBar
+import dev.mealprep.app.ui.exchange.ExportHost
+import dev.mealprep.app.ui.exchange.SHARE_ONE
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.res.painterResource
+import dev.mealprep.app.R
 import dev.mealprep.app.ui.common.BottomAction
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
@@ -98,12 +104,17 @@ fun RecipeContent(
     onBookTyped: (String) -> Unit = {},
     /** Another source's name and note, then done(saved). */
     onEditOther: (String, String, (Boolean) -> Unit) -> Unit = { _, _, _ -> },
+    /** Share or save this recipe (the export dialog; tests pass their own). */
+    exportHost: @Composable (Int, () -> Unit) -> Unit = { id, close -> ExportHost(id, close) },
 ) {
     var picking by rememberSaveable { mutableStateOf(startPicking) }
     var editing by rememberSaveable { mutableStateOf(false) }
+    var sharing by rememberSaveable { mutableStateOf(false) }
     val r = state.recipe
     Column(Modifier.fillMaxSize()) {
-        BackTopBar(r?.title ?: "Recipe", onBack)
+        BackTopBar(r?.title ?: "Recipe", onBack) {
+            if (r != null) IconButton({ sharing = true }) { Icon(painterResource(R.drawable.ic_share), contentDescription = SHARE_ONE) }
+        }
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             OfflineBanner(state.offlineSince)
             MessageText(state.error)
@@ -119,6 +130,7 @@ fun RecipeContent(
         onSave = { b, p -> onEditSource(b, p) { ok -> if (ok) editing = false } }, onDismiss = { editing = false },
         onBookTyped = onBookTyped, others = state.others,
         onSaveOther = { n, note -> onEditOther(n, note) { ok -> if (ok) editing = false } })
+    if (sharing && r != null) exportHost(r.id) { sharing = false }
     if (picking) AddToWeekDialog(state.options, r?.plannedWeeks.orEmpty(), today,
         onAdd = { w, d -> picking = false; onAdd(w, d) }, onDismiss = { picking = false })
 }
@@ -144,16 +156,24 @@ private fun ColumnScope.RecipeBody(
             val small = MaterialTheme.typography.bodySmall
             RatingText.summary(r.ratings)?.let { Text(it, Modifier.semantics { contentDescription = RatingText.spoken(it) }) }
                 ?: Text("Not rated yet", style = small)
+            RatingText.imported(r.ratings)?.let { Text("Ratings $it", style = small,
+                modifier = Modifier.semantics { contentDescription = "Ratings " + RatingText.imported(r.ratings, spoken = true) }) }
             plannedText(r.plannedWeeks, today)?.let { Text(it, style = small) }
             SourceLine(r, onEditSource)
-            r.sourceUrl?.let { url ->
+            sourceLinkLabel(r)?.let { label ->
                 val uri = LocalUriHandler.current
-                TextButton({ runCatching { uri.openUri(url) } }) { Text("Open on NYT Cooking") }
+                TextButton({ runCatching { uri.openUri(r.sourceUrl!!) } }) { Text(label) }
             }
+            r.description?.let { Text(it, Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodyMedium) }
+            timesLine(r)?.let { Text(it, style = small) }
             refPrompt(r)?.let { p ->
                 Text(refPromptText(p), style = small)
                 TextButton({ onOpen(refRoute(p)) }) { Text("Add photo of p.${p.page}") }
             }
+        }
+        r.notes?.let { n ->
+            item { Section("Recipe notes") }
+            item { Text(n) }
         }
         if (r.ratings.notes.isNotEmpty()) {
             item { Section("Notes") }
@@ -185,6 +205,27 @@ private fun ColumnScope.RecipeBody(
             }
         }
     }
+}
+
+/** The recipe's link button: NYT Cooking says so; another web page (an imported recipe's) is "the recipe's web
+ *  page"; anything that isn't a plain web address gets no button. */
+fun sourceLinkLabel(r: Recipe): String? {
+    val url = r.sourceUrl ?: return null
+    if (!url.startsWith("https://", ignoreCase = true) && !url.startsWith("http://", ignoreCase = true)) return null
+    return if (Sources.kind(r) == Sources.NYT || dev.mealprep.app.core.ShareParser.nytUrl(url) != null) "Open on NYT Cooking"
+        else "Open the recipe's web page"
+}
+
+/** "Prep 10 min · Cook 1 h 30 min · Makes 24 cookies" from what an imported recipe brought; null when nothing. */
+fun timesLine(r: Recipe): String? = listOfNotNull(
+    r.prepMinutes?.let { "Prep ${minutes(it)}" }, r.cookMinutes?.let { "Cook ${minutes(it)}" },
+    r.totalMinutes?.let { "Total ${minutes(it)}" }, r.yieldText?.takeIf { r.servings == null || !it.trim().all(Char::isDigit) },
+).joinToString(" · ").ifEmpty { null }
+
+private fun minutes(m: Int): String = when {
+    m < 60 -> "$m min"
+    m % 60 == 0 -> "${m / 60} h"
+    else -> "${m / 60} h ${m % 60} min"
 }
 
 /** Ingredient lines as written; an attached sub-recipe's lines get its name as a heading. Lines whose page was

@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.ui.camera.PagesState
 import dev.mealprep.app.ui.camera.refPrompt
+import dev.mealprep.app.ui.exchange.ExportHost
 import dev.mealprep.app.ui.home.ImportCards
 import dev.mealprep.app.ui.nav.CameraRoute
 import dev.mealprep.app.ui.common.MessageText
@@ -80,13 +81,17 @@ fun LibraryScreen(
     LifecycleResumeEffect(Unit) { vm.onResume(); onPauseOrDispose { } }
     val ctx = LocalContext.current
     var paste by remember { mutableStateOf<String?>(null) }   // non-null: the dialog is open (value = copied link or "")
+    var exporting by rememberSaveable { mutableStateOf(false) }
+    // More options: the library's own items first (they act here), then Staples and Settings (screens).
+    val menuHere = libraryMenu(menu)
+    val openHere: (Any) -> Unit = { r -> if (r == LibraryMenu.EXPORT_ALL) exporting = true else onOpen(r) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(PagesState.MAX_PAGES)) { uris ->
         if (uris.isNotEmpty()) onPhotos(uris)
     }
     // TalkBack order: the header, then Add recipe, then the list (as last item it came after every recipe).
     Box(Modifier.fillMaxSize().semantics { isTraversalGroup = true }) {
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.semantics { isTraversalGroup = true; traversalIndex = 0f }) { TabHeader("Recipes", menu, onOpen) }
+            Box(Modifier.semantics { isTraversalGroup = true; traversalIndex = 0f }) { TabHeader("Recipes", menuHere, openHere) }
             Column(Modifier.weight(1f).semantics { isTraversalGroup = true; traversalIndex = 2f }) {
                 ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
                 LibraryContent(state, vm::search, vm::sort, onRecipe, vm::load, onSource = vm::source, onCompany = vm::company)
@@ -100,6 +105,7 @@ fun LibraryScreen(
             }
         })
     }
+    if (exporting) ExportHost(recipeId = null, onClose = { exporting = false })
     paste?.let { copied ->
         PasteLinkDialog(copied.ifEmpty { null }, onSave = { url -> paste = null; onLink(url) }, onDismiss = { paste = null })
     }
@@ -158,6 +164,14 @@ fun LibraryContent(
     }
 }
 
+/** The Recipes tab's own More options items (handled on the tab, not routes). */
+enum class LibraryMenu { EXPORT_ALL }
+
+const val EXPORT_ALL_MENU = "Export all recipes (a backup file)"
+
+/** The Recipes tab's More options: its own items, then the main screens' (Staples, Settings). */
+fun libraryMenu(main: List<Pair<String, Any>>): List<Pair<String, Any>> = listOf(EXPORT_ALL_MENU to LibraryMenu.EXPORT_ALL) + main
+
 const val NO_COMPANY = "None rated good for company yet. After dinner, rate it and answer “Yes” to “Would you make it for company?”."
 
 const val EMPTY_LIBRARY = "No recipes yet. Tap Add recipe to scan a cookbook page, choose photos or paste an NYT " +
@@ -175,11 +189,11 @@ fun filterSummary(state: LibraryState): String = listOfNotNull(
 
 /** A library row's one quiet line: "★ 4.5 · good for company · Invented Pantry Book, p. 88" (or "Not rated · …"). */
 fun rowDetail(r: Recipe): String = listOfNotNull(r.ratings.avgFamily?.let { "★ ${RatingText.number(it)}" } ?: "Not rated",
-    if (r.ratings.company == "yes") "good for company" else null, Sources.label(r)).joinToString(" · ")
+    RatingText.imported(r.ratings), if (r.ratings.company == "yes") "good for company" else null, Sources.label(r)).joinToString(" · ")
 
 /** [rowDetail] for TalkBack: "Family 4.5 out of 5, good for company, …" (not "black star 4.5"). */
 fun spokenRowDetail(r: Recipe): String = listOfNotNull(r.ratings.avgFamily?.let { "Family ${RatingText.number(it)} out of 5" } ?: "Not rated",
-    if (r.ratings.company == "yes") "good for company" else null, Sources.label(r)).joinToString(", ")
+    RatingText.imported(r.ratings, spoken = true), if (r.ratings.company == "yes") "good for company" else null, Sources.label(r)).joinToString(", ")
 
 /** Title, then one quiet line; "On the plan: …" and a missing page only when they apply. */
 @Composable
