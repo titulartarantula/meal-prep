@@ -53,7 +53,7 @@ class SetupScreenTest {
     @Test fun `Settings start with what people change, the server is one line with Change`() {
         var open = false
         compose.setContent {
-            SettingsContent(onDone = {}, extra = { Text("Notifications on this phone"); Text("Loblaws") }, server = {
+            SettingsContent(onBack = {}, extra = { Text("Notifications on this phone"); Text("Loblaws") }, server = {
                 ServerSection("http://server:8790", configured = true, status = serverStatus(null), open = open, onOpen = { open = true }) {
                     Text("the form")
                 }
@@ -69,7 +69,7 @@ class SetupScreenTest {
         assertEquals("It rejected the token. Tap Change.", serverStatus(dev.mealprep.app.data.api.ApiError.Unauthorized))
     }
 
-    @Test fun `settings have no Continue (they have Done)`() {
+    @Test fun `settings have no Continue (they have Back)`() {
         compose.setContent { SetupContent(SetupState(result = "Connected.", ok = true), {}, {}, {}, {}, showContinue = false) }
         compose.onNodeWithText("Connected.").assertIsDisplayed()
         compose.onNodeWithText("Continue").assertDoesNotExist()

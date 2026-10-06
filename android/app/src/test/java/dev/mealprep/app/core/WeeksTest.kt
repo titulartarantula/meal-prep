@@ -50,6 +50,13 @@ class WeeksTest {
         assertEquals("Tue 13", Weeks.nightTitle(week, 2))
     }
 
+    @Test fun `a week's dates for its header`() {
+        assertEquals("Oct 11 – 17", Weeks.range(LocalDate.parse("2026-10-14")))
+        assertEquals("Sep 27 – Oct 3", Weeks.range(LocalDate.parse("2026-09-27")))
+        assertEquals("Dec 27 – Jan 2", Weeks.range(LocalDate.parse("2026-12-27")))
+        assertEquals("Sep 27 to Oct 3", Weeks.spokenRange(LocalDate.parse("2026-09-27")))
+    }
+
     @Test fun `week titles relative to today`() {
         assertEquals("This week", Weeks.weekTitle(sun, wed))
         assertEquals("Next week", Weeks.weekTitle(LocalDate.parse("2026-10-11"), wed))

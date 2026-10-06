@@ -1,7 +1,12 @@
 package dev.mealprep.app.ui.loblaws
 
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import dev.mealprep.app.ui.common.NAVIGATE_UP
 import androidx.compose.ui.test.performClick
 import dev.mealprep.app.data.settings.Settings
 import org.junit.Assert.assertEquals
@@ -19,29 +24,39 @@ class LoblawsScreenTest {
 
     @Test fun `blocked offers try again and copy`() {
         var retried = 0; var copied = 0
-        compose.setContent { HandoffBanner(HandoffStep.BLOCKED, null, { retried++ }, { copied++ }, {}, {}) }
+        compose.setContent { HandoffBanner(HandoffStep.BLOCKED, null, { retried++ }, { copied++ }, {}) }
         compose.onNodeWithText(bannerText(HandoffStep.BLOCKED)).assertExists()
         compose.onNodeWithText("Try again").performClick()
         compose.onNodeWithText("Copy cart ID").performClick()
         assertEquals(1 to 1, retried to copied)
     }
 
-    @Test fun `while working there is nothing to retry yet, and Close has no hint`() {
-        var closed = 0
-        compose.setContent { HandoffBanner(HandoffStep.INJECTING, null, {}, {}, {}, { closed++ }) }
+    @Test fun `while working there is nothing to retry yet, and Back has no hint`() {
+        var back = 0
+        compose.setContent {
+            androidx.compose.foundation.layout.Column {
+                LoblawsTopBar(HandoffStep.INJECTING) { back++ }
+                HandoffBanner(HandoffStep.INJECTING, null, {}, {}, {})
+            }
+        }
         compose.onNodeWithText("Putting your cart into Loblaws…").assertExists()
         compose.onNodeWithText("Try again").assertDoesNotExist()
-        compose.onNodeWithText("Done").assertDoesNotExist()
+        compose.onNodeWithText("Close").assertDoesNotExist()                      // one way out: the top bar's Back
         compose.onNodeWithText("Your cart stays in Loblaws.").assertDoesNotExist()
-        compose.onNodeWithText("Close").performClick()
-        assertEquals(1, closed)
+        compose.onNodeWithContentDescription(NAVIGATE_UP).performClick()
+        assertEquals(1, back)
     }
 
-    @Test fun `ready tells her to sign in, and Close says the cart stays`() {
-        compose.setContent { HandoffBanner(HandoffStep.READY, null, {}, {}, {}, {}) }
+    @Test fun `ready tells her to sign in, and the top bar says the cart stays`() {
+        compose.setContent {
+            androidx.compose.foundation.layout.Column {
+                LoblawsTopBar(HandoffStep.READY) {}
+                HandoffBanner(HandoffStep.READY, null, {}, {}, {})
+            }
+        }
         compose.onNodeWithText(bannerText(HandoffStep.READY)).assertExists()
         compose.onNodeWithText("Try again").assertDoesNotExist()
-        compose.onNodeWithText("Close").assertExists()
+        compose.onNodeWithText("Loblaws").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
         compose.onNodeWithText("Your cart stays in Loblaws.").assertExists()
         compose.onNodeWithText("Details").assertDoesNotExist()
     }
@@ -49,9 +64,9 @@ class LoblawsScreenTest {
     @Test fun `a failure shows collapsible details with copy`() {
         var copied = 0
         val details = "Step: FAILED (stopped while VERIFYING)\nPage: www.loblaws.ca"
-        compose.setContent { HandoffBanner(HandoffStep.FAILED, details, {}, {}, { copied++ }, {}) }
+        compose.setContent { HandoffBanner(HandoffStep.FAILED, details, {}, {}, { copied++ }) }
         compose.onNodeWithText(bannerText(HandoffStep.FAILED)).assertExists()
-        compose.onNodeWithText("You can open the cart again from the week.").assertExists()
+        assertEquals("You can open the cart again from the week.", closeHint(HandoffStep.FAILED))
         compose.onNodeWithText(details).assertDoesNotExist()          // collapsed until asked for
         compose.onNodeWithText("Copy details").assertDoesNotExist()
         compose.onNodeWithText("Details").performClick()
@@ -80,7 +95,7 @@ class LoblawsScreenTest {
         var done = 0
         compose.setContent { LoblawsScreen("not-a-cart", Settings(), onDone = { done++ }) }
         compose.onNodeWithText("That isn't a Loblaws cart. Open the cart again from the week and tap Open in Loblaws.").assertExists()
-        compose.onNodeWithText("Close").performClick()
+        compose.onNodeWithContentDescription(NAVIGATE_UP).performClick()
         assertEquals(1, done)
     }
 

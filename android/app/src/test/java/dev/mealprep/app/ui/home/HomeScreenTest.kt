@@ -6,6 +6,16 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTouchHeightIsEqualTo
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
+import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -150,9 +160,51 @@ class HomeScreenTest {
         val empty = WeekUi(wk, weekView(wk, emptyList()), statusStrip(emptyList(), false, null), ContextAction.AddRecipes, loading = false)
         compose.setContent { WeekContent(empty, LocalDate.parse("2026-10-07"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
         compose.onNodeWithText(EMPTY_WEEK).assertExists()
+        compose.onNodeWithText("○ Planned").assertExists()                                  // the status line stays
         compose.onNodeWithText("Choose from Recipes").performClick()
         assertEquals(ContextAction.AddRecipes, action)
-        compose.onNodeWithText("Recipes you add to this week wait here until you put them on a night.").assertExists()
+        // Only the card: no tray, no seven empty nights, no drag hint, no Refresh.
+        compose.onNodeWithText(NO_NIGHT).assertDoesNotExist()
+        compose.onNodeWithText("Tue 13").assertDoesNotExist()
+        compose.onNodeWithText("Hold a recipe", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Refresh").assertDoesNotExist()
+    }
+
+    @Test fun `the week's next step is docked at the bottom, full width`() {
+        var action: ContextAction? = null
+        val prep = ui.copy(action = ContextAction.StartPrep(wk))
+        compose.setContent { WeekContent(prep, LocalDate.parse("2026-10-07"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val button = compose.onNodeWithText("Start Sunday prep").fetchSemanticsNode().boundsInRoot
+        assertTrue(button.bottom > root.bottom - 100f)                       // at the bottom of the screen
+        compose.onNodeWithText("Start Sunday prep").performClick()
+        assertEquals(ContextAction.StartPrep(wk), action)
+        compose.onNodeWithText("Refresh").assertDoesNotExist()              // the week reloads on its own
+    }
+
+    @Test fun `a saved copy offers Refresh`() {
+        var refreshed = 0
+        val offline = ui.copy(offlineSince = java.time.Instant.parse("2026-10-07T12:00:00Z"))
+        compose.setContent { WeekContent(offline, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, { refreshed++ }) }
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Refresh"))
+        compose.onNodeWithText("Refresh").performClick()
+        assertEquals(1, refreshed)
+    }
+
+    @Test fun `the week header names the dates and steps to the previous and next week`() {
+        var steps = ""
+        var first by mutableStateOf(false)
+        compose.setContent {
+            WeekHeader(wk, LocalDate.parse("2026-10-07"), canBack = !first, canForward = true,
+                onPrev = { steps += "<" }, onNext = { steps += ">" }, menu = emptyList(), onOpen = {})
+        }
+        compose.onNodeWithText("Next week").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        compose.onNodeWithText("Oct 11 – 17").assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Oct 11 to 17")))
+        compose.onNodeWithContentDescription("Previous week").assertTouchHeightIsEqualTo(48.dp).performClick()
+        compose.onNodeWithContentDescription("Next week").assertTouchHeightIsEqualTo(48.dp).performClick()
+        assertEquals("<>", steps)
+        first = true                                                       // the oldest week: nothing before it
+        compose.onNodeWithContentDescription("Previous week").assertIsNotEnabled()
     }
 
     @Test fun `a week that couldn't be loaded and has no saved copy shows only the message and Try again`() {
@@ -161,6 +213,7 @@ class HomeScreenTest {
         compose.setContent { WeekContent(failed, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, { refreshed++ }) }
         compose.onNodeWithText("Can't reach the meal-prep server.").assertExists()
         compose.onNodeWithText(EMPTY_WEEK).assertDoesNotExist()
+        compose.onNodeWithText("Build cart").assertDoesNotExist()                 // nothing docked either
         compose.onNodeWithText("Choose from Recipes").assertDoesNotExist()
         compose.onNodeWithText("○ Planned").assertDoesNotExist()
         compose.onNodeWithText("Try again").performClick()

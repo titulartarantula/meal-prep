@@ -73,6 +73,7 @@ class A11yTest {
 
     @Test fun `the Recipes sort is a radio group, Good for company stays a checkbox`() {
         compose.setContent { MealPrepTheme(dark = false) { LibraryContent(LibraryState(loading = false), {}, {}, {}, {}) } }
+        compose.onNodeWithContentDescription(dev.mealprep.app.ui.library.SHOW_FILTERS).performClick()   // folded under Filters
         compose.onAllNodes(role(Role.RadioButton)).assertCountEquals(3)
         compose.onNodeWithText("Newest").assert(role(Role.RadioButton)).assertIsSelected().onParent().assert(group)
         compose.onNodeWithText("Good for company").assert(role(Role.Checkbox))

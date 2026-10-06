@@ -25,7 +25,7 @@ class NavTest {
 
     @Test fun `the overflow menu keeps the extras, the bottom bar the main screens`() {
         assertEquals(listOf("Staples" to StaplesRoute, "Settings" to SettingsRoute), mainMenu())   // adding recipes is on Recipes
-        assertEquals(listOf("This week", "Shopping list", "Recipes"), Tab.entries.map { it.label })
+        assertEquals(listOf("This week", "Shopping", "Recipes"), Tab.entries.map { it.label })   // "Shopping list" wrapped at 200 %
         assertEquals(listOf(HomeRoute(), ListRoute(""), LibraryRoute), Tab.entries.map { it.route })
     }
 

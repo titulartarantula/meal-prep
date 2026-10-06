@@ -4,6 +4,9 @@ import android.Manifest
 import android.content.Intent
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -73,11 +76,15 @@ class AppLaunchTest {
         configure()
         ActivityScenario.launch(MainActivity::class.java).use {
             compose.onNode(hasText("This week") and isSelectable()).assertIsSelected()
-            compose.onNode(hasText("Shopping list") and isSelectable()).performClick()
-            compose.onNode(hasText("Shopping list") and isSelectable()).assertIsSelected()
+            compose.onNode(hasText("Shopping") and isSelectable()).performClick()
+            compose.onNode(hasText("Shopping") and isSelectable()).assertIsSelected()
+            compose.onNodeWithText("Shopping list").assertExists()                        // the screen title keeps the long name
             compose.onNodeWithText("Shopping for:").assertExists()
             compose.onNode(hasText("Recipes") and isSelectable()).performClick()
             compose.onNode(hasText("Recipes") and isSelectable()).assertIsSelected()
+            // TalkBack: Add recipe right after the header (index 1 between the header's 0 and the list's 2).
+            compose.onNode(SemanticsMatcher.expectValue(SemanticsProperties.TraversalIndex, 1f) and hasAnyDescendant(hasText("Add recipe")))
+                .assertExists()
             compose.onNodeWithText("Add recipe").performClick()
             compose.onNodeWithText("Scan with camera").assertExists()
             compose.onNodeWithText("Choose photos").assertExists()
@@ -89,7 +96,7 @@ class AppLaunchTest {
             compose.onNodeWithContentDescription("More options").performClick()
             compose.onNodeWithText("Staples").assertExists()
             compose.onNodeWithText("Snap a cookbook recipe").assertDoesNotExist()      // adding lives on Recipes
-            compose.onNodeWithText("Shopping list", useUnmergedTree = true).assertExists()   // the tab, not a menu item
+            compose.onNodeWithText("Shopping", useUnmergedTree = true).assertExists()   // the tab, not a menu item
         }
     }
 
@@ -97,7 +104,7 @@ class AppLaunchTest {
         configure()
         val link = Intent(app, MainActivity::class.java).putExtra(dev.mealprep.app.ui.nav.Nav.EXTRA, dev.mealprep.app.ui.nav.Nav.list())
         ActivityScenario.launch<MainActivity>(link).use {
-            compose.onNode(hasText("Shopping list") and isSelectable()).assertIsSelected()
+            compose.onNode(hasText("Shopping") and isSelectable()).assertIsSelected()
             compose.onNodeWithText("Shopping for:").assertExists()
         }
     }

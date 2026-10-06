@@ -92,7 +92,7 @@ class StaplesViewModelTest {
         var saved: StapleForm? = null
         compose.setContent {
             StaplesContent(StaplesState(staples, loading = false), onSave = { saved = it; true }, onDelete = {},
-                onMove = { id, by -> moved = id to by }, onDone = {})
+                onMove = { id, by -> moved = id to by }, onBack = {})
         }
         compose.onNodeWithText("2% milk · 1 pack").assertExists()
         compose.onNodeWithText("flour · 2 kg").assertExists()

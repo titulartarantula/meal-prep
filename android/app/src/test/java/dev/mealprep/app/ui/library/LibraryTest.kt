@@ -3,6 +3,11 @@ package dev.mealprep.app.ui.library
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.performScrollToNode
@@ -92,12 +97,25 @@ class LibraryTest {
         compose.setContent {
             LibraryContent(state, {}, {}, onRecipe = {}, onRetry = {}, today = today, onSource = { state = state.copy(source = it) })
         }
-        compose.onNodeWithText("Invented Pantry Book, p. 88").assertExists()
-        compose.onNodeWithText("NYT Cooking").assertExists()
+        compose.onNodeWithText("★ 4 · Invented Pantry Book, p. 88").assertExists()
+        compose.onNodeWithText("★ 5 · good for company · NYT Cooking").assertExists()
+        compose.onNodeWithText("Newest first · all sources").assertExists()            // what the folded filters do
+        compose.onNodeWithText("All sources").assertDoesNotExist()
+        compose.onNodeWithContentDescription(SHOW_FILTERS).performClick()
+        compose.onNodeWithText("Newest first · all sources").assertDoesNotExist()
         compose.onNodeWithText("All sources").performClick()
         compose.onNodeWithText("Unknown book (1)").performClick()
         compose.onNodeWithText("Crêpes with Lemon").assertExists()
         compose.onNodeWithText("Apple Crumble").assertDoesNotExist()
+        compose.onNodeWithContentDescription(HIDE_FILTERS).performClick()
+        compose.onNodeWithText("Newest first · Unknown book").assertExists()
+    }
+
+    @Test fun `the filter summary says the sort, the source and good for company`() {
+        assertEquals("Newest first · all sources", filterSummary(LibraryState()))
+        assertEquals("A–Z · NYT Cooking · good for company",
+            filterSummary(LibraryState(lib, sort = LibrarySort.AZ, source = Sources.NYT, company = true)))
+        assertEquals("Favourites first · all sources", filterSummary(LibraryState(sort = LibrarySort.FAVOURITES)))
     }
 
     @Test fun `edit source sends the book and page, offline says it needs the home network`() = runTest {
@@ -319,12 +337,18 @@ class LibraryTest {
             LibraryContent(LibraryState(withRef, loading = false), {}, {}, onRecipe = { opened = it }, onRetry = {}, today = today)
         }
         val list = compose.onNode(hasScrollAction())
-        list.performScrollToNode(hasText("Uses page 191: add a photo of it so its ingredients are on the list."))
-        list.performScrollToNode(hasText("Family 5/5 · Company: yes · “more cinnamon”"))
+        list.performScrollToNode(hasText("⚠ Page 191 missing"))
+        compose.onNodeWithText("⚠ Page 191 missing", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Page 191 missing: its ingredients aren't on the list")))
+        list.performScrollToNode(hasText("★ 5 · good for company · NYT Cooking"))
+        compose.onNodeWithText("★ 5 · good for company · NYT Cooking", useUnmergedTree = true)   // TalkBack doesn't hear "black star"
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Family 5 out of 5, good for company, NYT Cooking")))
         list.performScrollToNode(hasText("On the plan: next week, week of Oct 25"))
         compose.onNodeWithText("Apple Crumble").performClick()
         assertEquals(10, opened)
-        list.performScrollToNode(hasText("Not rated yet"))
+        list.performScrollToNode(hasText("Not rated · Unknown book"))
+        compose.onNodeWithText("Page 191", substring = true).assertExists()
+        compose.onAllNodesWithText("On the plan", substring = true).assertCountEquals(2)   // only the planned ones
     }
 
     @Test fun `good for company shows only recipes whose verdict is yes`() {
@@ -336,6 +360,8 @@ class LibraryTest {
         var on: Boolean? = null
         compose.setContent { LibraryContent(LibraryState(all = listOf(b, c), company = true, loading = false), {}, {}, {}, {}, today, onCompany = { on = it }) }
         compose.onNodeWithText(NO_COMPANY).assertExists()
+        compose.onNodeWithText("Newest first · all sources · good for company").assertExists()
+        compose.onNodeWithContentDescription(SHOW_FILTERS).performClick()
         compose.onNodeWithText("Good for company").performClick()
         assertEquals(false, on)
     }

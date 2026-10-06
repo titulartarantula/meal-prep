@@ -23,6 +23,13 @@ class PagesStateTest {
         assertEquals(listOf(a, b), s.remove(1).pages)
     }
 
+    @Test fun `undo puts a deleted page back where it was`() {
+        val s = PagesState().add(a).add(b).add(c)
+        assertEquals(listOf(a, b, c), s.remove(1).restore(1, b).pages)
+        assertEquals(listOf(c, a), s.remove(0).remove(0).restore(5, a).pages)   // past the end: last
+        assertEquals(s, s.restore(0, a))                              // already there: unchanged
+    }
+
     @Test fun `retake can be cancelled and ignores a page that isn't there`() {
         val s = PagesState().add(a).add(b)
         assertEquals(listOf(a, b, c), s.retake(1).cancelRetake().add(c).pages)

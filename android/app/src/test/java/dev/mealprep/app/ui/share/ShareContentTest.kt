@@ -32,7 +32,7 @@ class ShareContentTest {
             others = listOf("Mum's recipes")))
         compose.setContent {
             // Like ShareViewModel.confirm: without a name it only marks the field.
-            ShareContent(state, onConfirm = { if (!state.canConfirm) state = state.copy(nameMissing = true) }, onCancel = {}, onSetup = {},
+            ShareContent(state, onConfirm = { if (!state.canConfirm) state = state.copy(nameMissing = true) }, onBack = {}, onSetup = {},
                 onKind = { state = state.copy(kind = it) }, onOtherName = { state = state.copy(otherName = it) },
                 onNote = { state = state.copy(note = it) })
         }

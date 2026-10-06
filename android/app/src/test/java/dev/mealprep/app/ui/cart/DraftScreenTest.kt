@@ -1,9 +1,12 @@
 package dev.mealprep.app.ui.cart
 
-import androidx.compose.ui.test.assertAll
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.isNotEnabled
-import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.unit.dp
+import dev.mealprep.app.ui.common.NAVIGATE_UP
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -21,25 +24,61 @@ import org.robolectric.RobolectricTestRunner
 class DraftScreenTest {
     @get:Rule val compose = createComposeRule()
     private val ready = Http.json.decodeFromString(Draft.serializer(), fixture("draft_ready.json"))
+    private val today = java.time.LocalDate.parse("2026-10-07")
 
-    @Test fun `ready draft shows lines, total and Send`() {
+    @Test fun `ready draft leads each line with the product and price, then one quiet line`() {
         var sent = 0
-        compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(onSend = { sent++ })) }
-        compose.onNodeWithText("Yellow Onions · 1.36 kg bag  $3.99").assertExists()
-        compose.onNodeWithText("No product found — tap Swap to search.").assertExists()
+        compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(onSend = { sent++ }), today = today) }
+        compose.onNodeWithText("Yellow Onions · 1.36 kg bag").assertExists()
+        compose.onNodeWithText("$3.99").assertExists()
+        compose.onNodeWithText("onion · need 3 · diced · 2 recipes").assertExists()   // list name, amount, how many recipes
+        compose.onNodeWithText("No product found for ground beef").assertExists()
+        compose.onNodeWithText("ground beef · need 900 g · Chili").assertExists()      // one recipe: by name
         compose.onNodeWithText("About $3.99 · 1 item").assertExists()
-        compose.onNodeWithText("Need 3 · diced").assertExists()        // amount and prep under the item name
-        compose.onNodeWithText("Need 900 g").assertExists()
+        compose.onNodeWithText("Cart").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        compose.onNodeWithText("Next week (Oct 11)").assertExists()                      // the cart's week under the title
         compose.onNodeWithText("Send to Loblaws").performClick()
         assertEquals(1, sent)
+    }
+
+    @Test fun `a line with no product searches Loblaws directly`() {
+        var swapped: String? = null
+        compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(onSwap = { swapped = it.name })) }
+        compose.onNodeWithText(SEARCH_LOBLAWS).performClick()
+        assertEquals("ground beef", swapped)
+    }
+
+    @Test fun `the line menu says why and for which recipes, and swaps or removes`() {
+        val calls = mutableListOf<String>()
+        compose.setContent {
+            DraftContent(DraftState(ready, loading = false), DraftActions(onSwap = { calls += "swap ${it.name}" },
+                onRemove = { l, r -> calls += "remove ${l.name} $r" }))
+        }
+        compose.onNodeWithContentDescription("More for onion").performClick()
+        compose.onNodeWithText("Need 3 (≈ 600 g) → 1 × 1.36 kg").assertExists()
+        compose.onNodeWithText("For Chili, Fish soup").assertExists()
+        compose.onNodeWithText("Product: Remembered").assertExists()
+        compose.onNodeWithText("Swap product").performClick()
+        compose.onNodeWithContentDescription("More for onion").performClick()
+        compose.onNodeWithText("Remove from cart").performClick()
+        assertEquals(listOf("swap onion", "remove onion true"), calls)
+    }
+
+    @Test fun `a removed line is struck through and offers Put back`() {
+        val removed = ready.copy(lines = listOf(ready.lines[0].copy(removed = true)))
+        var put: Boolean? = null
+        compose.setContent { DraftContent(DraftState(removed, loading = false), DraftActions(onRemove = { _, r -> put = r })) }
+        compose.onNodeWithContentDescription("One more onion").assertDoesNotExist()
+        compose.onNodeWithText("Put back").performClick()
+        assertEquals(false, put)
     }
 
     @Test fun `quantity buttons say which item for TalkBack`() {
         var qty: Int? = null
         compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(onQty = { _, q -> qty = q })) }
-        compose.onNodeWithContentDescription("One more onion").performClick()
+        compose.onNodeWithContentDescription("One more onion").assertHeightIsAtLeast(48.dp).performClick()
         assertEquals(2, qty)
-        compose.onNodeWithContentDescription("One fewer onion").assertExists()
+        compose.onNodeWithContentDescription("One fewer onion").assertHeightIsAtLeast(48.dp)
         compose.onNodeWithContentDescription("Quantity 1").assertExists()
     }
 
@@ -47,7 +86,8 @@ class DraftScreenTest {
         var opened: String? = null
         val sent = ready.copy(status = "sent", pcxCartId = "24b34302-2508-4795-ab5d-2f2f9a7de03c")
         compose.setContent { DraftContent(DraftState(sent, loading = false), DraftActions(onLoblaws = { opened = it })) }
-        compose.onAllNodesWithText("Swap").assertAll(isNotEnabled())   // lines are shown, editing is off
+        compose.onNodeWithContentDescription("One more onion").assertIsNotEnabled()   // lines are shown, editing is off
+        compose.onNodeWithText(SEARCH_LOBLAWS).assertIsNotEnabled()
         compose.onNodeWithText("Open in Loblaws").performClick()
         assertEquals("24b34302-2508-4795-ab5d-2f2f9a7de03c", opened)
     }
@@ -73,12 +113,31 @@ class DraftScreenTest {
         compose.onNodeWithText("Send to Loblaws").assertIsNotEnabled()
     }
 
-    @Test fun `planner explanation shows under the product when the server sends it`() {
+    @Test fun `planner explanation is in the line's menu when the server sends it`() {
         compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions()) }
+        compose.onNodeWithText("Need 3 (≈ 600 g) → 1 × 1.36 kg").assertDoesNotExist()
+        compose.onNodeWithContentDescription("More for onion").performClick()
         compose.onNodeWithText("Need 3 (≈ 600 g) → 1 × 1.36 kg").assertExists()
         val (matched, unmatched) = ready.lines
         assertEquals(Triple(1, false, "Need 3 (≈ 600 g) → 1 × 1.36 kg"), Triple(matched.packsMin, matched.needsCheck, matched.why))
         assertEquals(Triple(null, false, null), Triple(unmatched.packsMin, unmatched.needsCheck, unmatched.why))  // older server
+    }
+
+    @Test fun `back leaves the cart`() {
+        var back = 0
+        compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(onBack = { back++ })) }
+        compose.onNodeWithContentDescription(NAVIGATE_UP).performClick()
+        assertEquals(1, back)
+    }
+
+    @Test fun `line detail and weeks title`() {
+        val line = ready.lines[0]
+        assertEquals("onion · need 3 · diced · 2 recipes", lineDetail(line))
+        assertEquals("onion · need 3 · diced · 2 recipes · $3.99 each", lineDetail(line.copy(quantity = 2)))
+        assertEquals("milk", lineDetail(line.copy(name = "milk", qty = null, prep = null, recipes = emptyList())))
+        assertEquals("Next week (Oct 11)", weeksTitle(listOf("2026-10-11"), today))
+        assertEquals("Oct 11 + Oct 18", weeksTitle(listOf("2026-10-18", "2026-10-11"), today))
+        assertEquals(null, weeksTitle(emptyList(), today))
     }
 
     @Test fun `need text`() {
