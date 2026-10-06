@@ -27,20 +27,27 @@ def save_recipe(conn, r: Recipe, ai_provider: str | None = None) -> int:
         if row:
             return row[0]
     kind = r.source_kind or r.default_kind()
-    title, ref = (None, None) if kind == "nyt" else (r.source_title, r.source_ref)
+    title, ref, author, isbn = _source(kind, r.source_title, r.source_ref, r.source_author, r.source_isbn)
     return conn.execute(
-        "INSERT INTO recipes(source, source_url, title, servings, data, ai_provider, source_kind, source_title, source_ref) "
-        "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-        (r.source, r.source_url, r.title, r.servings, _data(r), ai_provider, kind, title, ref),
+        "INSERT INTO recipes(source, source_url, title, servings, data, ai_provider, source_kind, source_title, source_ref, "
+        "source_author, source_isbn) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+        (r.source, r.source_url, r.title, r.servings, _data(r), ai_provider, kind, title, ref, author, isbn),
     ).fetchone()[0]
 
 
-_RECIPE_COLS = "id, data, source_kind, source_title, source_ref"
+def _source(kind, title, ref, author, isbn) -> tuple:
+    """An NYT recipe has no book, page, author or ISBN; an author/ISBN belongs to a known book title only."""
+    if kind == "nyt":
+        return None, None, None, None
+    return (title, ref, author, isbn) if title else (None, ref, None, None)
+
+
+_RECIPE_COLS = "id, data, source_kind, source_title, source_ref, source_author, source_isbn"
 
 
 def _recipe(row) -> Recipe:
-    i, d, kind, title, ref = row
-    return Recipe(**d, id=i, source_kind=kind, source_title=title, source_ref=ref)
+    i, d, kind, title, ref, author, isbn = row
+    return Recipe(**d, id=i, source_kind=kind, source_title=title, source_ref=ref, source_author=author, source_isbn=isbn)
 
 
 def get_recipe(conn, rid: int, for_update: bool = False) -> Recipe | None:
@@ -54,8 +61,11 @@ def update_recipe(conn, rid: int, r: Recipe) -> None:
     conn.execute("UPDATE recipes SET title=%s, servings=%s, data=%s WHERE id=%s", (r.title, r.servings, _data(r), rid))
 
 
-def update_source(conn, rid: int, kind: str, title: str | None, ref: str | None) -> None:
-    conn.execute("UPDATE recipes SET source_kind=%s, source_title=%s, source_ref=%s WHERE id=%s", (kind, title, ref, rid))
+def update_source(conn, rid: int, kind: str, title: str | None, ref: str | None,
+                  author: str | None = None, isbn: str | None = None) -> None:
+    title, ref, author, isbn = _source(kind, title, ref, author, isbn)
+    conn.execute("UPDATE recipes SET source_kind=%s, source_title=%s, source_ref=%s, source_author=%s, source_isbn=%s "
+                 "WHERE id=%s", (kind, title, ref, author, isbn, rid))
 
 
 def source_filter(source: str | None) -> tuple[str, dict]:
@@ -82,15 +92,19 @@ def recipe_sources(conn) -> list[dict]:
     """Distinct sources with counts: NYT Cooking, each book (titles grouped case-insensitively, the newest
     recipe's spelling shown), Unknown book, Other. `key` is the GET /recipes?source= value that lists them."""
     rows = conn.execute(
-        "SELECT source_kind, (array_agg(source_title ORDER BY id DESC))[1], count(*) FROM recipes "
+        "SELECT source_kind, (array_agg(source_title ORDER BY id DESC))[1], count(*), "
+        "(array_agg(source_author ORDER BY id DESC) FILTER (WHERE source_author IS NOT NULL))[1], "
+        "(array_agg(source_isbn ORDER BY id DESC) FILTER (WHERE source_isbn IS NOT NULL))[1] FROM recipes "
         "GROUP BY source_kind, lower(source_title)").fetchall()
     nyt = [{"key": "nyt", "kind": "nyt", "title": None, "label": "NYT Cooking", "count": n}
-           for k, _, n in rows if k == "nyt"]
-    books = sorted(({"key": f"book:{t}", "kind": "book", "title": t, "label": t, "count": n}
-                    for k, t, n in rows if k == "book" and t is not None), key=lambda b: b["title"].lower())
+           for k, _, n, _, _ in rows if k == "nyt"]
+    # a book's author/ISBN = the newest recipe's that has one
+    books = sorted(({"key": f"book:{t}", "kind": "book", "title": t, "label": t, "count": n, "author": a, "isbn": i}
+                    for k, t, n, a, i in rows if k == "book" and t is not None), key=lambda b: b["title"].lower())
     unknown = [{"key": "book:", "kind": "book", "title": None, "label": "Unknown book", "count": n}
-               for k, t, n in rows if k == "book" and t is None]
-    other = [{"key": "other", "kind": "other", "title": None, "label": "Other", "count": sum(n for k, _, n in rows if k == "other")}]
+               for k, t, n, _, _ in rows if k == "book" and t is None]
+    other = [{"key": "other", "kind": "other", "title": None, "label": "Other",
+              "count": sum(n for k, _, n, _, _ in rows if k == "other")}]
     return nyt + books + unknown + [o for o in other if o["count"]]
 
 

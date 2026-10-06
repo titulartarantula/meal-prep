@@ -16,7 +16,7 @@ class Ingredient(BaseModel):
 
 
 SourceKind = Literal["nyt", "book", "other"]
-SOURCE_FIELDS = {"source_kind", "source_title", "source_ref"}   # stored in recipes columns, not in `data`
+SOURCE_FIELDS = {"source_kind", "source_title", "source_ref", "source_author", "source_isbn"}   # stored in recipes columns, not in `data`
 
 
 class Recipe(BaseModel):
@@ -32,6 +32,9 @@ class Recipe(BaseModel):
     source_kind: SourceKind | None = None   # None only before saving: save_recipe derives it (default_kind)
     source_title: str | None = None
     source_ref: str | None = None
+    # The book's author(s) and ISBN (0.4.3), filled when a book search suggestion is picked; only with a source_title.
+    source_author: str | None = None
+    source_isbn: str | None = None
 
     def default_kind(self) -> str:
         if self.source_url and "nytimes.com" in self.source_url:

@@ -7,7 +7,7 @@ import psycopg
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, field_validator
 
-from . import db, drafts, prepplan, staples, subrecipe
+from . import books, db, drafts, prepplan, staples, subrecipe
 from .ai import AIError, get_provider
 from .config import Settings
 from .importers.nyt import extract_nyt_url, fetch_nyt, parse_nyt_html
@@ -34,11 +34,23 @@ def _text(v: str | None, limit: int, what: str) -> str | None:
     return v or None
 
 
-class RecipePatch(BaseModel):   # partial update: omitted fields are left unchanged; null clears source_title/source_ref
+def _isbn(v: str | None) -> str | None:
+    """Digits (and a final X) only; blank → None; must be 10 or 13 long."""
+    if v is None:
+        return None
+    v = "".join(ch for ch in v if ch.isalnum()).upper()
+    if v and not (len(v) in (10, 13) and v[:-1].isdigit() and (v[-1].isdigit() or (len(v) == 10 and v[-1] == "X"))):
+        raise ValueError("source_isbn must be an ISBN-10 or ISBN-13")
+    return v or None
+
+
+class RecipePatch(BaseModel):   # partial update: omitted fields are left unchanged; null clears the source fields
     title: str | None = None
     source_kind: SourceKind | None = None
     source_title: str | None = None
     source_ref: str | None = None
+    source_author: str | None = None
+    source_isbn: str | None = None
 
     @field_validator("title")
     @classmethod
@@ -54,6 +66,16 @@ class RecipePatch(BaseModel):   # partial update: omitted fields are left unchan
     @classmethod
     def _source_ref(cls, v):
         return _text(v, 50, "source_ref")
+
+    @field_validator("source_author")
+    @classmethod
+    def _source_author(cls, v):
+        return _text(v, 200, "source_author")
+
+    @field_validator("source_isbn")
+    @classmethod
+    def _source_isbn(cls, v):
+        return _isbn(v)
 
 
 class EntryIn(BaseModel):
@@ -181,11 +203,12 @@ def _save_pages(d: str, files: list[UploadFile]) -> list[str]:
 
 
 def create_app(settings: Settings, provider=None, pcx=None, conn=None,
-               today: Callable[[], date] = date.today) -> FastAPI:
+               today: Callable[[], date] = date.today, book_search=None) -> FastAPI:
     app = FastAPI(title="mealprep")
     ai = provider or get_provider(settings)
     prep_ai = provider or get_provider(settings, timeout=settings.prep_timeout)
     shop = pcx or Pcx(settings.store_id, api_key=settings.pcx_apikey)
+    book_search = book_search or books.BookSearch(google_key=settings.google_books_key)
     if conn is None:
         with db.connect(settings.dsn) as c:       # apply schema once at startup
             drafts.fail_interrupted(c)            # builds cut off by a restart will never finish
@@ -244,13 +267,15 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     @app.post("/recipes/photo", dependencies=A)
     def photo(files: list[UploadFile] = File(...), week: date | None = Form(None),
               title: str | None = Form(None), source_kind: SourceKind = Form("book"),
-              source_title: str | None = Form(None), source_ref: str | None = Form(None), c=Depends(get_conn)):
+              source_title: str | None = Form(None), source_ref: str | None = Form(None),
+              source_author: str | None = Form(None), source_isbn: str | None = Form(None), c=Depends(get_conn)):
         # sync def on purpose: FastAPI runs it in the threadpool, so the minutes-long Claude call
         # doesn't block the event loop
         if not 1 <= len(files) <= 10:
             raise HTTPException(422, "send 1–10 pages")
         try:   # checked before the slow read
-            src = RecipePatch(source_kind=source_kind, source_title=source_title, source_ref=source_ref)
+            src = RecipePatch(source_kind=source_kind, source_title=source_title, source_ref=source_ref,
+                              source_author=source_author, source_isbn=source_isbn)
         except ValueError as e:
             raise HTTPException(422, str(e))
         with tempfile.TemporaryDirectory(prefix="mealprep-") as d:
@@ -259,6 +284,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             except AIError as e:
                 raise HTTPException(502, f"couldn't read recipe: {e}")
         r.source_kind, r.source_title, r.source_ref = src.source_kind, src.source_title, src.source_ref
+        r.source_author, r.source_isbn = src.source_author, src.source_isbn
         return _save_and_plan(c, r, week)
 
     def _recipe_out(c, rid: int) -> RecipeOut:
@@ -268,7 +294,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.patch("/recipes/{recipe_id}", dependencies=A)
     def patch_recipe(recipe_id: int, body: RecipePatch, c=Depends(get_conn)) -> RecipeOut:
-        """Rename a recipe or set where it comes from. An NYT recipe has no book title or page."""
+        """Rename a recipe or set where it comes from. An NYT recipe has no book title or page. A different book title
+        sent without an author/ISBN clears them (they belonged to the old book)."""
         fields = body.model_dump(include=body.model_fields_set)   # only what the client sent
         for f in ("title", "source_kind"):
             if f in fields and fields[f] is None:
@@ -280,11 +307,13 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             kind = fields.get("source_kind", r.source_kind)
             title = fields.get("source_title", r.source_title)
             ref = fields.get("source_ref", r.source_ref)
+            same_book = (title or "").lower() == (r.source_title or "").lower()
+            author = fields.get("source_author", r.source_author if same_book else None)
+            isbn = fields.get("source_isbn", r.source_isbn if same_book else None)
             if kind == "nyt":
-                if fields.get("source_title") or fields.get("source_ref"):
+                if any(fields.get(f) for f in ("source_title", "source_ref", "source_author", "source_isbn")):
                     raise HTTPException(422, "an NYT Cooking recipe has no book title or page")
-                title = ref = None
-            db.update_source(c, recipe_id, kind, title, ref)
+            db.update_source(c, recipe_id, kind, title, ref, author, isbn)
             if "title" in fields:
                 db.update_recipe(c, recipe_id, r.model_copy(update={"title": fields["title"]}))
         return _recipe_out(c, recipe_id)
@@ -293,6 +322,16 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     def recipe_sources(c=Depends(get_conn)):
         """NYT Cooking, each cookbook and "Unknown book", with counts; `key` is the GET /recipes?source= value."""
         return db.recipe_sources(c)
+
+    @app.get("/books/search", dependencies=A)
+    def search_books(q: str = Query("", max_length=200), limit: int = Query(8, ge=1, le=20)):
+        """Book suggestions for "Which book?": Open Library, then Google Books when that finds too little. Upstream
+        trouble is never an error here: whatever was found, [] at worst (and for fewer than 2 characters)."""
+        try:
+            return book_search.search(q, limit)
+        except Exception:   # never 5xx the app over a book lookup
+            log.exception("book search crashed")
+            return []
 
     @app.post("/recipes/{recipe_id}/pages", dependencies=A)
     def attach_pages(recipe_id: int, files: list[UploadFile] = File(...), for_line: int | None = Form(None),

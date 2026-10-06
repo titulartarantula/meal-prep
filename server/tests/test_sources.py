@@ -171,3 +171,58 @@ def test_share_nyt_sets_kind(conn, monkeypatch):
     monkeypatch.setattr(api_mod, "fetch_nyt", lambda url: FIX.read_text())
     rec = client(conn).post("/recipes/share", headers=H, json={"text": "https://cooking.nytimes.com/recipes/1015819-x"}).json()["recipe"]
     assert (rec["source_kind"], rec["source_title"], rec["source_ref"]) == ("nyt", None, None)
+
+
+# --- book author / ISBN (0.4.3) ---
+
+def test_author_isbn_migration_is_additive_and_idempotent(conn):
+    rid = db.save_recipe(conn, book("Test Tart", "Invented Bakes", "p. 40"))
+    conn.execute("ALTER TABLE recipes DROP COLUMN source_author, DROP COLUMN source_isbn")   # a 0.4.2 database
+    conn.execute(db.SCHEMA)
+    got = db.get_recipe(conn, rid)
+    assert (got.source_title, got.source_ref, got.source_author, got.source_isbn) == ("Invented Bakes", "p. 40", None, None)
+    db.update_source(conn, rid, "book", "Invented Bakes", "p. 40", "Ada Pepper", "9780000000017")
+    conn.execute(db.SCHEMA)
+    assert db.get_recipe(conn, rid).source_author == "Ada Pepper"
+
+
+def test_photo_import_with_author_and_isbn(conn):
+    c = client(conn, ai=PhotoAI())
+    f = [("files", ("a.jpg", b"page1", "image/jpeg"))]
+    rec = c.post("/recipes/photo", headers=H, files=f, data={"source_title": "Invented Bakes", "source_ref": "12",
+                                                              "source_author": " Ada  Pepper ", "source_isbn": "978-0-00-000001-7"}).json()["recipe"]
+    assert (rec["source_author"], rec["source_isbn"]) == ("Ada Pepper", "9780000000017")
+    # no book title: no author either
+    rec = c.post("/recipes/photo", headers=H, files=f, data={"source_author": "Ada Pepper"}).json()["recipe"]
+    assert (rec["source_title"], rec["source_author"]) == (None, None)
+    assert c.post("/recipes/photo", headers=H, files=f, data={"source_isbn": "12345"}).status_code == 422
+    assert conn.execute("SELECT count(*) FROM recipes").fetchone()[0] == 2
+
+
+def test_patch_author_isbn_follow_the_book(conn):
+    ids = setup_library(conn)
+    c = client(conn)
+    rid = ids["stew"]
+    body = c.patch(f"/recipes/{rid}", headers=H, json={"source_title": "Invented Bakes", "source_author": "Ada Pepper",
+                                                       "source_isbn": "000000002x"}).json()
+    assert (body["source_author"], body["source_isbn"]) == ("Ada Pepper", "000000002X")
+    # same book (any case), only the page changes: author and ISBN stay
+    body = c.patch(f"/recipes/{rid}", headers=H, json={"source_title": "invented bakes", "source_ref": "p. 9"}).json()
+    assert (body["source_author"], body["source_isbn"]) == ("Ada Pepper", "000000002X")
+    # another book typed without an author (an 0.4.2 app, or free text): the old book's details go
+    body = c.patch(f"/recipes/{rid}", headers=H, json={"source_title": "A Made-Up Garden"}).json()
+    assert (body["source_author"], body["source_isbn"]) == (None, None)
+    body = c.patch(f"/recipes/{rid}", headers=H, json={"source_author": "Basil Thyme"}).json()
+    assert body["source_author"] == "Basil Thyme"
+    # unknown book or NYT: none
+    assert c.patch(f"/recipes/{rid}", headers=H, json={"source_title": None}).json()["source_author"] is None
+    assert c.patch(f"/recipes/{ids['noodles']}", headers=H, json={"source_author": "Ada Pepper"}).status_code == 422
+    assert c.patch(f"/recipes/{rid}", headers=H, json={"source_isbn": "97800000000"}).status_code == 422
+    assert c.patch(f"/recipes/{rid}", headers=H, json={"source_author": "x" * 201}).status_code == 422
+
+
+def test_sources_list_carries_the_books_author(conn):
+    db.save_recipe(conn, book("Test Tart", "Invented Bakes", "p. 40").model_copy(update={"source_author": "Ada Pepper"}))
+    db.save_recipe(conn, book("Test Bun", "Invented Bakes", "12"))
+    got = client(conn).get("/recipes/sources", headers=H).json()
+    assert [(s["label"], s.get("author"), s["count"]) for s in got] == [("Invented Bakes", "Ada Pepper", 2)]

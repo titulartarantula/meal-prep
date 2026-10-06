@@ -225,3 +225,8 @@ DO $$ BEGIN
   END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS recipes_source_idx ON recipes(source_kind, lower(source_title));
+
+-- Book details (2026-10-05, 0.4.3): the author(s) and ISBN of a recipe's cookbook, filled when the app's "Which book?"
+-- search suggestion is picked (GET /books/search). Null = not known; only kept with a source_title.
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS source_author text;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS source_isbn text;

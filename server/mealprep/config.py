@@ -23,6 +23,7 @@ class Settings:
     gemini_key: str = _env("MEALPREP_GEMINI_KEY")
     gemini_model: str = _env("MEALPREP_GEMINI_MODEL", "gemini-2.5-flash")
     pcx_apikey: str = _env("MEALPREP_PCX_APIKEY")
+    google_books_key: str = field(default_factory=lambda: os.environ.get("MEALPREP_GOOGLE_BOOKS_KEY", ""), repr=False)
     match_workers: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_MATCH_WORKERS", "6")))
     prep_workers: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_PREP_WORKERS", "4")))
     ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_AI_TIMEOUT", "300")))
