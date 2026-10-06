@@ -40,6 +40,7 @@ import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performTextClearance
 import dev.mealprep.app.fixture
+import dev.mealprep.app.ui.common.NAME_NEEDED
 import dev.mealprep.app.ui.common.WeekOption
 import java.time.LocalDate
 import kotlinx.coroutines.test.runTest
@@ -258,7 +259,7 @@ class LibraryTest {
                 onAdd = { w, d -> added = w to d }, onWeek = {}, onOpen = {}, onDismissAdded = {}, today = today)
         }
         val list = compose.onNode(hasScrollAction())
-        list.performScrollToNode(hasText("• 2 eggs"))
+        list.performScrollToNode(hasText("2 eggs"))
         list.performScrollToNode(hasText("2. Cook the crêpes."))
         list.performScrollToNode(hasText("Week of Sep 27 · Wed"))
         compose.onNodeWithText("Add to a week").performClick()
@@ -357,7 +358,9 @@ class LibraryTest {
         compose.onNodeWithText("Other").performClick()
         compose.onNodeWithText("Your books").assertDoesNotExist()
         compose.onNodeWithText("Used before").assertExists()
-        compose.onNodeWithText("Save").assertIsNotEnabled()                    // a name is needed
+        compose.onNodeWithText("Save").assertIsEnabled().performClick()        // a name is needed: Save says so
+        compose.onNodeWithText(NAME_NEEDED).assertExists()
+        assertNull(other)
         compose.onNode(hasText("Name") and hasSetTextAction()).performTextInput("mum")
         compose.onNodeWithText("Allotment Club").assertDoesNotExist()          // chips narrow to what is typed
         compose.onNodeWithText("Mum's recipes").performClick()

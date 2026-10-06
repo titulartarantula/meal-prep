@@ -46,14 +46,17 @@ data class ShareState(
     val others: List<String> = emptyList(),
     /** Shared photos are still being copied in (and shrunk). */
     val copying: Boolean = false,
+    /** Save was tapped with Other and no name: the Name field says what's missing. */
+    val nameMissing: Boolean = false,
 ) {
     val book: String get() = choice.title
     val suggestions: BookSuggestions get() = Books.suggest(books, found, choice)
     val isPhotos: Boolean get() = input is ShareInput.Photos || input is ShareInput.Pages
-    val canConfirm: Boolean get() = configured && !queued && when {
+    val canConfirm: Boolean get() = canSave && !(isPhotos && kind == Sources.OTHER && otherName.isBlank())
+    /** Save is enabled: everything but an other source's name is there (a tap without the name says so). */
+    val canSave: Boolean get() = configured && !queued && when {
         input is ShareInput.NytLink -> true
-        isPhotos -> !copying && dir != null && pages.pages.isNotEmpty() && !pages.tooMany &&
-            (kind != Sources.OTHER || otherName.isNotBlank())
+        isPhotos -> !copying && dir != null && pages.pages.isNotEmpty() && !pages.tooMany
         else -> false
     }
 }
@@ -157,7 +160,10 @@ class ShareViewModel(
     /** Hands the import to the background queue; returns the work id (null if nothing to do). */
     fun confirm(): UUID? {
         val s = _state.value
-        if (!s.canConfirm) return null
+        if (!s.canConfirm) {
+            if (s.canSave) _state.update { it.copy(nameMissing = true) }   // only the name is missing
+            return null
+        }
         val id = when (val input = s.input) {
             is ShareInput.NytLink -> imports.enqueueLink(input.url)
             else -> {

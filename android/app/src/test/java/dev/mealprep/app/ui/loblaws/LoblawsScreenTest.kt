@@ -90,7 +90,7 @@ class LoblawsScreenTest {
         var prefs by mutableStateOf(Settings())
         compose.setContent { LoblawsSettingsContent(prefs, onHideMarker = {}, onKeepTrust = { keep = it; prefs = prefs.copy(loblawsKeepDeviceTrust = it) }) }
         compose.onNodeWithText("Sign out before loading the cart", substring = true).assertDoesNotExist()
-        compose.onNodeWithText("Hide in-app browser marker (if Loblaws blocks the page)").assertExists()
+        compose.onNodeWithText(HIDE_MARKER).assertExists()
         compose.onNodeWithText(KEEP_TRUST_ON).assertExists()
         compose.onNodeWithText(KEEP_TRUST).performClick()
         assertEquals(false, keep)

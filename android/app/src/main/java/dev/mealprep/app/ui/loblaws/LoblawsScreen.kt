@@ -13,6 +13,8 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -44,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -60,7 +64,7 @@ fun bannerText(step: HandoffStep): String = when (step) {
     HandoffStep.LOADING, HandoffStep.INJECTING, HandoffStep.RELOADING, HandoffStep.VERIFYING -> "Putting your cart into Loblaws…"
     HandoffStep.READY -> "Your cart is in. Tap Sign in and sign in with your PC id — the items move into your account. " +
         "Then pick a pickup time and check out as usual."
-    HandoffStep.BLOCKED -> "Loblaws blocked the in-app browser. Try again, or turn on Settings → Hide in-app browser marker."
+    HandoffStep.BLOCKED -> "Loblaws blocked the in-app browser. Try again, or turn on Settings → $HIDE_MARKER."
     HandoffStep.FAILED -> "The Loblaws page didn't take the cart. Try again."
     HandoffStep.UNREACHABLE -> "Couldn't open loblaws.ca. Check the phone's connection, then try again."
 }
@@ -76,6 +80,7 @@ const val CLOSE_CONFIRM = "Still loading your cart. Close anyway?"
 
 private val STOPPED = setOf(HandoffStep.BLOCKED, HandoffStep.FAILED, HandoffStep.UNREACHABLE)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HandoffBanner(
     step: HandoffStep,
@@ -94,7 +99,8 @@ fun HandoffBanner(
         Text(bannerText(step), style = MaterialTheme.typography.bodyMedium)
         if (step.working) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (step in STOPPED) {
-            Row {
+            // Wraps at large text ("Details" broke into "Detail / s" on one row).
+            FlowRow {
                 TextButton(onRetry) { Text("Try again") }
                 TextButton(onCopy) { Text("Copy cart ID") }
                 if (details != null) TextButton({ showDetails = !showDetails }) { Text(if (showDetails) "Hide details" else "Details") }
@@ -256,16 +262,20 @@ fun LoblawsSettings(graph: AppGraph) {
         onKeepTrust = { v -> scope.launch { graph.settingsStore.update { it.copy(loblawsKeepDeviceTrust = v) } } })
 }
 
-const val KEEP_TRUST = "Keep PC id device trust"
-const val KEEP_TRUST_ON = "The cart page starts signed out of loblaws.ca only, so PC id remembers this phone and doesn't ask for a code."
+// Plain words first; the technical name stays in the detail line for whoever set it up.
+const val KEEP_TRUST = "Skip the sign-in code on this phone"
+const val KEEP_TRUST_ON = "PC id remembers this phone, so it doesn't ask for a code (Keep PC id device trust: the cart page starts " +
+    "signed out of loblaws.ca only)."
 const val KEEP_TRUST_OFF = "The cart page starts with everything cleared, so PC id asks for a code each time."
+const val HIDE_MARKER = "Hide that the cart page is in this app"
+const val HIDE_MARKER_DETAIL = "Turn on only if Loblaws blocks the page (hides the in-app browser marker)."
 
 @Composable
 fun LoblawsSettingsContent(s: Settings, onHideMarker: (Boolean) -> Unit, onKeepTrust: (Boolean) -> Unit = {}) {
     Column {
-        Text("Loblaws", style = MaterialTheme.typography.titleMedium)
+        Text("Loblaws", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         SwitchRow(KEEP_TRUST, if (s.loblawsKeepDeviceTrust) KEEP_TRUST_ON else KEEP_TRUST_OFF, s.loblawsKeepDeviceTrust, onKeepTrust)
-        SwitchRow("Hide in-app browser marker (if Loblaws blocks the page)", null, s.loblawsHideWebViewMarker, onHideMarker)
+        SwitchRow(HIDE_MARKER, HIDE_MARKER_DETAIL, s.loblawsHideWebViewMarker, onHideMarker)
     }
 }
 
@@ -276,7 +286,7 @@ private fun SwitchRow(title: String, detail: String?, checked: Boolean, onChange
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title)
-            detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         Switch(checked, onCheckedChange = null, enabled = enabled)
     }

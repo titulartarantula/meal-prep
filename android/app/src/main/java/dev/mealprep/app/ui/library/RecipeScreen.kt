@@ -1,5 +1,6 @@
 package dev.mealprep.app.ui.library
 
+import dev.mealprep.app.ui.common.announced
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -16,7 +17,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import dev.mealprep.app.core.Fractions
+import dev.mealprep.app.ui.common.GardenChip
+import dev.mealprep.app.ui.home.NO_NIGHT
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -54,7 +61,6 @@ import dev.mealprep.app.ui.common.WeekOption
 import dev.mealprep.app.ui.common.WeekPicker
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.home.refRoute
-import dev.mealprep.app.ui.theme.GardenAccent
 import dev.mealprep.app.work.SyncWorker
 import java.time.LocalDate
 
@@ -122,7 +128,7 @@ private fun ColumnScope.RecipeBody(
     state.added?.let { a ->
         Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
             Column(Modifier.padding(12.dp)) {
-                Text(a.text, color = if (a.ok) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+                Text(a.text, Modifier.announced(), color = if (a.ok) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
                 Row {
                     a.week?.let { w -> TextButton({ onWeek(w) }) { Text("Open that week") } }
                     TextButton(onDismissAdded) { Text("OK") }
@@ -134,7 +140,8 @@ private fun ColumnScope.RecipeBody(
     LazyColumn(Modifier.weight(1f)) {
         item {
             val small = MaterialTheme.typography.bodySmall
-            RatingText.summary(r.ratings)?.let { Text(it) } ?: Text("Not rated yet", style = small)
+            RatingText.summary(r.ratings)?.let { Text(it, Modifier.semantics { contentDescription = RatingText.spoken(it) }) }
+                ?: Text("Not rated yet", style = small)
             plannedText(r.plannedWeeks, today)?.let { Text(it, style = small) }
             SourceLine(r, onEditSource)
             r.sourceUrl?.let { url ->
@@ -154,7 +161,13 @@ private fun ColumnScope.RecipeBody(
         }
         item { Section("Ingredients") }
         ingredientLines(r).forEach { line ->
-            item { if (line.heading) Text(line.text, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp)) else Text("• ${line.text}") }
+            item {
+                if (line.heading) Text(line.text, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                else Row(Modifier.semantics(mergeDescendants = true) {}) {   // a wrapped line hangs under its text
+                    Text("•", Modifier.width(16.dp).clearAndSetSemantics {})
+                    Text(line.text, Modifier.weight(1f))
+                }
+            }
         }
         if (r.steps.isNotEmpty()) {
             item { Section("Steps") }
@@ -164,8 +177,9 @@ private fun ColumnScope.RecipeBody(
             item { Section("On the plan") }
             itemsIndexed(r.history) { _, h ->
                 val week = runCatching { LocalDate.parse(h.week) }.getOrNull()
-                Text(listOfNotNull(week?.let { "Week of ${Weeks.shortDate(it)}" } ?: h.week,
-                    h.day?.let(Weeks::dayLabel) ?: "no night", h.rating?.let { "rated ${it.family}/5" }).joinToString(" · "))
+                val line = listOfNotNull(week?.let { "Week of ${Weeks.shortDate(it)}" } ?: h.week,
+                    h.day?.let(Weeks::dayLabel) ?: "no night", h.rating?.let { "rated ${it.family}/5" }).joinToString(" · ")
+                Text(line, Modifier.semantics { contentDescription = RatingText.spoken(line) })
             }
         }
     }
@@ -183,7 +197,7 @@ fun ingredientLines(r: Recipe): List<IngredientLine> {
             group = ing.subRecipe
             group?.let { out += IngredientLine("$it:", heading = true) }
         }
-        out += IngredientLine(ing.raw.ifBlank { ing.name })
+        out += IngredientLine(Fractions.pretty(ing.raw.ifBlank { ing.name }))
     }
     return out
 }
@@ -204,9 +218,9 @@ fun AddToWeekDialog(
                 WeekPicker(withSelected(options.ifEmpty { listOf(WeekOption(week, Weeks.weekChoiceLabel(week, today), null)) }, setOf(week), today),
                     week) { week = it }
                 Text("Night (optional)")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FilterChip(night == null, { night = null }, { Text("No night yet") }, colors = GardenAccent.chipColors())
-                    (0..6).forEach { d -> FilterChip(night == d, { night = d }, { Text(Weeks.dayLabel(d)) }, colors = GardenAccent.chipColors()) }
+                FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    GardenChip(night == null, { night = null }, NO_NIGHT)
+                    (0..6).forEach { d -> GardenChip(night == d, { night = d }, Weeks.dayLabel(d)) }
                 }
                 if (already) Text("It's already in that week. Pick another week, or move it on the week screen.",
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -222,10 +236,9 @@ fun AddToWeekDialog(
 @Composable
 private fun SourceLine(r: Recipe, onEdit: () -> Unit) {
     val kind = Sources.kind(r)
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("From: " + Sources.label(r), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        if (kind != Sources.NYT) TextButton(onEdit) { Text(if (kind == Sources.BOOK && r.sourceTitle == null) "Add book" else "Edit source") }
-    }
+    // The button under the line: beside it, large text squeezed the source to a word or two a line.
+    Text("From: " + Sources.label(r), style = MaterialTheme.typography.bodyMedium)
+    if (kind != Sources.NYT) TextButton(onEdit) { Text(if (kind == Sources.BOOK && r.sourceTitle == null) "Add book" else "Edit source") }
 }
 
 /**
@@ -247,6 +260,7 @@ fun EditSourceDialog(r: Recipe, books: List<BookSuggestion>, found: List<BookSug
     var page by rememberSaveable { mutableStateOf(if (wasOther) "" else r.sourceRef.orEmpty()) }
     var name by rememberSaveable { mutableStateOf(if (wasOther) r.sourceTitle.orEmpty() else "") }
     var note by rememberSaveable { mutableStateOf(if (wasOther) r.sourceRef.orEmpty() else "") }
+    var nameMissing by rememberSaveable { mutableStateOf(false) }
     val choice = BookChoice(title, author, isbn, picked)
     fun set(c: BookChoice) { title = c.title; author = c.author; isbn = c.isbn; picked = c.picked }
     val other = kind == Sources.OTHER
@@ -256,16 +270,22 @@ fun EditSourceDialog(r: Recipe, books: List<BookSuggestion>, found: List<BookSug
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SourceKindChips(kind, { kind = it })
-                if (other) OtherFields(name, { name = it }, note, { note = it }, others)
+                if (other) OtherFields(name, { name = it }, note, { note = it }, others, nameMissing = nameMissing)
                 else BookFields(title, { t -> set(choice.typed(t)); onBookTyped(t) }, page, { page = it },
                     Books.suggest(books, found, choice), onPick = { set(it.choice) })
                 if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                error?.let { Text(it, Modifier.announced(), color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
-            TextButton({ if (other) onSaveOther(name, note) else onSave(choice, page) },
-                enabled = !saving && (!other || name.isNotBlank())) { Text("Save") }
+            // Enabled without a name too: tapping it then says what's missing, next to the field.
+            TextButton({
+                when {
+                    !other -> onSave(choice, page)
+                    name.isBlank() -> nameMissing = true
+                    else -> onSaveOther(name, note)
+                }
+            }, enabled = !saving) { Text("Save") }
         },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )

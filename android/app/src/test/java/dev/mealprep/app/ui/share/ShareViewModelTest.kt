@@ -222,7 +222,10 @@ class ShareViewModelTest {
         assertEquals(Sources.BOOK, s.kind)                             // a book by default, as before
         vm.setKind(Sources.OTHER)
         assertFalse(vm.state.value.canConfirm)                         // a name is needed
+        assertTrue(vm.state.value.canSave)                             // but Save stays enabled and says why on a tap
+        assertFalse(vm.state.value.nameMissing)
         assertNull(vm.confirm())
+        assertTrue(vm.state.value.nameMissing)
         vm.setOtherName(" mum's RECIPES "); vm.setNote(" card 3 ")
         assertTrue(vm.state.value.canConfirm)
         val id = vm.confirm()!!

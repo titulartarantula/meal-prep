@@ -62,18 +62,18 @@ fun ShareContent(
                     modifier = Modifier.fillMaxWidth())
                 WhereFromTitle()
                 SourceKindChips(state.kind, onKind)
-                if (state.kind == Sources.OTHER) OtherFields(state.otherName, onOtherName, state.note, onNote, state.others)
+                if (state.kind == Sources.OTHER) OtherFields(state.otherName, onOtherName, state.note, onNote, state.others, nameMissing = state.nameMissing)
                 else BookFields(state.book, onBook, state.page, onPage, state.suggestions, onPickBook)
             }
         }
         MessageText(state.message)
         if (state.input is ShareInput.NytLink || (state.isPhotos && state.pages.pages.isNotEmpty())) {
             Text("It goes into Recipes. Add it to a week from there when you plan.", style = MaterialTheme.typography.bodyMedium)
-            Button(onClick = onConfirm, enabled = state.canConfirm, modifier = Modifier.fillMaxWidth()) { Text(SAVE) }
+            Button(onClick = onConfirm, enabled = state.canSave, modifier = Modifier.fillMaxWidth()) { Text(SAVE) }
             if (state.isPhotos) Text("Reading pages takes about a minute. You can leave the app; it will let you know.",
                 style = MaterialTheme.typography.bodySmall)
         }
-        TextButton(onClick = onCancel) { Text(if (state.canConfirm || state.copying) "Cancel" else "Close") }
+        TextButton(onClick = onCancel) { Text(if (state.canSave || state.copying) "Cancel" else "Close") }
     }
 }
 
