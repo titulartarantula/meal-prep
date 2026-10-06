@@ -21,8 +21,10 @@ phone, in the app's private storage. Uninstalling the app removes it.
 stored in the app's private storage on the phone. Android's backup is turned off for the app.
 
 **The server.** The server belongs to you or your household. It stores recipes and plans, and it may send
-recipe text to an AI service it is configured to use, in order to read the recipe. That happens on the
-server, under the choices of whoever runs it, not in the app.
+recipe text to an AI service it is configured to use, in order to read the recipe. When you type a cookbook's
+title, the server may look the title up in public book catalogues (Open Library, Google Books) to suggest the
+book's full name and author; the phone itself never contacts them. That happens on the server, under the choices
+of whoever runs it, not in the app.
 
 ## What the app does not do
 

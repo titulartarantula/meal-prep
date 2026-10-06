@@ -119,6 +119,29 @@ class ApiTest {
         assertEquals("""{"text":"https://cooking.nytimes.com/recipes/1-x"}""", sentBody())
     }
 
+    @Test fun `book search parses hits and sends the query`() = runTest {
+        reply(fixture("books_search.json"))
+        val hits = api.searchBooks("imaginary larder", 8)
+        assertEquals("/books/search?q=imaginary%20larder&limit=8", server.takeRequest().target)
+        assertEquals(3, hits.size)
+        assertEquals(BookHit("The Imaginary Larder", "Suppers from an Invented Pantry", listOf("Ada Pepper", "Basil Thyme"), 1999,
+            "9780000000017", "Imaginary Press", "openlibrary"), hits[0])
+        assertEquals(BookHit("Imaginary Larder Two", null, listOf("Ada Pepper"), 2004, source = "openlibrary"), hits[1])
+        assertEquals("google", hits[2].source)                         // unknown fields ignored
+        reply("[]"); assertTrue(api.searchBooks("zz", 8).isEmpty())
+    }
+
+    @Test fun `source patch sends every source field, null clears`() = runTest {
+        reply(fixture("recipe_11.json"))
+        val r = api.patchRecipe(11, Bodies.sourcePatch("Invented Bakes", null, "Ada Pepper", "9780000000017"))
+        assertEquals("""{"source_kind":"book","source_title":"Invented Bakes","source_ref":null,"source_author":"Ada Pepper","source_isbn":"9780000000017"}""",
+            sentBody())
+        assertNull(r.sourceAuthor)
+        reply(fixture("recipe_11.json").replace("\"source_ref\": null", "\"source_ref\": null, \"source_author\": \"Ada Pepper\", \"source_isbn\": \"9780000000017\""))
+        val withBook = api.recipe(11)
+        assertEquals("Ada Pepper" to "9780000000017", withBook.sourceAuthor to withBook.sourceIsbn)
+    }
+
     @Test fun `photo upload is multipart with pages in order and the week`() = runTest {
         val a = tmp.newFile("x.jpg").apply { writeBytes(byteArrayOf(1)) }
         val b = tmp.newFile("y.jpg").apply { writeBytes(byteArrayOf(2)) }

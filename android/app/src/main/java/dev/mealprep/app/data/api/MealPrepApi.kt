@@ -21,13 +21,16 @@ interface MealPrepApi {
     @POST("recipes/share") suspend fun share(@Body body: ShareIn): ShareResult
     @Multipart @POST("recipes/photo")
     suspend fun photo(@Part files: List<MultipartBody.Part>, @Part("week") week: RequestBody?, @Part("title") title: RequestBody?,
-                      @Part("source_title") sourceTitle: RequestBody? = null, @Part("source_ref") sourceRef: RequestBody? = null): ShareResult
+                      @Part("source_title") sourceTitle: RequestBody? = null, @Part("source_ref") sourceRef: RequestBody? = null,
+                      @Part("source_author") sourceAuthor: RequestBody? = null, @Part("source_isbn") sourceIsbn: RequestBody? = null): ShareResult
     @Multipart @POST("recipes/{id}/pages")
     suspend fun pages(@Path("id") id: Int, @Part files: List<MultipartBody.Part>, @Part("for_line") forLine: RequestBody?): Recipe
     @GET("recipes") suspend fun recipes(@Query("sort") sort: String): List<Recipe>
     @GET("recipes/{id}") suspend fun recipe(@Path("id") id: Int): Recipe
     @PATCH("recipes/{id}") suspend fun patchRecipe(@Path("id") id: Int, @Body body: JsonObject): Recipe
     @GET("recipes/sources") suspend fun sources(): List<RecipeSource>
+    /** Book suggestions; the server asks Open Library / Google Books, the phone never does. */
+    @GET("books/search") suspend fun searchBooks(@Query("q") q: String, @Query("limit") limit: Int): List<BookHit>
 
     @GET("weeks") suspend fun weeks(@Query("from") from: String, @Query("count") count: Int): List<WeekSummary>
     @GET("weeks/{week}") suspend fun week(@Path("week") week: String): List<PlanEntry>

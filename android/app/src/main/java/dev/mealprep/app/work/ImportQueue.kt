@@ -25,10 +25,13 @@ class ImportQueue(private val wm: WorkManager) {
         /** An NYT link → the library ([week] null: the app no longer plans while importing; kept for old jobs). */
         fun linkInput(text: String, week: LocalDate? = null): Data =
             workDataOf(ImportWorker.KIND to ImportWorker.LINK, ImportWorker.TEXT to text, ImportWorker.WEEK to week?.toString())
-        /** Cookbook pages in [dir] (page01.jpg …, in reading order) → a new library recipe from [book], [page]. */
-        fun photoInput(dir: File, title: String?, book: String? = null, page: String? = null, week: LocalDate? = null): Data = workDataOf(
+        /** Cookbook pages in [dir] (page01.jpg …, in reading order) → a new library recipe from [book], [page]
+         *  (+ the book's [author] / [isbn] when a suggestion was picked). */
+        fun photoInput(dir: File, title: String?, book: String? = null, page: String? = null, week: LocalDate? = null,
+                       author: String? = null, isbn: String? = null): Data = workDataOf(
             ImportWorker.KIND to ImportWorker.PHOTO, ImportWorker.DIR to dir.path, ImportWorker.WEEK to week?.toString(),
-            ImportWorker.TITLE to title, ImportWorker.BOOK to book, ImportWorker.BOOK_PAGE to page)
+            ImportWorker.TITLE to title, ImportWorker.BOOK to book, ImportWorker.BOOK_PAGE to page,
+            ImportWorker.BOOK_AUTHOR to author, ImportWorker.BOOK_ISBN to isbn)
         /** A photo of the page that ingredient line [forLine] of recipe [recipeId] refers to ("…, page 191"). */
         fun pagesInput(dir: File, recipeId: Int, forLine: Int, page: Int = 0): Data = workDataOf(
             ImportWorker.KIND to ImportWorker.PAGES, ImportWorker.DIR to dir.path,
@@ -36,7 +39,8 @@ class ImportQueue(private val wm: WorkManager) {
     }
 
     fun enqueueLink(text: String): UUID = enqueue(linkInput(text))
-    fun enqueuePhotos(dir: File, title: String?, book: String?, page: String?): UUID = enqueue(photoInput(dir, title, book, page))
+    fun enqueuePhotos(dir: File, title: String?, book: String?, page: String?, author: String? = null, isbn: String? = null): UUID =
+        enqueue(photoInput(dir, title, book, page, author = author, isbn = isbn))
     fun enqueuePages(dir: File, recipeId: Int, forLine: Int, page: Int): UUID = enqueue(pagesInput(dir, recipeId, forLine, page))
 
     fun enqueue(input: Data): UUID {

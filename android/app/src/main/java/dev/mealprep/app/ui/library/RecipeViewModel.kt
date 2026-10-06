@@ -2,12 +2,16 @@ package dev.mealprep.app.ui.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.mealprep.app.core.BookChoice
+import dev.mealprep.app.core.BookSuggestion
+import dev.mealprep.app.core.Books
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.ApiError
 import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.data.api.userMessage
+import dev.mealprep.app.ui.common.BookLookup
 import dev.mealprep.app.ui.common.WeekOption
 import dev.mealprep.app.ui.common.errorMessage
 import dev.mealprep.app.ui.common.offlineSince
@@ -30,8 +34,9 @@ data class RecipeState(
     val options: List<WeekOption> = emptyList(),
     val adding: Boolean = false,
     val added: Added? = null,
-    /** Book titles to suggest in Edit source. */
-    val books: List<String> = emptyList(),
+    /** The household's books to suggest in Edit source, and the server's book search for what is typed there. */
+    val books: List<BookSuggestion> = emptyList(),
+    val found: List<BookSuggestion> = emptyList(),
     val savingSource: Boolean = false,
     /** Why Edit source didn't save (null = fine). */
     val sourceError: String? = null,
@@ -64,26 +69,35 @@ class RecipeViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(RecipeState())
     val state = _state.asStateFlow()
+    private val lookup = BookLookup(viewModelScope, { q -> repo.searchBooks(q, Books.LIMIT) })
 
     init {
+        viewModelScope.launch { lookup.found.collect { f -> _state.update { it.copy(found = f) } } }
         load()
         viewModelScope.launch { _state.update { it.copy(options = weekOptions(today(), repo.weeks(today(), 8).value)) } }
     }
 
-    /** Book titles for Edit source's suggestions (asked when the dialog opens; the saved copy will do offline). */
+    /** The household's books for Edit source's suggestions (asked when the dialog opens; the saved copy will do offline). */
     fun loadBooks() {
-        viewModelScope.launch { _state.update { it.copy(books = repo.sources().value.orEmpty().mapNotNull { s -> s.title }) } }
+        lookup.typed("")   // no search rows left over from the last time
+        viewModelScope.launch { _state.update { it.copy(books = Books.yours(repo.sources().value.orEmpty())) } }
     }
 
-    /** Sets the book and page (blank = unknown book / no page). True once saved; the recipe is re-read. */
-    fun editSource(book: String, page: String, done: (Boolean) -> Unit = {}) {
+    /** Edit source's book field changed: ask the book search (debounced). */
+    fun bookTyped(text: String) = lookup.typed(text)
+
+    /** Sets the book (with its author/ISBN when known) and page (blank = unknown book / no page). True once saved;
+     *  the recipe is re-read. */
+    fun editSource(book: BookChoice, page: String, done: (Boolean) -> Unit = {}) {
         if (_state.value.savingSource) return
+        val b = Books.resolve(book, _state.value.books)
         _state.update { it.copy(savingSource = true, sourceError = null) }
         viewModelScope.launch {
-            when (val r = repo.editSource(id, book, page)) {
+            when (val r = repo.editSource(id, b.title, page, b.author, b.isbn)) {
                 is ApiResult.Ok -> {
                     val fresh = repo.recipe(id).value ?: _state.value.recipe?.let { old ->
-                        old.copy(sourceKind = r.value.sourceKind, sourceTitle = r.value.sourceTitle, sourceRef = r.value.sourceRef) }
+                        old.copy(sourceKind = r.value.sourceKind, sourceTitle = r.value.sourceTitle, sourceRef = r.value.sourceRef,
+                            sourceAuthor = r.value.sourceAuthor, sourceIsbn = r.value.sourceIsbn) }
                     done(true)
                     _state.update { it.copy(savingSource = false, recipe = fresh) }
                 }

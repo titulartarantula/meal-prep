@@ -30,13 +30,25 @@ import kotlinx.serialization.Serializable
     val plannedWeeks: List<String> = emptyList(),
     /** Where it comes from (since 0.4.2; see core.Sources): nyt | book | other, the book, its page(s). */
     val sourceKind: String? = null, val sourceTitle: String? = null, val sourceRef: String? = null,
+    /** The book's author(s) and ISBN (since 0.4.3, from a book search pick; null = not known). */
+    val sourceAuthor: String? = null, val sourceIsbn: String? = null,
 ) {
     /** Indexes of lines like "Batter for 24 crêpes, page 191" whose page hasn't been attached yet. */
     val missingPages: List<Int> get() = ingredients.indices.filter { ingredients[it].refPage != null && !ingredients[it].expanded }
 }
 
-/** GET /recipes/sources: [key] is the ?source= filter value; [title] the book (null for NYT / unknown book). */
-@Serializable data class RecipeSource(val key: String, val kind: String, val title: String? = null, val label: String, val count: Int = 0)
+/** GET /recipes/sources: [key] is the ?source= filter value; [title] the book (null for NYT / unknown book), with
+ *  its [author] / [isbn] when known (since 0.4.3). */
+@Serializable data class RecipeSource(
+    val key: String, val kind: String, val title: String? = null, val label: String, val count: Int = 0,
+    val author: String? = null, val isbn: String? = null,
+)
+
+/** GET /books/search: a book the server found (Open Library, or Google Books as a fallback) for "Which book?". */
+@Serializable data class BookHit(
+    val title: String, val subtitle: String? = null, val authors: List<String> = emptyList(), val year: Int? = null,
+    val isbn: String? = null, val publisher: String? = null, val source: String = "",
+)
 
 @Serializable data class PlanEntry(
     val id: Int, val week: String, val recipeId: Int, val day: Int? = null, val multiplier: Double = 1.0,

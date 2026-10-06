@@ -30,7 +30,7 @@ class ImportWorker(
     companion object {
         const val KIND = "kind"; const val LINK = "link"; const val PHOTO = "photo"; const val PAGES = "pages"
         const val TEXT = "text"; const val WEEK = "week"; const val DIR = "dir"; const val TITLE = "title"
-        const val BOOK = "book"; const val BOOK_PAGE = "book_page"
+        const val BOOK = "book"; const val BOOK_PAGE = "book_page"; const val BOOK_AUTHOR = "book_author"; const val BOOK_ISBN = "book_isbn"
         const val RECIPE_ID = "recipe_id"; const val FOR_LINE = "for_line"; const val PAGE = "page"
         const val OUT_RECIPE_ID = "out_recipe_id"; const val OUT_ENTRY_ID = "out_entry_id"; const val OUT_TITLE = "out_title"
         const val OUT_EXISTING = "out_existing"; const val OUT_WEEK = "out_week"; const val OUT_RATING = "out_rating"
@@ -98,7 +98,8 @@ class ImportWorker(
                     pages.isEmpty() -> fail(PAGES_GONE, retrySafe = false)
                     // The pages stay on the phone until the server has the recipe, so "Try again" can resend them.
                     else -> send(cleanup = dir) {
-                        importer.importPhotos(pages, week, inputData.getString(TITLE), inputData.getString(BOOK), inputData.getString(BOOK_PAGE))
+                        importer.importPhotos(pages, week, inputData.getString(TITLE), inputData.getString(BOOK), inputData.getString(BOOK_PAGE),
+                            inputData.getString(BOOK_AUTHOR), inputData.getString(BOOK_ISBN))
                     }
                 }
             }

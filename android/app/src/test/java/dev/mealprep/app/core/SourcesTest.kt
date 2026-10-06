@@ -34,10 +34,11 @@ class SourcesTest {
         assertEquals("book:invented bakes", Sources.key(all[2]))
     }
 
-    @Test fun `book suggestions match what is typed`() {
-        val books = listOf("Invented Bakes", "A Made-Up Garden", "invented bakes")
-        assertEquals(listOf("A Made-Up Garden", "Invented Bakes"), Sources.suggest(books, ""))
-        assertEquals(listOf("Invented Bakes"), Sources.suggest(books, "bak"))
-        assertEquals(emptyList<String>(), Sources.suggest(books, "Invented Bakes"))   // already typed in full
+    @Test fun `a known author follows the book title`() {
+        val withAuthor = r(8, "book", "Invented Bakes", "12").copy(sourceAuthor = "Ada Pepper")
+        assertEquals("Invented Bakes · Ada Pepper, p. 12", Sources.label(withAuthor))
+        assertEquals("Invented Bakes · Ada Pepper et al.",
+            Sources.label(withAuthor.copy(sourceRef = null, sourceAuthor = "Ada Pepper, Basil Thyme, Rosemary Quill")))
+        assertEquals("Unknown book, p. 3", Sources.label(r(9, "book", ref = "3").copy(sourceAuthor = "Ada Pepper")))
     }
 }

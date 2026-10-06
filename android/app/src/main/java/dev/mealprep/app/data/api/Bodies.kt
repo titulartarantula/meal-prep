@@ -21,11 +21,11 @@ object Bodies {
         if (position != null) put("position", position)
     }
 
-    /** A recipe's book and page; null clears them (sent explicitly). */
-    fun sourcePatch(title: String?, ref: String?): JsonObject = buildJsonObject {
+    /** A recipe's book, page, author and ISBN; null clears them (all sent explicitly). */
+    fun sourcePatch(title: String?, ref: String?, author: String? = null, isbn: String? = null): JsonObject = buildJsonObject {
         put("source_kind", "book")
-        if (title != null) put("source_title", title) else put("source_title", JsonNull)
-        if (ref != null) put("source_ref", ref) else put("source_ref", JsonNull)
+        mapOf("source_title" to title, "source_ref" to ref, "source_author" to author, "source_isbn" to isbn)
+            .forEach { (k, v) -> if (v != null) put(k, v) else put(k, JsonNull) }
     }
 
     fun linePatch(productCode: String? = null, quantity: Int? = null, removed: Boolean? = null): JsonObject = buildJsonObject {

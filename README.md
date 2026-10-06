@@ -11,7 +11,8 @@ It has two parts:
   arrange them on nights in the "This week" view. The app talks only
   to the household's own server; it keeps an offline copy of the current week.
 - **Server** (`server/`, Python 3.12 + FastAPI + Postgres). Imports recipes (schema.org JSON-LD from recipe
-  pages, or cookbook photos read by an AI model), stores the weekly plan and ratings, builds a grocery cart
+  pages, or cookbook photos read by an AI model), suggests cookbook titles and authors for the app (Open Library,
+  with Google Books as a fallback), stores the weekly plan and ratings, builds a grocery cart
   for PC Express (Loblaws) by matching ingredients to products, and writes the Sunday prep plan and per-night
   cook cards with an LLM followed by a deterministic food-safety pass.
 
@@ -19,6 +20,7 @@ It has two parts:
 phone (app) ──HTTP + bearer token──▶ mealprep server (FastAPI, systemd user unit) ──▶ Postgres (Docker)
                                          │
                                          ├──▶ AI provider: Claude CLI / Anthropic API / OpenAI-compatible / Gemini
+                                         ├──▶ Open Library, Google Books (book title search; optional key MEALPREP_GOOGLE_BOOKS_KEY)
                                          └──▶ PC Express API (anonymous cart: search, create, add; no login, no checkout)
 ```
 

@@ -127,7 +127,7 @@ class ShareViewModelTest {
         vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/1"))))
         val s = vm.state.await { !it.copying && it.books.isNotEmpty() }
         assertEquals("A Made-Up Garden", s.book)
-        assertEquals(listOf("Invented Bakes"), s.books)
+        assertEquals(listOf("Invented Bakes"), s.books.map { it.title })
         vm.setBook("Invented Bakes"); vm.setPage(" 42 ")
         val id = vm.confirm()!!
         WorkManagerTestInitHelper.getTestDriver(env.context)!!.setAllConstraintsMet(id)
@@ -136,6 +136,55 @@ class ShareViewModelTest {
         assertTrue(body.contains("name=\"source_title\"") && body.contains("\r\n\r\nInvented Bakes\r\n"))
         assertTrue(body.contains("name=\"source_ref\"") && body.contains("\r\n\r\n42\r\n"))
         assertEquals("Invented Bakes", lastBook)                      // the next scan's default
+    }
+
+    @Test fun `typing asks the book search and a picked book brings its author and ISBN`() = runTest {
+        env.on("GET", "/recipes/sources", body = """[{"key":"book:Invented Bakes","kind":"book","title":"Invented Bakes",
+            "label":"Invented Bakes","count":1}]""")
+        env.on("GET", "/books/search", body = fixture("books_search.json"))
+        env.on("POST", "/recipes/photo", body = fixture("share_result_library.json"))
+        val vm = vm()
+        vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/1"))))
+        vm.state.await { !it.copying && it.books.isNotEmpty() }
+        vm.setBook("I"); vm.setBook("Im"); vm.setBook("Imag")
+        val s = vm.state.await { it.found.isNotEmpty() }
+        assertEquals(listOf("Imag"), env.requests.filter { it.url.encodedPath == "/books/search" }.map { it.url.queryParameter("q") })
+        assertEquals(listOf("The Imaginary Larder", "Imaginary Larder Two", "Invented Bakes"), s.suggestions.found.map { it.title })
+        vm.pickBook(s.suggestions.found[0])
+        assertTrue(vm.state.value.suggestions.isEmpty)                // picked: the rows go
+        assertEquals("The Imaginary Larder", vm.state.value.book)
+        val id = vm.confirm()!!
+        WorkManagerTestInitHelper.getTestDriver(env.context)!!.setAllConstraintsMet(id)
+        assertEquals(WorkInfo.State.SUCCEEDED, awaitWork(id).state)
+        val body = env.bodies("POST", "/recipes/photo").single()
+        assertTrue(body.contains("\r\n\r\nThe Imaginary Larder\r\n"))
+        assertTrue(body.contains("name=\"source_author\"") && body.contains("\r\n\r\nAda Pepper, Basil Thyme\r\n"))
+        assertTrue(body.contains("name=\"source_isbn\"") && body.contains("\r\n\r\n9780000000017\r\n"))
+        assertEquals("The Imaginary Larder", lastBook)
+    }
+
+    @Test fun `offline typing quietly keeps your books, free text is sent as typed`() = runTest {
+        env.on("GET", "/recipes/sources", body = """[{"key":"book:Invented Bakes","kind":"book","title":"Invented Bakes",
+            "label":"Invented Bakes","count":1}]""")
+        env.on("POST", "/recipes/photo", body = fixture("share_result_library.json"))
+        val vm = vm()
+        vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/1"))))
+        vm.state.await { !it.copying && it.books.isNotEmpty() }
+        env.offline = true
+        vm.setBook("Inv")
+        withContext(Dispatchers.Default) { delay(700) }                 // past the debounce and the failed call
+        val s = vm.state.value
+        assertEquals(listOf("Invented Bakes"), s.suggestions.yours.map { it.title })
+        assertTrue(s.suggestions.found.isEmpty())
+        assertNull(s.message)                                          // no error shown for the search
+        vm.setBook("Inventive Soups")
+        env.offline = false
+        val id = vm.confirm()!!
+        WorkManagerTestInitHelper.getTestDriver(env.context)!!.setAllConstraintsMet(id)
+        assertEquals(WorkInfo.State.SUCCEEDED, awaitWork(id).state)
+        val body = env.bodies("POST", "/recipes/photo").single()
+        assertTrue(body.contains("\r\n\r\nInventive Soups\r\n"))
+        assertFalse(body.contains("source_author"))
     }
 
     @Test fun `a skipped book is sent as unknown and keeps the remembered one`() = runTest {

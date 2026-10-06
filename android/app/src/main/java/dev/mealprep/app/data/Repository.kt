@@ -4,6 +4,7 @@ import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.ApiError
 import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.Bodies
+import dev.mealprep.app.data.api.BookHit
 import dev.mealprep.app.data.api.CookCard
 import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.data.api.DraftIn
@@ -126,13 +127,15 @@ class Repository(
     suspend fun defaultCartWeek(): ApiResult<LocalDate?> = call { api -> api.defaultCartWeek().week?.let(LocalDate::parse) }
     suspend fun draft(id: Int): ApiResult<Draft> = call { it.draft(id) }
     suspend fun prepPlan(id: Int): ApiResult<PrepPlan> = call { it.prepPlan(id) }
+    /** Book suggestions for "Which book?" (live, never saved: offline the caller falls back to the household's books). */
+    suspend fun searchBooks(q: String, limit: Int = 8): ApiResult<List<BookHit>> = call { it.searchBooks(q, limit) }
     suspend fun shoppingList(weeks: List<LocalDate>, staples: List<Int> = emptyList()): ApiResult<List<ListItem>> =
         call { it.list(ListIn(weeks.map(::wk), staples = staples)) }
 
     // --- writes ---
-    /** Sets the recipe's book and page (blank = not known / none). */
-    suspend fun editSource(id: Int, title: String?, ref: String?): ApiResult<Recipe> =
-        call { it.patchRecipe(id, Bodies.sourcePatch(title.clean(), ref.clean())) }
+    /** Sets the recipe's book, page, author and ISBN (blank = not known / none). */
+    suspend fun editSource(id: Int, title: String?, ref: String?, author: String? = null, isbn: String? = null): ApiResult<Recipe> =
+        call { it.patchRecipe(id, Bodies.sourcePatch(title.clean(), ref.clean(), author.clean(), isbn.clean())) }
     suspend fun addToWeek(week: LocalDate, recipeId: Int): ApiResult<PlanEntry> = call { it.addEntry(wk(week), EntryIn(recipeId)) }
     suspend fun placeEntry(entryId: Int, day: Int?): ApiResult<Unit> =
         call { it.patchEntry(entryId, Bodies.entryPatch(day = day, unplace = day == null)) }
@@ -170,9 +173,13 @@ class Repository(
     // --- Importer ---
     override suspend fun shareLink(text: String, week: LocalDate?): ApiResult<ShareResult> =
         call { it.share(ShareIn(text, week?.toString())) }
-    override suspend fun importPhotos(pages: List<File>, week: LocalDate?, title: String?, book: String?, page: String?): ApiResult<ShareResult> =
-        call { it.photo(Http.pageParts(pages), week?.let { w -> Http.textPart(w.toString()) },
-            title?.takeIf(String::isNotBlank)?.let(Http::textPart), book.clean()?.let(Http::textPart), page.clean()?.let(Http::textPart)) }
+    override suspend fun importPhotos(pages: List<File>, week: LocalDate?, title: String?, book: String?, page: String?,
+                                      author: String?, isbn: String?): ApiResult<ShareResult> {
+        val b = book.clean()   // an author/ISBN only comes with a book
+        return call { it.photo(Http.pageParts(pages), week?.let { w -> Http.textPart(w.toString()) },
+            title?.takeIf(String::isNotBlank)?.let(Http::textPart), b?.let(Http::textPart), page.clean()?.let(Http::textPart),
+            b?.let { author.clean() }?.let(Http::textPart), b?.let { isbn.clean() }?.let(Http::textPart)) }
+    }
     override suspend fun attachPages(recipeId: Int, pages: List<File>, forLine: Int): ApiResult<Recipe> =
         call { it.pages(recipeId, Http.pageParts(pages), Http.textPart(forLine.toString())) }
 

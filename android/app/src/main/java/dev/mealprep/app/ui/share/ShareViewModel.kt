@@ -3,10 +3,15 @@ package dev.mealprep.app.ui.share
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.mealprep.app.core.BookChoice
+import dev.mealprep.app.core.BookSuggestion
+import dev.mealprep.app.core.BookSuggestions
+import dev.mealprep.app.core.Books
 import dev.mealprep.app.core.ShareInput
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.ui.camera.PageStore
 import dev.mealprep.app.ui.camera.PagesState
+import dev.mealprep.app.ui.common.BookLookup
 import dev.mealprep.app.work.ImportQueue
 import java.io.File
 import java.util.UUID
@@ -26,13 +31,17 @@ data class ShareState(
     val dir: File? = null,
     val pages: PagesState = PagesState(),
     val title: String = "",
-    /** Cookbook photos: the book (default: the last one used; empty = unknown) and page; [books] to suggest. */
-    val book: String = "",
+    /** Cookbook photos: the book (default: the last one used; empty = unknown; a picked suggestion also carries its
+     *  author/ISBN) and page; [books] = the household's books, [found] = the server's book search for what is typed. */
+    val choice: BookChoice = BookChoice(),
     val page: String = "",
-    val books: List<String> = emptyList(),
+    val books: List<BookSuggestion> = emptyList(),
+    val found: List<BookSuggestion> = emptyList(),
     /** Shared photos are still being copied in (and shrunk). */
     val copying: Boolean = false,
 ) {
+    val book: String get() = choice.title
+    val suggestions: BookSuggestions get() = Books.suggest(books, found, choice)
     val isPhotos: Boolean get() = input is ShareInput.Photos || input is ShareInput.Pages
     val canConfirm: Boolean get() = configured && !queued && when {
         input is ShareInput.NytLink -> true
@@ -68,6 +77,11 @@ class ShareViewModel(
     private val _state = MutableStateFlow(ShareState())
     val state = _state.asStateFlow()
     private var copyJob: Job? = null
+    private val lookup = BookLookup(viewModelScope, { q -> repo.searchBooks(q, Books.LIMIT) })
+
+    init {
+        viewModelScope.launch { lookup.found.collect { f -> _state.update { it.copy(found = f) } } }
+    }
 
     fun start(input: ShareInput) {
         abandon()
@@ -80,9 +94,9 @@ class ShareViewModel(
             else -> {}
         }
         if (_state.value.isPhotos) {
-            _state.update { it.copy(book = lastBook().orEmpty()) }
+            _state.update { it.copy(choice = BookChoice(lastBook().orEmpty())) }
             viewModelScope.launch {   // the saved copy will do offline
-                val books = repo.sources().value.orEmpty().mapNotNull { it.title }
+                val books = Books.yours(repo.sources().value.orEmpty())
                 _state.update { it.copy(books = books) }
             }
         }
@@ -118,7 +132,8 @@ class ShareViewModel(
     }
 
     fun setTitle(t: String) = _state.update { it.copy(title = t) }
-    fun setBook(b: String) = _state.update { it.copy(book = b) }
+    fun setBook(b: String) { _state.update { it.copy(choice = it.choice.typed(b)) }; lookup.typed(b) }
+    fun pickBook(b: BookSuggestion) = _state.update { it.copy(choice = b.choice) }
     fun setPage(p: String) = _state.update { it.copy(page = p) }
     fun movePage(i: Int, by: Int) = _state.update { it.copy(pages = it.pages.move(i, by)) }
     fun removePage(i: Int) { _state.update { it.copy(pages = it.pages.remove(i)) }; checkCount() }
@@ -136,9 +151,11 @@ class ShareViewModel(
                     _state.update { it.copy(message = SAVE_FAILED) }
                     return null
                 }
-                val book = s.book.trim().ifBlank { null }
-                book?.let(rememberBook)   // the next scan's default; skipping it keeps the last one
-                imports.enqueuePhotos(dir, s.title.trim().ifBlank { null }, book, s.page.trim().ifBlank { null })
+                val book = Books.resolve(s.choice, s.books)
+                val title = book.title.ifBlank { null }
+                title?.let(rememberBook)   // the next scan's default; skipping it keeps the last one
+                imports.enqueuePhotos(dir, s.title.trim().ifBlank { null }, title, s.page.trim().ifBlank { null },
+                    book.author, book.isbn)
             }
         }
         _state.update { it.copy(queued = true) }

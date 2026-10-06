@@ -28,7 +28,14 @@ import dev.mealprep.app.TestEnv
 import dev.mealprep.app.await
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.Http
+import dev.mealprep.app.data.api.BookHit
 import dev.mealprep.app.data.api.Recipe
+import dev.mealprep.app.core.BookChoice
+import dev.mealprep.app.core.BookSuggestion
+import dev.mealprep.app.core.Books
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performTextClearance
 import dev.mealprep.app.fixture
 import dev.mealprep.app.ui.common.WeekOption
 import java.time.LocalDate
@@ -86,29 +93,79 @@ class LibraryTest {
         vm.state.await { it.recipe != null }
         env.on("GET", "/recipes/11", body = fixture("recipe_11.json").replace("\"source_title\": null", "\"source_title\": \"Invented Bakes\""))
         var saved: Boolean? = null
-        vm.editSource(" Invented Bakes ", "", { saved = it })
+        vm.editSource(BookChoice(" Invented Bakes "), "", { saved = it })
         vm.state.await { it.recipe?.sourceTitle == "Invented Bakes" && !it.savingSource }
         assertEquals(true, saved)
-        assertEquals("""{"source_kind":"book","source_title":"Invented Bakes","source_ref":null}""", env.bodies("PATCH", "/recipes/11").single())
+        assertEquals("""{"source_kind":"book","source_title":"Invented Bakes","source_ref":null,"source_author":null,"source_isbn":null}""",
+            env.bodies("PATCH", "/recipes/11").single())
         env.offline = true
-        vm.editSource("X", "1")
+        vm.editSource(BookChoice("X"), "1")
         assertEquals("Changing the source needs the home network (or WireGuard).", vm.state.await { it.sourceError != null }.sourceError)
     }
 
     @Test fun `the detail shows the source with Add book for an unknown one`() {
         val r = Http.json.decodeFromString(Recipe.serializer(), fixture("recipe_11.json"))
-        var edited: Pair<String, String>? = null
+        var edited: Pair<BookChoice, String>? = null
         compose.setContent {
-            RecipeContent(RecipeState(r, loading = false, books = listOf("Invented Bakes")), onAdd = { _, _ -> }, onWeek = {}, onOpen = {},
-                onDismissAdded = {}, today = today, onEditSource = { b, p, done -> edited = b to p; done(true) })
+            RecipeContent(RecipeState(r, loading = false, books = listOf(BookSuggestion("Invented Bakes", mine = true))), onAdd = { _, _ -> },
+                onWeek = {}, onOpen = {}, onDismissAdded = {}, today = today, onEditSource = { b, p, done -> edited = b to p; done(true) })
         }
         compose.onNodeWithText("From: Unknown book").assertExists()
         compose.onNodeWithText("Add book").performClick()
         compose.onNodeWithText("Invented Bakes").performClick()                   // the suggestion fills the field
         compose.onNodeWithText("Page (optional)").performTextInput("191")
         compose.onNodeWithText("Save").performClick()
-        assertEquals("Invented Bakes" to "191", edited)
+        assertEquals("Invented Bakes" to "191", edited?.let { it.first.title to it.second })
         compose.onNodeWithText("Where is it from?").assertDoesNotExist()
+    }
+
+    @Test fun `edit source offers the book search and saves the picked book's author`() {
+        val r = Http.json.decodeFromString(Recipe.serializer(), fixture("recipe_11.json"))
+        var edited: BookChoice? = null
+        val typed = mutableListOf<String>()
+        var state by mutableStateOf(RecipeState(r, loading = false, books = listOf(BookSuggestion("Invented Bakes", mine = true))))
+        compose.setContent {
+            RecipeContent(state, onAdd = { _, _ -> }, onWeek = {}, onOpen = {}, onDismissAdded = {}, today = today,
+                onEditSource = { b, _, done -> edited = b; done(true) }, onBookTyped = { typed += it })
+        }
+        compose.onNodeWithText("Add book").performClick()
+        compose.onNodeWithText("Your books").assertExists()
+        compose.onNodeWithText("Book").performTextInput("Imag")
+        assertEquals("Imag", typed.last())
+        state = state.copy(found = Books.found(Http.json.decodeFromString(ListSerializer(BookHit.serializer()), fixture("books_search.json"))))
+        compose.onNodeWithText("Book search").assertExists()
+        compose.onNodeWithText("Your books").assertDoesNotExist()        // "Imag" isn't in Invented Bakes
+        compose.onNodeWithContentDescription("by Ada Pepper, Basil Thyme, 1999").assertExists()
+        compose.onNodeWithText("The Imaginary Larder: Suppers from an Invented Pantry").assertHasClickAction().performClick()
+        compose.onNodeWithText("Book search").assertDoesNotExist()
+        compose.onNodeWithText("Save").performClick()
+        assertEquals(BookChoice("The Imaginary Larder", "Ada Pepper, Basil Thyme", "9780000000017", picked = true), edited)
+    }
+
+    @Test fun `the source line shows the author, and editing only the page keeps it`() = runTest {
+        val withBook = fixture("recipe_11.json").replace("\"source_title\": null, \"source_ref\": null",
+            "\"source_title\": \"Invented Bakes\", \"source_ref\": \"12\", \"source_author\": \"Ada Pepper\", \"source_isbn\": \"9780000000017\"")
+        val r = Http.json.decodeFromString(Recipe.serializer(), withBook)
+        var edited: Pair<BookChoice, String>? = null
+        compose.setContent {
+            RecipeContent(RecipeState(r, loading = false), onAdd = { _, _ -> }, onWeek = {}, onOpen = {}, onDismissAdded = {},
+                today = today, onEditSource = { b, p, done -> edited = b to p; done(true) })
+        }
+        compose.onNodeWithText("From: Invented Bakes · Ada Pepper, p. 12").assertExists()
+        compose.onNodeWithText("Edit source").performClick()
+        compose.onNodeWithText("Page (optional)").performTextClearance()
+        compose.onNodeWithText("Page (optional)").performTextInput("14")
+        compose.onNodeWithText("Save").performClick()
+        assertEquals(BookChoice("Invented Bakes", "Ada Pepper", "9780000000017", picked = true) to "14", edited)
+        // and the view model sends them back as they are
+        val vm = recipeVm()
+        vm.state.await { it.recipe != null }
+        env.on("GET", "/recipes/11", body = withBook)
+        env.on("PATCH", "/recipes/11", body = withBook)
+        vm.editSource(edited!!.first, "14")
+        vm.state.await { !it.savingSource && env.count("PATCH", "/recipes/11") == 1 }
+        assertEquals("""{"source_kind":"book","source_title":"Invented Bakes","source_ref":"14","source_author":"Ada Pepper","source_isbn":"9780000000017"}""",
+            env.bodies("PATCH", "/recipes/11").single())
     }
 
     @Test fun `planned weeks read like the week screen`() {

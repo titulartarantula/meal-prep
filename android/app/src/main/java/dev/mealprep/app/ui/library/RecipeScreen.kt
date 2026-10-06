@@ -35,6 +35,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.mealprep.app.core.BookChoice
+import dev.mealprep.app.core.BookSuggestion
+import dev.mealprep.app.core.Books
 import dev.mealprep.app.core.RatingText
 import dev.mealprep.app.core.Sources
 import dev.mealprep.app.ui.common.BookFields
@@ -56,7 +59,8 @@ fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, on
     val vm = graphViewModel(key = "recipe-$id") { g -> RecipeViewModel(g.repo, id) }
     val state by vm.state.collectAsStateWithLifecycle()
     RecipeContent(state, onAdd = vm::addToWeek, onWeek = onWeek, onOpen = onOpen, onDismissAdded = vm::dismissAdded,
-        onRetry = vm::load, onClose = onClose, startPicking = addToWeek, onEditSource = vm::editSource, onStartEdit = vm::loadBooks)
+        onRetry = vm::load, onClose = onClose, startPicking = addToWeek, onEditSource = vm::editSource, onStartEdit = vm::loadBooks,
+        onBookTyped = vm::bookTyped)
 }
 
 @Composable
@@ -76,8 +80,10 @@ fun RecipeContent(
     /** Opened from "Add to a week…" on an import card or notification: show the week picker at once. */
     startPicking: Boolean = false,
     /** Book, page, then done(saved). */
-    onEditSource: (String, String, (Boolean) -> Unit) -> Unit = { _, _, _ -> },
+    onEditSource: (BookChoice, String, (Boolean) -> Unit) -> Unit = { _, _, _ -> },
     onStartEdit: () -> Unit = {},
+    /** Edit source's book field changed (the book search). */
+    onBookTyped: (String) -> Unit = {},
 ) {
     var picking by rememberSaveable { mutableStateOf(startPicking) }
     var editing by rememberSaveable { mutableStateOf(false) }
@@ -94,8 +100,9 @@ fun RecipeContent(
             if (!state.loading) TextButton(onRetry) { Text("Try again") }
         } else RecipeBody(r, state, today, onWeek, onOpen, onDismissAdded, onPick = { picking = true }, onEditSource = { editing = true; onStartEdit() })
     }
-    if (editing && r != null) EditSourceDialog(r, state.books, state.savingSource, state.sourceError,
-        onSave = { b, p -> onEditSource(b, p) { ok -> if (ok) editing = false } }, onDismiss = { editing = false })
+    if (editing && r != null) EditSourceDialog(r, state.books, state.found, state.savingSource, state.sourceError,
+        onSave = { b, p -> onEditSource(b, p) { ok -> if (ok) editing = false } }, onDismiss = { editing = false },
+        onBookTyped = onBookTyped)
     if (picking) AddToWeekDialog(state.options, r?.plannedWeeks.orEmpty(), today,
         onAdd = { w, d -> picking = false; onAdd(w, d) }, onDismiss = { picking = false })
 }
@@ -213,20 +220,28 @@ private fun SourceLine(r: Recipe, onEdit: () -> Unit) {
 }
 
 @Composable
-fun EditSourceDialog(r: Recipe, books: List<String>, saving: Boolean, error: String?, onSave: (String, String) -> Unit, onDismiss: () -> Unit) {
-    var book by rememberSaveable { mutableStateOf(r.sourceTitle.orEmpty()) }
+fun EditSourceDialog(r: Recipe, books: List<BookSuggestion>, found: List<BookSuggestion>, saving: Boolean, error: String?,
+                     onSave: (BookChoice, String) -> Unit, onDismiss: () -> Unit, onBookTyped: (String) -> Unit = {}) {
+    // kept across rotation: the field's text, and the author/ISBN that came with a picked (or the saved) book
+    var title by rememberSaveable { mutableStateOf(r.sourceTitle.orEmpty()) }
+    var author by rememberSaveable { mutableStateOf(r.sourceAuthor) }
+    var isbn by rememberSaveable { mutableStateOf(r.sourceIsbn) }
+    var picked by rememberSaveable { mutableStateOf(BookChoice.saved(r.sourceTitle, r.sourceAuthor, r.sourceIsbn).picked) }
     var page by rememberSaveable { mutableStateOf(r.sourceRef.orEmpty()) }
+    val choice = BookChoice(title, author, isbn, picked)
+    fun set(c: BookChoice) { title = c.title; author = c.author; isbn = c.isbn; picked = c.picked }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Where is it from?") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                BookFields(book, { book = it }, page, { page = it }, books)
+                BookFields(title, { t -> set(choice.typed(t)); onBookTyped(t) }, page, { page = it },
+                    Books.suggest(books, found, choice), onPick = { set(it.choice) })
                 if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton({ onSave(book, page) }, enabled = !saving) { Text("Save") } },
+        confirmButton = { TextButton({ onSave(choice, page) }, enabled = !saving) { Text("Save") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }

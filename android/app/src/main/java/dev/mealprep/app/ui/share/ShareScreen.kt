@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
+import dev.mealprep.app.core.BookSuggestion
 import dev.mealprep.app.core.ShareInput
 import dev.mealprep.app.ui.camera.PageStrip
 import dev.mealprep.app.ui.common.BookFields
@@ -34,7 +35,7 @@ import dev.mealprep.app.ui.common.graphViewModel
 fun ShareContent(
     state: ShareState, onConfirm: () -> Unit, onCancel: () -> Unit, onSetup: () -> Unit,
     onTitle: (String) -> Unit = {}, onMove: (Int, Int) -> Unit = { _, _ -> }, onRemove: (Int) -> Unit = {},
-    onBook: (String) -> Unit = {}, onPage: (String) -> Unit = {},
+    onBook: (String) -> Unit = {}, onPage: (String) -> Unit = {}, onPickBook: (BookSuggestion) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(if (state.isPhotos) "Save a cookbook recipe" else "Save a recipe", style = MaterialTheme.typography.titleLarge,
@@ -56,7 +57,7 @@ fun ShareContent(
                 OutlinedTextField(state.title, onTitle, label = { Text("Title (optional)") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth())
                 WhichBookTitle()
-                BookFields(state.book, onBook, state.page, onPage, state.books)
+                BookFields(state.book, onBook, state.page, onPage, state.suggestions, onPickBook)
             }
         }
         MessageText(state.message)
@@ -83,5 +84,6 @@ fun ShareScreen(graph: AppGraph, onQueued: () -> Unit, onCancel: () -> Unit, onS
     LaunchedEffect(pending) { pending?.let { vm.start(it); graph.pendingShare.value = null } }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.queued) { if (state.queued) onQueued() }
-    ShareContent(state, { vm.confirm() }, onCancel, onSetup, vm::setTitle, vm::movePage, vm::removePage, vm::setBook, vm::setPage)
+    ShareContent(state, { vm.confirm() }, onCancel, onSetup, vm::setTitle, vm::movePage, vm::removePage, vm::setBook, vm::setPage,
+        vm::pickBook)
 }

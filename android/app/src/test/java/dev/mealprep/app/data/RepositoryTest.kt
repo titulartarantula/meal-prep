@@ -35,6 +35,29 @@ class RepositoryTest {
         assertEquals(env.now, saved.fetchedAt)
     }
 
+    @Test fun `book search is live and never saved`() = runTest {
+        env.on("GET", "/books/search", body = fixture("books_search.json"))
+        val hits = (env.repo.searchBooks("imaginary larder") as ApiResult.Ok).value
+        assertEquals(3, hits.size)
+        val req = env.requests.single { it.url.encodedPath == "/books/search" }
+        assertEquals("imaginary larder", req.url.queryParameter("q")); assertEquals("8", req.url.queryParameter("limit"))
+        env.offline = true
+        assertEquals(ApiError.Unreachable, (env.repo.searchBooks("imaginary larder") as ApiResult.Err).error)
+    }
+
+    @Test fun `photo import sends the book's author and ISBN only with a book`() = runTest {
+        env.on("POST", "/recipes/photo", body = fixture("share_result_library.json"))
+        val page = java.io.File.createTempFile("page", ".jpg").apply { writeBytes(byteArrayOf(1)); deleteOnExit() }
+        env.repo.importPhotos(listOf(page), null, null, " Invented  Bakes ", "12", " Ada Pepper ", "9780000000017")
+        val body = env.bodies("POST", "/recipes/photo").last()
+        assertTrue(body.contains("name=\"source_title\"") && body.contains("\r\n\r\nInvented Bakes\r\n"))
+        assertTrue(body.contains("name=\"source_author\"") && body.contains("\r\n\r\nAda Pepper\r\n"))
+        assertTrue(body.contains("name=\"source_isbn\"") && body.contains("\r\n\r\n9780000000017\r\n"))
+        env.repo.importPhotos(listOf(page), null, null, " ", null, "Ada Pepper", "9780000000017")
+        val noBook = env.bodies("POST", "/recipes/photo").last()
+        assertFalse(noBook.contains("source_title") || noBook.contains("source_author") || noBook.contains("source_isbn"))
+    }
+
     @Test fun `404 on an optional read is cached as none`() = runTest {
         val p = env.repo.weekPrepPlan(wk)         // no route → 404
         assertNull(p.value); assertNull(p.error)

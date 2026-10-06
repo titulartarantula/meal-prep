@@ -29,10 +29,12 @@ object Sources {
         }
     }
 
-    /** "NYT Cooking", "Salt Fat Acid Heat, p. 123", "Unknown book", "Unknown book, p. 12", "Other". */
+    /** "NYT Cooking", "Salt Fat Acid Heat · Samin Nosrat, p. 123" (the author when known), "Unknown book",
+     *  "Unknown book, p. 12", "Other". */
     fun label(r: Recipe): String = when (kind(r)) {
         NYT -> "NYT Cooking"
-        BOOK -> listOfNotNull(r.sourceTitle ?: UNKNOWN_BOOK, page(r.sourceRef)).joinToString(", ")
+        BOOK -> listOfNotNull(r.sourceTitle?.let { t -> listOfNotNull(t, Books.shortAuthor(r.sourceAuthor)).joinToString(" · ") }
+            ?: UNKNOWN_BOOK, page(r.sourceRef)).joinToString(", ")
         else -> listOfNotNull(r.sourceTitle ?: "Other", page(r.sourceRef)).joinToString(", ")
     }
 
@@ -56,12 +58,5 @@ object Sources {
             .sortedBy { it.label.lowercase() }
         return listOfNotNull(Option(ALL, "All sources", all.size), opt(NYT, "NYT Cooking")) + books +
             listOfNotNull(opt("book:", UNKNOWN_BOOK), opt(OTHER, "Other"))
-    }
-
-    /** Book titles to suggest while typing [typed]: the ones containing it (any case), the typed text itself left out. */
-    fun suggest(books: List<String>, typed: String, max: Int = 5): List<String> {
-        val t = typed.trim().lowercase()
-        return books.distinctBy { it.lowercase() }.filter { b -> b.lowercase() != t && (t.isEmpty() || t in b.lowercase()) }
-            .sortedBy { it.lowercase() }.take(max)
     }
 }
