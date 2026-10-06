@@ -13,6 +13,23 @@ class Unreadable(ValueError):
     pass
 
 
+CHUNK = 64 * 1024
+
+
+def read_capped(f, max_bytes: int) -> bytes:
+    """Read a file object in 64 KB chunks, stopping as soon as it is over max_bytes (ImportTooBig). Whatever a
+    Content-Length header claims is not trusted."""
+    buf, n = [], 0
+    while True:
+        chunk = f.read(CHUNK)
+        if not chunk:
+            return b"".join(buf)
+        n += len(chunk)
+        if n > max_bytes:
+            raise ImportTooBig(f"over {max_bytes} bytes")
+        buf.append(chunk)
+
+
 def too_deep(text: str, limit: int = MAX_DEPTH) -> bool:
     """Bracket nesting deeper than limit (strings skipped): checked before json.loads, which would recurse."""
     depth, in_str, esc = 0, False, False

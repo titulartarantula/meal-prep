@@ -10,7 +10,7 @@ Import (`from_jsonld`) reads one Recipe node back. A node with our `mealprep:rec
 from the block, losslessly. Any other node is mapped from the standard fields: ingredient strings go through the
 deterministic clean-up (`ingredients.clean_ingredient`, pantry words), instructions in any of the shapes sites use,
 yields, times, links (http(s) only, never fetched) and the source. Per-field caps keep a hostile file small."""
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import hashlib
 import html as htmllib
 import json
@@ -120,6 +120,17 @@ def _based_on(r: RecipeOut):
     return None
 
 
+def _utc(iso: str | None) -> str | None:
+    """Timestamps are written in UTC, so the same moment reads the same from any server."""
+    if not iso:
+        return iso
+    try:
+        d = datetime.fromisoformat(iso)
+    except ValueError:
+        return iso
+    return d.astimezone(timezone.utc).isoformat() if d.tzinfo else iso
+
+
 def _drop_none(d: dict) -> dict:
     return {k: v for k, v in d.items() if v is not None}
 
@@ -165,8 +176,11 @@ def to_jsonld(r: RecipeOut, entries: list[dict], *, ratings: bool = True, standa
         "image": r.image, "schema_extra": dict(r.schema_extra),
     }
     if ratings:
-        node[RATINGS] = {"summary": r.ratings.model_dump(mode="json"), "good_for_company": r.ratings.company == "yes",
-                         "entries": list(entries)}
+        summary = r.ratings.model_dump(mode="json")
+        summary["last_rated_at"] = _utc(summary["last_rated_at"])
+        for n in summary["notes"]:
+            n["rated_at"] = _utc(n["rated_at"])
+        node[RATINGS] = {"summary": summary, "good_for_company": r.ratings.company == "yes", "entries": list(entries)}
     for k, v in r.schema_extra.items():   # last, and never over a key written above
         if k in EXTRA_KEYS and k not in node:
             node[k] = v

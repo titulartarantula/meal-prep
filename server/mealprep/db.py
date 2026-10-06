@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
@@ -320,29 +320,32 @@ def pending_ratings(conn, today: date, days: int = 14) -> list[dict]:
 
 def _empty_summary() -> dict:
     return {"times_cooked": 0, "times_rated": 0, "avg_family": None, "last_family": None,
-            "last_rated_at": None, "company": None, "notes": []}
+            "last_rated_at": None, "company": None, "notes": [], "imported_ratings": 0}
 
 
 def rating_summaries(conn, today: date, recipe_ids: list[int] | None = None) -> dict[int, dict]:
     """Per-recipe rating summary (all recipes, or just recipe_ids)."""
     where = "" if recipe_ids is None else " WHERE id = ANY(%(ids)s)"
     out = {rid: _empty_summary() for (rid,) in conn.execute("SELECT id FROM recipes" + where, {"ids": recipe_ids})}
+    # the household's plan entries and the times cooked an import brought in (each one cooked, rated or not)
+    ids = "" if recipe_ids is None else " WHERE {} = ANY(%(ids)s)"
     rows = conn.execute(
-        "SELECT p.recipe_id, p.week + p.day::int, r.family, r.company, r.note, r.rated_at "
-        "FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id"
-        + ("" if recipe_ids is None else " WHERE p.recipe_id = ANY(%(ids)s)")
-        + " ORDER BY r.rated_at DESC NULLS LAST, p.id DESC", {"ids": recipe_ids})
+        "SELECT * FROM (SELECT p.recipe_id, p.week + p.day::int, r.family, r.company, r.note, r.rated_at, false, "
+        "p.id FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id" + ids.format("p.recipe_id")
+        + " UNION ALL SELECT recipe_id, cooked_on, family, company, note, rated_at, true, -id FROM imported_ratings"
+        + ids.format("recipe_id") + ") x ORDER BY 6 DESC NULLS LAST, 8 DESC", {"ids": recipe_ids})
     totals: dict[int, int] = {}
-    for rid, cooked_on, family, company, note, rated_at in rows:   # rated rows newest first
+    for rid, cooked_on, family, company, note, rated_at, imported, _ in rows:   # rated rows newest first
         s = out.get(rid)
         if s is None:
             continue
         if family is None:
-            if cooked_on is not None and cooked_on < today:
+            if imported or (cooked_on is not None and cooked_on < today):
                 s["times_cooked"] += 1
             continue
         s["times_cooked"] += 1
         s["times_rated"] += 1
+        s["imported_ratings"] += imported
         totals[rid] = totals.get(rid, 0) + family
         if s["last_family"] is None:
             s["last_family"], s["last_rated_at"] = family, rated_at.isoformat()
@@ -377,22 +380,64 @@ def recipe_history(conn, recipe_id: int) -> list[dict]:
 
 def rating_entries(conn, today: date, recipe_ids: list[int] | None = None) -> dict[int, list[dict]]:
     """{recipe_id: [entry, …]} — every time cooked, for the export's `mealprep:ratings.entries`: plan entries that are
-    rated or were placed on a night before today (so times_cooked survives a trip to another library). Each entry:
-    date (the night, or null), multiplier, family, company, note, rated_at. Newest first (rated_at, else the night)."""
+    rated or were placed on a night before today (so times_cooked survives a trip to another library), and the
+    imported ones. Each entry: date (the night, or null), multiplier, family, company, note, rated_at. Newest first
+    (rated_at, else the night)."""
+    ids = "" if recipe_ids is None else " AND {} = ANY(%(ids)s)"
     rows = conn.execute(
-        "SELECT p.recipe_id, p.week + p.day::int AS d, p.multiplier, r.family, r.company, r.note, r.rated_at "
-        "FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id "
-        "WHERE (r.plan_id IS NOT NULL OR (p.day IS NOT NULL AND p.week + p.day::int < %(t)s))"
-        + ("" if recipe_ids is None else " AND p.recipe_id = ANY(%(ids)s)")
-        + " ORDER BY COALESCE(r.rated_at, (p.week + p.day::int)::timestamptz) DESC NULLS LAST, p.id DESC",
-        {"t": today, "ids": recipe_ids})
+        "SELECT * FROM (SELECT p.recipe_id, p.week + p.day::int AS d, p.multiplier, r.family, r.company, r.note, "
+        "r.rated_at, p.id AS k FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id "
+        "WHERE (r.plan_id IS NOT NULL OR (p.day IS NOT NULL AND p.week + p.day::int < %(t)s))" + ids.format("p.recipe_id")
+        + " UNION ALL SELECT recipe_id, cooked_on, multiplier, family, company, note, rated_at, -id FROM imported_ratings"
+        " WHERE true" + ids.format("recipe_id")
+        + ") x ORDER BY COALESCE(rated_at, d::timestamptz) DESC NULLS LAST, k DESC", {"t": today, "ids": recipe_ids})
     out: dict[int, list[dict]] = {}
-    for rid, d, m, family, company, note, rated_at in rows:
+    for rid, d, m, family, company, note, rated_at, _ in rows:
         out.setdefault(rid, []).append({"date": d.isoformat() if d else None, "multiplier": float(m), "family": family,
                                         "company": company, "note": note,
-                                        "rated_at": rated_at.isoformat() if rated_at else None})
+                                        "rated_at": rated_at.astimezone(timezone.utc).isoformat() if rated_at else None})
     return out
 
 
 def created_at(conn, recipe_ids: list[int]) -> dict[int, datetime]:
     return dict(conn.execute("SELECT id, created_at FROM recipes WHERE id = ANY(%s)", (recipe_ids,)).fetchall())
+
+
+def imported_history(conn, recipe_id: int) -> list[dict]:
+    """The times cooked an import brought in for a recipe (newest first), shaped like GET /recipes/{id} history."""
+    rows = conn.execute("SELECT cooked_on, multiplier, family, company, note, rated_at FROM imported_ratings "
+                        "WHERE recipe_id=%s ORDER BY COALESCE(rated_at, cooked_on::timestamptz) DESC NULLS LAST, id",
+                        (recipe_id,))
+    return [{"date": d.isoformat() if d else None, "multiplier": float(m),
+             "rating": (rt.model_dump() if (rt := _rating(f, c, n, at)) else None),
+             "rated_at": at.isoformat() if at else None} for d, m, f, c, n, at in rows]
+
+
+def insert_imported_ratings(conn, recipe_id: int, entries, origin: str = "mealprep") -> int:
+    """Add imported times cooked (ImportedRating-like: date, multiplier, family, company, note, rated_at,
+    fingerprint()); an entry already there (same fingerprint) is skipped. Returns how many were added."""
+    added = 0
+    for e in entries:
+        added += conn.execute(
+            "INSERT INTO imported_ratings(recipe_id, cooked_on, multiplier, family, company, note, rated_at, origin, "
+            "fingerprint) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (recipe_id, fingerprint) DO NOTHING",
+            (recipe_id, e.date, e.multiplier, e.family, e.company, e.note, e.rated_at, origin, e.fingerprint())).rowcount
+    return added
+
+
+def recipe_keys(conn) -> list[tuple]:
+    """(id, uid, title, source_url, source_kind, source_title) of every recipe: the import's de-dup index."""
+    return conn.execute("SELECT id, uid::text, title, source_url, source_kind, source_title FROM recipes "
+                        "ORDER BY id").fetchall()
+
+
+def replace_recipe(conn, rid: int, r: Recipe, with_source: bool) -> None:
+    """An import's "Replace with the file's version": title, servings, lines, steps and the extra fields; the source
+    (kind, title, page, author, ISBN, link) too when the file has one. Id, uid, plan entries and ratings stay."""
+    conn.execute("UPDATE recipes SET title=%s, servings=%s, data=%s WHERE id=%s", (r.title, r.servings, _data(r), rid))
+    if with_source:
+        update_source(conn, rid, r.source_kind or r.default_kind(), r.source_title, r.source_ref, r.source_author,
+                      r.source_isbn)
+        if r.source_url:
+            conn.execute("UPDATE recipes SET source_url=%s WHERE id=%s AND NOT EXISTS "
+                         "(SELECT 1 FROM recipes WHERE source_url=%s AND id<>%s)", (r.source_url, rid, r.source_url, rid))

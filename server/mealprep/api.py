@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import books, db, drafts, prepplan, staples, subrecipe
 from .ai import AIError, get_provider
-from .exchange import jsonld
+from .exchange import importer, jsonld, safe
 from .config import Settings
 from .importers.nyt import extract_nyt_url, fetch_nyt, parse_nyt_html
 from .importers.photo import import_photo, import_subrecipe
@@ -202,12 +202,16 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     app = FastAPI(title="mealprep")
     ai = provider or get_provider(settings)
     prep_ai = provider or get_provider(settings, timeout=settings.prep_timeout)
+    import_ai = provider or get_provider(settings, timeout=settings.import_ai_timeout)
+    import_cap = settings.import_max_mb * 1024 * 1024
+    too_big = f"This file is too big to import (max {settings.import_max_mb} MB)."
     shop = pcx or Pcx(settings.store_id, api_key=settings.pcx_apikey)
     book_search = book_search or books.BookSearch(google_key=settings.google_books_key)
     if conn is None:
         with db.connect(settings.dsn) as c:       # apply schema once at startup
             drafts.fail_interrupted(c)            # builds cut off by a restart will never finish
             prepplan.fail_interrupted(c)
+            importer.fail_interrupted(c)
 
     def get_conn():
         # injected connection (tests) or one connection per request (thread-safe transactions)
@@ -225,6 +229,16 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             raise HTTPException(401)
 
     A = [Depends(auth)]
+
+    @app.middleware("http")
+    async def import_size_guard(request, call_next):
+        """Refuse an import upload whose declared size is far over the cap before it is spooled (the cap itself is
+        enforced while reading, whatever the header says)."""
+        if request.url.path == "/recipes/import":
+            n = request.headers.get("content-length", "")
+            if n.isdigit() and int(n) > import_cap + 1024 * 1024:
+                return JSONResponse({"detail": too_big}, status_code=413)
+        return await call_next(request)
 
     @app.get("/health")
     def health():
@@ -390,6 +404,47 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         return _ld(jsonld.bundle(_export_nodes(c, rs, standalone=False), datetime.now(timezone.utc)),
                    f"meal-prep-recipes-{day.isoformat()}.json")
 
+    def run_import(jid: int, items: list[dict], work: list):
+        # background thread with its own connection, like draft builds
+        try:
+            with psycopg.connect(settings.dsn, autocommit=True) as bc:
+                importer.run_job(bc, jid, items, work, import_ai, settings.import_workers, settings.provider)
+        except Exception:
+            log.exception("import job %s: background run crashed", jid)
+
+    @app.post("/recipes/import", dependencies=A)
+    def import_recipes(file: UploadFile = File(...), dry_run: bool = Form(True), choices: str | None = Form(None),
+                       c=Depends(get_conn)):
+        """Import schema.org JSON-LD (one recipe, a list, an @graph, our export) or a saved web page's JSON-LD.
+        dry_run (default) = preview: per-item new / duplicate / failed with default actions, nothing written.
+        dry_run=false + choices {item key: add/skip/update} → 202 and a background job (GET /imports/{id}).
+        A file that can't be read → 422, over the cap → 413; anything wrong with one recipe is that item's
+        `failed` status, never a 5xx. Links in the file are kept as text and never fetched."""
+        try:
+            data = safe.read_capped(file.file, import_cap)
+        except safe.ImportTooBig:
+            raise HTTPException(413, too_big)
+        try:
+            if dry_run:
+                return importer.preview(c, data)[0]
+            jid, items, work, existing = importer.start(c, data, importer.parse_choices(choices))
+        except (safe.Unreadable, importer.BadChoices) as e:
+            raise HTTPException(422, str(e))
+        except Exception:   # a bug must not become a 500 for a file
+            log.exception("import: couldn't read the file")
+            raise HTTPException(422, "Couldn't read this file.")
+        if work:
+            threading.Thread(target=run_import, args=(jid, items, work), name=f"import-{jid}", daemon=True).start()
+        return JSONResponse({**importer.get_job(c, jid), "existing": existing}, status_code=202)
+
+    @app.get("/imports/{job_id}", dependencies=A)
+    def get_import(job_id: int, c=Depends(get_conn)):
+        """An import job: status running / done / failed, progress, per-item results (see POST /recipes/import)."""
+        job = importer.get_job(c, job_id)
+        if job is None:
+            raise HTTPException(404, f"import {job_id}")
+        return job
+
     @app.get("/recipes/{recipe_id}/export", dependencies=A)
     def export_recipe(recipe_id: int, c=Depends(get_conn)):
         """One recipe as a schema.org JSON-LD file (ratings and notes included)."""
@@ -417,7 +472,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             raise HTTPException(404, f"recipe {recipe_id}")
         return RecipeDetail(**r.model_dump(), ratings=db.rating_summaries(c, today(), [recipe_id])[recipe_id],
                             planned_weeks=db.planned_weeks(c, today(), [recipe_id]).get(recipe_id, []),
-                            history=db.recipe_history(c, recipe_id))
+                            history=db.recipe_history(c, recipe_id),
+                            imported_history=db.imported_history(c, recipe_id))
 
     @app.get("/ratings/pending", dependencies=A)
     def ratings_pending(today_: date | None = Query(None, alias="today"), c=Depends(get_conn)):

@@ -29,5 +29,9 @@ class Settings:
     ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_AI_TIMEOUT", "300")))
     # A week's prep plan is one long generation: Claude CLI thinks for ~16k tokens (~3 min for 2 recipes).
     prep_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_PREP_TIMEOUT", "900")))
+    # Recipe import: largest upload (MB), AI workers tidying foreign ingredient lines, and each recipe's AI budget (s).
+    import_max_mb: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_IMPORT_MAX_MB", "20")))
+    import_workers: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_IMPORT_WORKERS", "4")))
+    import_ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_IMPORT_AI_TIMEOUT", "180")))
     store_id: str = "1092"
     default_people: int = 4

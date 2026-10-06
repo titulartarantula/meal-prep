@@ -165,7 +165,14 @@
    "last_family": 5,
    "last_rated_at": "2026-09-28T01:00:00+00:00",
    "company": "yes",
-   "notes": []
+   "notes": [
+    {
+     "note": "Less sugar next time.",
+     "date": "2026-09-27",
+     "rated_at": "2026-09-28T01:00:00+00:00"
+    }
+   ],
+   "imported_ratings": 0
   },
   "good_for_company": true,
   "entries": [

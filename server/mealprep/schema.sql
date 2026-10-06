@@ -243,3 +243,39 @@ UPDATE recipes SET uid = gen_random_uuid() WHERE uid IS NULL;
 ALTER TABLE recipes ALTER COLUMN uid SET DEFAULT gen_random_uuid();
 ALTER TABLE recipes ALTER COLUMN uid SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS recipes_uid_idx ON recipes(uid);
+
+-- Imported ratings (2026-10-06, import/export): times cooked + ratings + notes brought in from another library's export
+-- (mealprep:ratings.entries). They count in the recipe's rating summary like the household's own (Favourites, stars,
+-- Good for company); they are not plan entries (no week/night). fingerprint = hash of the entry (date, multiplier,
+-- family, company, note, rated_at): re-importing the same file adds nothing.
+CREATE TABLE IF NOT EXISTS imported_ratings(
+  id bigserial PRIMARY KEY,
+  recipe_id int NOT NULL REFERENCES recipes ON DELETE CASCADE,
+  cooked_on date,
+  multiplier real NOT NULL DEFAULT 1,
+  family smallint CHECK (family BETWEEN 1 AND 5),      -- null = cooked, not rated
+  company text CHECK (company IN ('yes','maybe','no')),
+  note text,
+  rated_at timestamptz,
+  origin text NOT NULL,                                -- 'mealprep' (another Meal Prep library)
+  fingerprint text NOT NULL,
+  imported_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(recipe_id, fingerprint)
+);
+
+-- Import jobs (2026-10-06): POST /recipes/import with dry_run=false saves in the background (the AI tidies foreign
+-- ingredient lines). report = the per-item results so far (the GET /imports/{id} body); file_sha + choices_sha make a
+-- retried apply of the same file and choices return the same job instead of starting another.
+CREATE TABLE IF NOT EXISTS import_jobs(
+  id serial PRIMARY KEY,
+  file_sha text NOT NULL,
+  choices_sha text NOT NULL,
+  status text NOT NULL DEFAULT 'running' CHECK (status IN ('running','done','failed')),
+  report jsonb NOT NULL,
+  progress_done int NOT NULL DEFAULT 0,
+  progress_total int NOT NULL DEFAULT 0,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS import_jobs_key_idx ON import_jobs(file_sha, choices_sha);

@@ -1,5 +1,6 @@
 import json, re
 from fractions import Fraction
+from ..ai.base import AIError
 from ..ingredients import clean_ingredient
 from ..models import Ingredient
 
@@ -52,16 +53,21 @@ def _ref_page(line: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def structure_ingredients(provider, lines: list[str]) -> list[Ingredient]:
-    """AI-structured lines, then the deterministic clean-up (amount/unit from the raw line, prep out of the name)."""
-    return [clean_ingredient(i).model_copy(update={"ref_page": _ref_page(i.raw)}) for i in _structure(provider, lines)]
+def structure_ingredients(provider, lines: list[str], strict: bool = False) -> list[Ingredient]:
+    """AI-structured lines, then the deterministic clean-up (amount/unit from the raw line, prep out of the name).
+    strict: an answer of the wrong shape raises AIError instead of quietly using the raw lines (import tells the
+    user which recipes were tidied without the AI)."""
+    return [clean_ingredient(i).model_copy(update={"ref_page": _ref_page(i.raw)})
+            for i in _structure(provider, lines, strict)]
 
 
-def _structure(provider, lines: list[str]) -> list[Ingredient]:
+def _structure(provider, lines: list[str], strict: bool = False) -> list[Ingredient]:
     if not lines:
         return []
     out = provider.complete_json(PROMPT.format(n=len(lines), lines=json.dumps(lines, ensure_ascii=False)))
     if not isinstance(out, list) or len(out) != len(lines):
+        if strict:
+            raise AIError(f"expected {len(lines)} structured lines")
         return [Ingredient(raw=l, name=l.lower().strip()) for l in lines]
     res = []
     for l, o in zip(lines, out):

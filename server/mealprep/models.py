@@ -133,6 +133,7 @@ class RatingSummary(BaseModel):
     last_rated_at: str | None = None
     company: str | None = None   # most recent non-null company verdict
     notes: list[RatingNote] = [] # most recent first, max 5
+    imported_ratings: int = 0    # of times_rated, how many came from another library's export ("incl. N from …")
 
 
 class RecipeOut(Recipe):
@@ -149,8 +150,16 @@ class CookedEntry(BaseModel):
     rating: Rating | None
 
 
+class ImportedEntry(BaseModel):
+    date: str | None             # the night it was cooked in the other library, if known
+    multiplier: float
+    rating: Rating | None        # None = cooked, not rated
+    rated_at: str | None = None
+
+
 class RecipeDetail(RecipeOut):
     history: list[CookedEntry] = []
+    imported_history: list[ImportedEntry] = []   # times cooked brought in by an import, newest first
 
 
 # --- Stage 2: prep plans + cook cards ---

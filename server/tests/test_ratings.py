@@ -95,13 +95,15 @@ def test_summary_math(conn):
         "times_cooked": 4, "times_rated": 3, "avg_family": 3.7, "last_family": 4,
         "last_rated_at": s[chili]["last_rated_at"], "company": "maybe",
         "notes": [{"note": "kids picked out peppers", "date": "2026-10-12", "rated_at": s[chili]["notes"][0]["rated_at"]},
-                  {"note": "too salty", "date": "2026-09-30", "rated_at": s[chili]["notes"][1]["rated_at"]}]}
+                  {"note": "too salty", "date": "2026-09-30", "rated_at": s[chili]["notes"][1]["rated_at"]}],
+        "imported_ratings": 0}
     assert datetime.fromisoformat(s[chili]["last_rated_at"]) == at(13)
     assert datetime.fromisoformat(s[chili]["notes"][1]["rated_at"]) == at(1)
     assert s[soup]["times_cooked"] == 1 and s[soup]["avg_family"] == 5.0
     assert s[soup]["notes"] == [] and s[soup]["company"] is None
     assert s[never] == {"times_cooked": 0, "times_rated": 0, "avg_family": None, "last_family": None,
-                        "last_rated_at": None, "company": None, "notes": []}
+                        "last_rated_at": None, "company": None, "notes": [],
+                                   "imported_ratings": 0}
 
 
 def test_avg_rounds_half_up(conn):
