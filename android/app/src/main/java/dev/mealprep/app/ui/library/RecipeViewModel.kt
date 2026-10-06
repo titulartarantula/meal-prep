@@ -66,6 +66,8 @@ class RecipeViewModel(
     private val repo: Repository,
     private val id: Int,
     private val today: () -> LocalDate = LocalDate::now,
+    /** After it was added to a week (the phone's reminders are re-planned). */
+    private val afterChange: () -> Unit = {},
 ) : ViewModel() {
     private val _state = MutableStateFlow(RecipeState())
     val state = _state.asStateFlow()
@@ -145,7 +147,7 @@ class RecipeViewModel(
                 }
             }
             // Refresh the planned weeks and the saved copy of that week before saying it's done.
-            val fresh = if (result.ok) { repo.week(w); repo.recipe(id).value } else null
+            val fresh = if (result.ok) { repo.week(w); afterChange(); repo.recipe(id).value } else null
             _state.update { it.copy(adding = false, added = result, recipe = fresh ?: it.recipe) }
         }
     }

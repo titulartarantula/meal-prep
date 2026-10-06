@@ -39,7 +39,7 @@ class JobWatchWorkerTest {
                 JobWatchWorker.POLL_MS to 10L, JobWatchWorker.MAX_POLLS to maxPolls))
             .setRunAttemptCount(attempt)
             .setWorkerFactory(object : WorkerFactory() {
-                override fun createWorker(c: Context, n: String, p: WorkerParameters) = JobWatchWorker(c, p, env.repo, Notifier(c)) { foreground }
+                override fun createWorker(c: Context, n: String, p: WorkerParameters) = JobWatchWorker(c, p, env.repo, Notifier(c), { foreground })
             }).build()
 
     private fun notes() = shadowOf(env.context.getSystemService(NotificationManager::class.java)).allNotifications

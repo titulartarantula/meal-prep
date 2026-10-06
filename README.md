@@ -8,7 +8,9 @@ It has two parts:
 
 - **Android app** (`android/`, Kotlin + Jetpack Compose, package `dev.mealprep.app`). Share an NYT Cooking
   link or scan a cookbook page into Recipes (with its book and page), then add recipes from Recipes to a week and
-  arrange them on nights in the "This week" view. The app talks only
+  arrange them on nights in the "This week" view. After dinner, rate it (family score, good for company, a note
+  that shows on the recipe's next cook card). Each phone plans its own local reminders (thaw the evening before,
+  how was dinner the morning after, optional tonight, cart ready) from its copy of the week. The app talks only
   to the household's own server; it keeps an offline copy of the current week.
 - **Server** (`server/`, Python 3.12 + FastAPI + Postgres). Imports recipes (schema.org JSON-LD from recipe
   pages, or cookbook photos read by an AI model), suggests cookbook titles and authors for the app (Open Library,

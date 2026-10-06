@@ -20,6 +20,7 @@ import dev.mealprep.app.ui.nav.SetupRoute
 import dev.mealprep.app.ui.nav.openLink
 import dev.mealprep.app.ui.nav.ShareRoute
 import dev.mealprep.app.ui.theme.MealPrepTheme
+import dev.mealprep.app.work.SyncWorker
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 
@@ -44,6 +45,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Each time the app comes to the front: fresh copies and reminders now (the other phone may have changed the
+     *  week), and the hourly sync kept queued (it carries on while the app is closed). */
+    override fun onStart() {
+        super.onStart()
+        if (!graph.settings.value.configured) return
+        SyncWorker.schedule(graph.workManager)
+        SyncWorker.now(graph.workManager)
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -110,6 +110,12 @@ class Notifier(private val context: Context) {
     fun staplesReminder() = post("staples-reminder", CH_REMINDERS, "Time to check the staples",
         "Untick what you don't need this week, then build the cart.", Nav.list())
 
+    /** A planned reminder (thaw, how was dinner, tonight; ReminderWorker). One per id: a newer one replaces it. */
+    fun reminder(id: String, title: String, text: String, nav: String?) = post("reminder-$id", CH_REMINDERS, title, text, nav)
+
+    /** Takes a shown "How was …?" away once that dinner is rated (or its rating removed) on this phone. */
+    fun rated(entryId: Int) = nm.cancel("reminder-rate-$entryId".hashCode())
+
     /** [actions]: extra buttons, label → deep link. */
     @SuppressLint("MissingPermission")
     fun post(tag: String, channel: String, title: String, text: String, nav: String?, actions: List<Pair<String, String>> = emptyList()) {

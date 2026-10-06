@@ -26,7 +26,9 @@ import dev.mealprep.app.ui.cart.DraftScreen
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.cart.ListScreen
 import dev.mealprep.app.ui.cart.StaplesScreen
-import dev.mealprep.app.ui.setup.StaplesReminderSettings
+import dev.mealprep.app.ui.setup.NotifSettings
+import dev.mealprep.app.ui.rating.RatingScreen
+import dev.mealprep.app.work.SyncWorker
 import dev.mealprep.app.ui.home.ContextAction
 import dev.mealprep.app.ui.loblaws.LoblawsScreen
 import dev.mealprep.app.ui.loblaws.LoblawsSettings
@@ -56,7 +58,7 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
             SetupScreen(graph, onDone = { nav.navigate(HomeRoute()) { popUpTo<SetupRoute> { inclusive = true } } })
         }
         composable<SettingsRoute> {
-            SettingsScreen(graph, onDone = { nav.popBackStack() }) { StaplesReminderSettings(graph); LoblawsSettings(graph) }
+            SettingsScreen(graph, onDone = { nav.popBackStack() }) { NotifSettings(graph); LoblawsSettings(graph) }
         }
         composable<StaplesRoute> { StaplesScreen(onDone = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) }) }
         composable<HomeRoute> { back ->
@@ -102,7 +104,13 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
         composable<PrepRoute> { back ->
             PrepScreen(LocalDate.parse(back.toRoute<PrepRoute>().week), onCard = { nav.navigate(CardRoute(it)) })
         }
-        composable<CardRoute> { back -> CardScreen(back.toRoute<CardRoute>().entryId) }
+        composable<CardRoute> { back -> CardScreen(back.toRoute<CardRoute>().entryId, onOpen = open) }
+        composable<RatingRoute> { back ->
+            val r = back.toRoute<RatingRoute>()
+            RatingScreen(r.entryId, LocalDate.parse(r.week),
+                afterChange = { graph.notifier.rated(r.entryId); SyncWorker.now(graph.workManager) },
+                onDone = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) })
+        }
         composable<CameraRoute> { back ->
             val r = back.toRoute<CameraRoute>()
             val vm = graphViewModel(key = "camera-${back.id}") { g -> CameraViewModel(g.pages, g.scalePage, g.copyPage) }

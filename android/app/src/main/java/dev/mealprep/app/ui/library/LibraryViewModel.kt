@@ -38,11 +38,13 @@ data class LibraryState(
     val sort: LibrarySort = LibrarySort.NEWEST,
     /** Sources.ALL or a source key (Sources.key): NYT, one book, Unknown book, Other. */
     val source: String = Sources.ALL,
+    /** Only recipes whose latest company verdict is "yes" (rated good for guests). */
+    val company: Boolean = false,
     val loading: Boolean = true,
     val offlineSince: Instant? = null,
     val error: String? = null,
 ) {
-    val shown: List<Recipe> get() = filterRecipes(all, query, sort, source)
+    val shown: List<Recipe> get() = filterRecipes(all, query, sort, source, company)
     /** The source filter's choices, from the recipes themselves (works offline too). */
     val sources: List<Sources.Option> get() = Sources.options(all)
 }
@@ -50,10 +52,13 @@ data class LibraryState(
 private fun fold(s: String) = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
 
 /** Every word typed must appear in the title (any case, accents optional: "crepe" finds "Crêpes"); [source] narrows to
- *  one source (Sources.key). */
-fun filterRecipes(all: List<Recipe>, query: String, sort: LibrarySort, source: String = Sources.ALL): List<Recipe> {
+ *  one source (Sources.key); [company] to recipes rated good for company. */
+fun filterRecipes(all: List<Recipe>, query: String, sort: LibrarySort, source: String = Sources.ALL, company: Boolean = false): List<Recipe> {
     val words = fold(query).split(Regex("\\s+")).filter { it.isNotEmpty() }
-    val hits = all.filter { r -> (source == Sources.ALL || Sources.key(r) == source) && fold(r.title).let { t -> words.all { it in t } } }
+    val hits = all.filter { r ->
+        (source == Sources.ALL || Sources.key(r) == source) && (!company || r.ratings.company == "yes") &&
+            fold(r.title).let { t -> words.all { it in t } }
+    }
     return if (sort == LibrarySort.AZ) hits.sortedBy { fold(it.title) } else hits
 }
 
@@ -102,6 +107,7 @@ class LibraryViewModel(
 
     fun search(q: String) = _state.update { it.copy(query = q) }
     fun source(key: String) = _state.update { it.copy(source = key) }
+    fun company(on: Boolean) = _state.update { it.copy(company = on) }
 
     fun sort(s: LibrarySort) {
         val before = _state.value.sort

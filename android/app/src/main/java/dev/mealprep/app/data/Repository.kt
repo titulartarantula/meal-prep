@@ -213,5 +213,12 @@ class Repository(
 
     suspend fun isMarked(key: String): Boolean = cache.get("once:$key") != null
 
+    /** This phone's own small records (not from the server: planned reminders, "Later" on a rating). Pruned like
+     *  saved copies once older than [prune]'s limit. */
+    suspend fun <T> putLocal(key: String, ser: KSerializer<T>, value: T) =
+        cache.put(CachedDoc("local:$key", json.encodeToString(ser, value), now().toEpochMilli()))
+    suspend fun <T> getLocal(key: String, ser: KSerializer<T>): T? =
+        cache.get("local:$key")?.let { runCatching { json.decodeFromString(ser, it.json) }.getOrNull() }
+
     suspend fun prune(olderThan: Duration) = cache.prune(now().minus(olderThan).toEpochMilli())
 }

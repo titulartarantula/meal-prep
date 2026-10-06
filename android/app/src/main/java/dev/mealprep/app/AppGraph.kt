@@ -38,6 +38,7 @@ class AppGraph(val context: Context) {
     val notifier = dev.mealprep.app.notify.Notifier(context)
     val imports: dev.mealprep.app.work.ImportQueue by lazy { dev.mealprep.app.work.ImportQueue(workManager) }
     val jobs: dev.mealprep.app.work.JobWatcher by lazy { dev.mealprep.app.work.JobWatcher(workManager) }
+    val reminders: dev.mealprep.app.notify.ReminderScheduler by lazy { dev.mealprep.app.notify.ReminderScheduler(workManager) }
     /** Cookbook pages waiting to be read, one folder per recipe (filesDir/pages; see FileProvider paths). */
     val pages = PageStore(File(context.filesDir, "pages"))
     /** Copies one shared or picked image into a page file: shrunk to 2000 px and upright. */

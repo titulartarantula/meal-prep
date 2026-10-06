@@ -11,6 +11,8 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
 import dev.mealprep.app.data.api.CookCard
 import dev.mealprep.app.data.api.Http
+import dev.mealprep.app.data.api.RatingNote
+import dev.mealprep.app.data.api.RatingSummary
 import dev.mealprep.app.fixture
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -58,5 +60,25 @@ class CardScreenTest {
         compose.onNodeWithText(CardViewModel.NO_CARD).assertExists()
         compose.onNodeWithText("Refresh").performClick()
         assertEquals(1, reloads)
+    }
+
+    @Test fun `from the night on the card offers to rate the dinner`() {
+        var rated: Int? = null
+        compose.setContent { CardContent(CardState(card, loading = false), emptySet(), CardUiActions(onRate = { rated = it.entryId }),
+            today = java.time.LocalDate.parse("2026-10-13")) }
+        scrollTo("How was it? Rate this dinner").performClick()
+        assertEquals(21, rated)
+        assertEquals(false, canRate(card, java.time.LocalDate.parse("2026-10-12")))
+    }
+
+    @Test fun `notes rated since the card was written come first, this night's own do not`() {
+        val r = RatingSummary(timesRated = 3, notes = listOf(
+            RatingNote("too spicy for the kids", "2026-10-13", "2026-10-14T12:00:00+00:00"),     // this very night: not "last time"
+            RatingNote("double the beans", "2026-10-06", "2026-10-12T08:00:00+00:00"),         // after the card was written
+            RatingNote("less salt", "2026-09-29", "2026-09-30T08:00:00+00:00"),                // already on the card
+        ))
+        assertEquals(listOf("Oct 6: double the beans", "last time: less salt"), cardNotes(card, r))
+        assertEquals(card.ratingNotes, cardNotes(card, null))
+        assertEquals(card.ratingNotes, cardNotes(card.copy(generatedAt = null), r))
     }
 }

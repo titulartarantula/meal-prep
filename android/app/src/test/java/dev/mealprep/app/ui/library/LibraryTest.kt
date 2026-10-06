@@ -313,4 +313,17 @@ class LibraryTest {
         assertEquals(10, opened)
         list.performScrollToNode(hasText("Not rated yet"))
     }
+
+    @Test fun `good for company shows only recipes whose verdict is yes`() {
+        val a = Recipe(1, "Alpha", "nyt", ratings = dev.mealprep.app.data.api.RatingSummary(timesRated = 1, company = "yes"))
+        val b = Recipe(2, "Beta", "nyt", ratings = dev.mealprep.app.data.api.RatingSummary(timesRated = 1, company = "maybe"))
+        val c = Recipe(3, "Gamma", "nyt")
+        assertEquals(listOf(a, b, c), filterRecipes(listOf(a, b, c), "", LibrarySort.NEWEST))
+        assertEquals(listOf(a), filterRecipes(listOf(a, b, c), "", LibrarySort.NEWEST, company = true))
+        var on: Boolean? = null
+        compose.setContent { LibraryContent(LibraryState(all = listOf(b, c), company = true, loading = false), {}, {}, {}, {}, today, onCompany = { on = it }) }
+        compose.onNodeWithText(NO_COMPANY).assertExists()
+        compose.onNodeWithText("Good for company").performClick()
+        assertEquals(false, on)
+    }
 }

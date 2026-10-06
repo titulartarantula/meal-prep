@@ -61,4 +61,12 @@ class CardViewModelTest {
         val s = vm.state.await { it.message != null }
         assertEquals("Chili", s.card!!.title)
     }
+
+    @Test fun `a note rated after the plan was written shows on the card`() = runTest {
+        env.on("GET", "/plan/21/card", body = fixture("cook_card.json"))
+        env.on("GET", "/recipes/5", body = fixture("recipe_3.json").replace("\"notes\":[]",
+            "\"notes\": [{\"note\": \"double the beans\", \"date\": \"2026-10-06\", \"rated_at\": \"2026-10-12T08:00:00+00:00\"}]"))
+        val s = vm(21).state.await { it.card?.ratingNotes?.size == 2 }
+        assertEquals(listOf("Oct 6: double the beans", "last time: less salt"), s.card!!.ratingNotes)
+    }
 }

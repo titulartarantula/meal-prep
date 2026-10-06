@@ -174,4 +174,37 @@ class HomeViewModelTest {
         env.offline = true
         assertEquals(null, vm.refPromptFor(99))                     // offline and never saved: nothing to offer
     }
+
+    @Test fun `yesterday's unrated dinner is offered for rating, Later hides it on this phone until tomorrow`() = runTest {
+        env.on("GET", "/ratings/pending", body = fixture("pending.json"))
+        val v = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-14") })
+        val p = v.pending.await { it != null }!!
+        assertEquals(21, p.entryId); assertEquals("Chili", p.title)
+        assertEquals("today=2026-10-14", env.requests.last { it.url.encodedPath == "/ratings/pending" }.url.query)
+        v.dismissPending()
+        assertEquals(null, v.pending.value)
+        withContext(Dispatchers.Default) { delay(200) }                    // "Later" is written
+        val asked = env.count("GET", "/ratings/pending")
+        val again = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-14") })
+        withContext(Dispatchers.Default) { withTimeout(5_000) { while (env.count("GET", "/ratings/pending") == asked) delay(10) }; delay(200) }
+        assertEquals(null, again.pending.value)
+        val tomorrow = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-15") })
+        assertEquals(21, tomorrow.pending.await { it != null }!!.entryId)
+    }
+
+    @Test fun `a change to the week re-plans the reminders, a failed one does not`() = runTest {
+        var changes = 0
+        val v = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-07") },
+            afterChange = { changes++ })
+        val cookies = v.week(wk).await { !it.loading }.view!!.unplaced.single()
+        env.on("PATCH", "/plan/23", code = 500, body = """{"detail":"boom"}""")
+        v.place(cookies, 4)
+        v.message.await { it != null }
+        assertEquals(0, changes)
+        env.on("PATCH", "/plan/23", code = 204)
+        v.place(cookies, 4)
+        env.awaitBody("PATCH", "/plan/23")
+        withContext(Dispatchers.Default) { withTimeout(5_000) { while (changes == 0) delay(10) } }
+        assertEquals(1, changes)
+    }
 }

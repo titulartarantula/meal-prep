@@ -53,11 +53,12 @@ import dev.mealprep.app.ui.common.WeekPicker
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.home.refRoute
 import dev.mealprep.app.ui.theme.GardenAccent
+import dev.mealprep.app.work.SyncWorker
 import java.time.LocalDate
 
 @Composable
 fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, onClose: () -> Unit, addToWeek: Boolean = false) {
-    val vm = graphViewModel(key = "recipe-$id") { g -> RecipeViewModel(g.repo, id) }
+    val vm = graphViewModel(key = "recipe-$id") { g -> RecipeViewModel(g.repo, id, afterChange = { SyncWorker.now(g.workManager) }) }
     val state by vm.state.collectAsStateWithLifecycle()
     RecipeContent(state, onAdd = vm::addToWeek, onWeek = onWeek, onOpen = onOpen, onDismissAdded = vm::dismissAdded,
         onRetry = vm::load, onClose = onClose, startPicking = addToWeek, onEditSource = vm::editSource, onStartEdit = vm::loadBooks,

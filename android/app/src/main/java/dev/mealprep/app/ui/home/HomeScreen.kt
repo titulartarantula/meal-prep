@@ -76,6 +76,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
 import dev.mealprep.app.R
 import dev.mealprep.app.core.Weeks
+import dev.mealprep.app.data.api.PendingRating
 import dev.mealprep.app.data.api.PlanEntry
 import dev.mealprep.app.ui.nav.DraftRoute
 import dev.mealprep.app.ui.common.MessageText
@@ -88,6 +89,8 @@ import dev.mealprep.app.ui.nav.RatingRoute
 import dev.mealprep.app.ui.nav.RecipeRoute
 import dev.mealprep.app.ui.camera.RefPrompt
 import dev.mealprep.app.ui.camera.refPromptText
+import dev.mealprep.app.ui.rating.ratingQuestion
+import dev.mealprep.app.work.SyncWorker
 import dev.mealprep.app.ui.theme.GardenAccent
 import dev.mealprep.app.work.ImportWorker
 import java.time.LocalDate
@@ -97,7 +100,7 @@ private const val BACK = Weeks.PAST   // weeks reachable before this one
 
 @Composable
 fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction) -> Unit, onOpen: (Any) -> Unit, menu: List<Pair<String, Any>>) {
-    val vm = graphViewModel { g -> HomeViewModel(g.repo, g.imports, hidden = g.hiddenImports) }
+    val vm = graphViewModel { g -> HomeViewModel(g.repo, g.imports, hidden = g.hiddenImports, afterChange = { SyncWorker.now(g.workManager) }) }
     var today by remember { mutableStateOf(LocalDate.now()) }
     val current = Weeks.weekStart(today)
     // The planning horizon: this week + the next 3, further only to a later week that already has recipes or that
@@ -107,6 +110,7 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
     val pager = rememberPagerState(initialPage = span.initial) { span.pages }
     val imports by vm.imports.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+    val pending by vm.pending.collectAsStateWithLifecycle()
     AskForNotificationsOnce(graph)
     val drag = remember { WeekDrag() }
 
@@ -114,6 +118,7 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
     LifecycleResumeEffect(pager.currentPage) {
         today = LocalDate.now()
         vm.refreshAhead()
+        vm.onResume()
         vm.refresh(Weeks.weekStart(LocalDate.now()).plusWeeks((pager.currentPage - BACK).toLong()))
         onPauseOrDispose { }
     }
@@ -129,6 +134,7 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
                 MessageText(m); TextButton(onClick = vm::clearMessage) { Text("OK") }
             }
         }
+        pending?.let { p -> RatingBanner(p, onRate = { onOpen(RatingRoute(p.entryId, p.week)) }, onLater = vm::dismissPending) }
         ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
         // While a recipe is held the drag has priority: the week can't be swiped away underneath it.
         HorizontalPager(pager, Modifier.weight(1f), userScrollEnabled = !drag.dragging) { page ->
@@ -136,6 +142,24 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
             val ui by vm.week(week).collectAsStateWithLifecycle()
             WeekContent(ui, today, onAction, vm::place, vm::scale, vm::remove, onOpen, onRefresh = { vm.refresh(week) },
                 loadRef = vm::refPromptFor, drag = drag)
+        }
+    }
+}
+
+/** The morning after (or any day within two weeks): "How was Tuesday's Chili?" with Rate and Later. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun RatingBanner(p: PendingRating, onRate: () -> Unit, onLater: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp)) {
+            Text(ratingQuestion(p.title, Weeks.longDayLabel(p.day)), style = MaterialTheme.typography.titleSmall)
+            val date = runCatching { Weeks.shortDate(LocalDate.parse(p.date)) }.getOrDefault(p.date)
+            Text("$date · a quick rating helps pick family favourites.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow {
+                TextButton(onRate) { Text("Rate it") }
+                TextButton(onLater) { Text("Later") }
+            }
         }
     }
 }

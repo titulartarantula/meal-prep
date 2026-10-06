@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.ApiResult
+import dev.mealprep.app.data.api.PendingRating
 import dev.mealprep.app.data.api.PlanEntry
 import dev.mealprep.app.data.api.userMessage
 import dev.mealprep.app.ui.camera.RefPrompt
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.serializer
 
 data class WeekUi(
     val week: LocalDate,
@@ -47,12 +49,14 @@ class HomeViewModel(
     jobs: Flow<List<ImportJob>> = importJobs(queue),
     /** Dismissed import cards, shared with the Recipes tab (AppGraph.hiddenImports). */
     hidden: MutableStateFlow<Set<UUID>> = MutableStateFlow(emptySet()),
+    /** After a change to a week (placed, moved, scaled, removed): the phone's reminders are re-planned. */
+    private val afterChange: () -> Unit = {},
 ) : ViewModel() {
     private val weeks = mutableMapOf<LocalDate, MutableStateFlow<WeekUi>>()   // main thread only
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
     private val loads = mutableMapOf<LocalDate, Job>()   // one in-flight load per week; a newer one cancels the older
-    private val pending = mutableMapOf<LocalDate, Int>()   // writes in flight per week; loads wait for them
+    private val writes = mutableMapOf<LocalDate, Int>()   // writes in flight per week; loads wait for them
 
     // A finished import from 0.4.1 and earlier also added the recipe to a week: show it there.
     private val feed = ImportFeed(repo, queue, viewModelScope, jobs, hidden) { j ->
@@ -66,7 +70,35 @@ class HomeViewModel(
 
     private var aheadJob: Job? = null
 
-    init { refreshAhead() }
+    /** The newest dinner not rated yet (server: placed on a night in the last 14 days), unless "Later" was tapped
+     *  for it today: the "How was Tuesday's Chili?" banner. */
+    private val _pending = MutableStateFlow<PendingRating?>(null)
+    val pending: StateFlow<PendingRating?> = _pending.asStateFlow()
+    private var pendingJob: Job? = null
+    private var resumed = false
+
+    init { refreshAhead(); refreshPending() }
+
+    fun refreshPending() {
+        pendingJob?.cancel()
+        pendingJob = viewModelScope.launch {
+            val t = today()
+            _pending.value = repo.pendingRatings(t).value.orEmpty().firstOrNull { repo.getLocal(laterKey(it.entryId, t), Boolean.serializer()) == null }
+        }
+    }
+
+    /** "Later": hidden on this phone until tomorrow (the next one, if any, shows the next time Home opens). */
+    fun dismissPending() {
+        val p = _pending.value ?: return
+        pendingJob?.cancel()
+        _pending.value = null
+        viewModelScope.launch { repo.putLocal(laterKey(p.entryId, today()), Boolean.serializer(), true) }
+    }
+
+    /** Back on Home (not the first show, which init covers): a dinner may have been rated meanwhile. */
+    fun onResume() { if (resumed) refreshPending() else resumed = true }
+
+    private fun laterKey(entryId: Int, day: LocalDate) = "rate-later:$entryId:$day"
 
     /** Re-reads which weeks after the horizon already have recipes (the saved copy will do offline). */
     fun refreshAhead() {
@@ -86,7 +118,7 @@ class HomeViewModel(
         val w = Weeks.weekStart(week)
         val f = weeks[w] ?: return
         loads[w]?.cancel()
-        loads[w] = viewModelScope.launch { val r = load(w); if ((pending[w] ?: 0) == 0) f.update(r) }
+        loads[w] = viewModelScope.launch { val r = load(w); if ((writes[w] ?: 0) == 0) f.update(r) }
     }
 
     private suspend fun load(w: LocalDate): (WeekUi) -> WeekUi = coroutineScope {
@@ -125,11 +157,11 @@ class HomeViewModel(
         val w = Weeks.weekStart(LocalDate.parse(entry.week))
         val f = weeks[w] ?: return
         loads.remove(w)?.cancel()   // an older load must not overwrite this change
-        pending[w] = (pending[w] ?: 0) + 1
+        writes[w] = (writes[w] ?: 0) + 1
         f.value.view?.let { v -> f.update { it.copy(view = weekView(w, optimistic(v.all))) } }
         viewModelScope.launch {
-            val r = try { call() } finally { pending[w] = (pending[w] ?: 1) - 1 }
-            if (r is ApiResult.Err) _message.value = r.error.userMessage()
+            val r = try { call() } finally { writes[w] = (writes[w] ?: 1) - 1 }
+            if (r is ApiResult.Err) _message.value = r.error.userMessage() else afterChange()
             refresh(w)   // the server's answer (or, offline, the last saved copy) replaces any optimistic guess
         }
     }

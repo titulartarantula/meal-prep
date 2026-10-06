@@ -38,11 +38,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.CardStep
 import dev.mealprep.app.data.api.CookCard
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.graphViewModel
+import dev.mealprep.app.ui.nav.RatingRoute
+import java.time.LocalDate
 
 /** The card's lists, in the order they matter on the night (empty ones are left out). */
 fun cardSections(c: CookCard): List<Pair<String, List<String>>> =
@@ -54,10 +57,12 @@ class CardUiActions(
     val onTimer: (CookCard, CardStep, Int) -> Unit = { _, _, _ -> },
     val onPrint: (CookCard) -> Unit = {},
     val onReload: () -> Unit = {},
+    /** "How was it?" — the night's rating screen (shown from the night itself on). */
+    val onRate: (CookCard) -> Unit = {},
 )
 
 @Composable
-fun CardContent(s: CardState, done: Set<Int>, a: CardUiActions) {
+fun CardContent(s: CardState, done: Set<Int>, a: CardUiActions, today: LocalDate = LocalDate.now()) {
     val card = s.card
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item {
@@ -86,6 +91,9 @@ fun CardContent(s: CardState, done: Set<Int>, a: CardUiActions) {
         itemsIndexed(card.steps) { i, step -> StepRow(i, step, i in done, onStep = { a.onStep(i) }, onTimer = { m -> a.onTimer(card, step, m) }) }
         item {
             OutlinedButton({ a.onPrint(card) }, Modifier.fillMaxWidth().padding(vertical = 8.dp)) { Text("Print this card") }
+            if (canRate(card, today)) OutlinedButton({ a.onRate(card) }, Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                Text("How was it? Rate this dinner")
+            }
         }
     }
 }
@@ -111,8 +119,12 @@ private fun StepRow(i: Int, step: CardStep, checked: Boolean, onStep: () -> Unit
     }
 }
 
+/** Rating makes sense once the night has come (a card without a date: always). */
+fun canRate(c: CookCard, today: LocalDate): Boolean =
+    c.date?.let { d -> runCatching { !LocalDate.parse(d).isAfter(today) }.getOrDefault(true) } ?: true
+
 @Composable
-fun CardScreen(entryId: Int) {
+fun CardScreen(entryId: Int, onOpen: (Any) -> Unit = {}) {
     val vm = graphViewModel(key = "card-$entryId") { g -> CardViewModel(g.repo, entryId) }
     val s by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
@@ -134,5 +146,9 @@ fun CardScreen(entryId: Int) {
         },
         onPrint = { card -> if (printing == null) CardActions.print(ctx, card) { printing = it } },
         onReload = vm::reload,
+        onRate = { card ->
+            val week = card.date?.let { runCatching { Weeks.weekStart(LocalDate.parse(it)) }.getOrNull() } ?: Weeks.weekStart(LocalDate.now())
+            onOpen(RatingRoute(card.entryId, week.toString()))
+        },
     ))
 }

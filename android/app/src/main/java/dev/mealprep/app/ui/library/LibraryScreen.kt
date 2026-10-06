@@ -79,7 +79,7 @@ fun LibraryScreen(
         Column(Modifier.fillMaxSize()) {
             TabHeader("Recipes", menu, onOpen)
             ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
-            LibraryContent(state, vm::search, vm::sort, onRecipe, vm::load, onSource = vm::source)
+            LibraryContent(state, vm::search, vm::sort, onRecipe, vm::load, onSource = vm::source, onCompany = vm::company)
         }
         AddRecipeButton(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp), onPick = { w ->
             when (w) {
@@ -98,7 +98,7 @@ fun LibraryScreen(
 @Composable
 fun LibraryContent(
     state: LibraryState, onSearch: (String) -> Unit, onSort: (LibrarySort) -> Unit, onRecipe: (Int) -> Unit, onRetry: () -> Unit,
-    today: LocalDate = LocalDate.now(), onSource: (String) -> Unit = {},
+    today: LocalDate = LocalDate.now(), onSource: (String) -> Unit = {}, onCompany: (Boolean) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         OutlinedTextField(state.query, onSearch, label = { Text("Search recipes") }, singleLine = true,
@@ -106,6 +106,7 @@ fun LibraryContent(
             modifier = Modifier.fillMaxWidth())
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.Center) {
             LibrarySort.entries.forEach { s -> FilterChip(state.sort == s, { onSort(s) }, { Text(s.label) }, colors = GardenAccent.chipColors()) }
+            FilterChip(state.company, { onCompany(!state.company) }, { Text("Good for company") }, colors = GardenAccent.chipColors())
         }
         if (state.all.isNotEmpty()) SourceFilter(state.sources, state.source, onSource)
         OfflineBanner(state.offlineSince)
@@ -116,6 +117,8 @@ fun LibraryContent(
             else Text(EMPTY_LIBRARY, Modifier.padding(vertical = 8.dp))
         } else if (state.shown.isEmpty() && state.query.isNotBlank()) {
             Text("No recipe titles match “${state.query.trim()}”.", Modifier.padding(vertical = 8.dp))
+        } else if (state.shown.isEmpty() && state.company) {
+            Text(NO_COMPANY, Modifier.padding(vertical = 8.dp))
         } else if (state.shown.isEmpty() && state.source != Sources.ALL) {
             Text("No recipes from that source.", Modifier.padding(vertical = 8.dp))
         }
@@ -128,6 +131,8 @@ fun LibraryContent(
         }
     }
 }
+
+const val NO_COMPANY = "None rated good for company yet. After dinner, rate it and answer “Yes” to “Would you make it for company?”."
 
 const val EMPTY_LIBRARY = "No recipes yet. Tap Add recipe to scan a cookbook page, choose photos or paste an NYT " +
     "Cooking link — or share a recipe from the NYT Cooking app."

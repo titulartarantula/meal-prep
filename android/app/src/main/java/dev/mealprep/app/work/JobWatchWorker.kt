@@ -21,6 +21,8 @@ class JobWatchWorker(
     private val repo: Repository,
     private val notifier: Notifier,
     private val inForeground: () -> Boolean,
+    /** A job left "building" (a ready prep plan brings thaw reminders: the phone's reminders are re-planned). */
+    private val afterDone: (kind: String) -> Unit = {},
 ) : CoroutineWorker(ctx, params) {
 
     companion object {
@@ -41,6 +43,7 @@ class JobWatchWorker(
             if (i > 0) delay(pollMs)
             when (val r = status(kind, id)) {
                 is ApiResult.Ok -> if (r.value.first != "building") {
+                    afterDone(kind)
                     announce(kind, id, week, r.value.first, r.value.second)
                     return Result.success(workDataOf(OUT_STATUS to r.value.first))
                 }
