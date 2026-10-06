@@ -49,7 +49,7 @@ class DraftScreenTest {
                 DraftActions(onSend = { sent++ }, onRebuild = { rebuilt = it }), today = today)
         }
         compose.onNodeWithText("Older cart").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-        compose.onNodeWithText(STALE_CART).assertExists()
+        compose.onNodeWithText("$STALE_CART $STALE_UNSENT").assertExists()
         compose.onNodeWithText("Send to Loblaws").assertIsNotEnabled().performClick()
         assertEquals(0, sent)
         compose.onNodeWithContentDescription("One more onion").assertIsNotEnabled()
@@ -64,15 +64,16 @@ class DraftScreenTest {
         var opened: String? = null
         compose.setContent { DraftContent(DraftState(sent, loading = false), DraftActions(onLoblaws = { opened = it }), today = today) }
         compose.onNodeWithText("Older cart").assertExists()
-        compose.onNodeWithText(STALE_CART).assertExists()
+        compose.onNodeWithText(STALE_CART).assertExists()                          // already sent: no "can't be sent"
         compose.onNodeWithText("Open in Loblaws").performClick()
         assertEquals(sent.pcxCartId, opened)
     }
 
     @Test fun `an up-to-date cart has no banner`() {
         compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(), today = today) }
-        compose.onNodeWithText(STALE_CART).assertDoesNotExist()
+        compose.onNodeWithText(STALE_CART, substring = true).assertDoesNotExist()
         compose.onNodeWithText(BUILD_NEW_CART).assertDoesNotExist()
+        compose.onNodeWithText("Cart").assertExists()
     }
 
     @Test fun `a line with no product searches Loblaws directly`() {

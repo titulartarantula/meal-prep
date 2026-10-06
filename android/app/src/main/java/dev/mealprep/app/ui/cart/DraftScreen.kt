@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -96,7 +97,7 @@ fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.no
                 }
             }
             MessageText(s.error)
-            if (older) StaleBanner { a.onRebuild(d.weeks) }
+            if (older) StaleBanner(d.status == "ready") { a.onRebuild(d.weeks) }
             if (d == null && !s.loading) TextButton(a.onReload) { Text("Try again") }
             if (d != null && d.status != "building") {
                 LazyColumn(Modifier.weight(1f)) {
@@ -118,7 +119,10 @@ fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.no
                 "ready" -> Button(onClick = a.onSend, enabled = s.canSend, modifier = full) {
                     Text(if (s.sending) "Sending…" else "Send to Loblaws")
                 }
-                "sent" -> Button(onClick = { d.pcxCartId?.let(a.onLoblaws) }, enabled = d.pcxCartId != null, modifier = full) {
+                // On an older cart, Build a new cart (in the banner) is the main action.
+                "sent" -> if (older) OutlinedButton(onClick = { d.pcxCartId?.let(a.onLoblaws) }, enabled = d.pcxCartId != null, modifier = full) {
+                    Text("Open in Loblaws")
+                } else Button(onClick = { d.pcxCartId?.let(a.onLoblaws) }, enabled = d.pcxCartId != null, modifier = full) {
                     Text("Open in Loblaws")
                 }
                 else -> Button(onClick = { a.onRebuild(d.weeks) }, modifier = full) { Text("Build it again") }
@@ -130,18 +134,19 @@ fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.no
 
 /** On an older cart (the week's recipes changed since it was built): say so, and lead to a new cart. */
 @Composable
-private fun StaleBanner(onBuild: () -> Unit) {
+private fun StaleBanner(unsent: Boolean, onBuild: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text(STALE_CART, Modifier.announced(), style = MaterialTheme.typography.bodyMedium,
+            Text(if (unsent) "$STALE_CART $STALE_UNSENT" else STALE_CART, Modifier.announced(), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onTertiaryContainer)
             Button(onBuild, Modifier.padding(top = 4.dp).heightIn(min = 48.dp)) { Text(BUILD_NEW_CART) }
         }
     }
 }
 
-const val STALE_CART = "The week has changed since this cart was built. This older cart can't be changed or sent."
+const val STALE_CART = "The week has changed since this cart was built."
+const val STALE_UNSENT = "This older cart can't be changed or sent."
 
 /** The cart's weeks under its title: "This week (Oct 11)", "Oct 11 + Oct 18". */
 internal fun weeksTitle(weeks: List<String>, today: LocalDate): String? {
