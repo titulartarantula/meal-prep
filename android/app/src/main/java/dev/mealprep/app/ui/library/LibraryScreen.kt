@@ -22,7 +22,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.font.FontWeight
 import dev.mealprep.app.ui.common.GardenChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -77,13 +83,16 @@ fun LibraryScreen(
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(PagesState.MAX_PAGES)) { uris ->
         if (uris.isNotEmpty()) onPhotos(uris)
     }
-    Box(Modifier.fillMaxSize()) {
+    // TalkBack order: the header, then Add recipe, then the list (as last item it came after every recipe).
+    Box(Modifier.fillMaxSize().semantics { isTraversalGroup = true }) {
         Column(Modifier.fillMaxSize()) {
-            TabHeader("Recipes", menu, onOpen)
-            ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
-            LibraryContent(state, vm::search, vm::sort, onRecipe, vm::load, onSource = vm::source, onCompany = vm::company)
+            Box(Modifier.semantics { isTraversalGroup = true; traversalIndex = 0f }) { TabHeader("Recipes", menu, onOpen) }
+            Column(Modifier.weight(1f).semantics { isTraversalGroup = true; traversalIndex = 2f }) {
+                ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
+                LibraryContent(state, vm::search, vm::sort, onRecipe, vm::load, onSource = vm::source, onCompany = vm::company)
+            }
         }
-        AddRecipeButton(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp), onPick = { w ->
+        AddRecipeButton(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { traversalIndex = 1f }, onPick = { w ->
             when (w) {
                 AddWay.CAMERA -> onOpen(CameraRoute())
                 AddWay.PHOTOS -> picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -102,18 +111,30 @@ fun LibraryContent(
     state: LibraryState, onSearch: (String) -> Unit, onSort: (LibrarySort) -> Unit, onRecipe: (Int) -> Unit, onRetry: () -> Unit,
     today: LocalDate = LocalDate.now(), onSource: (String) -> Unit = {}, onCompany: (Boolean) -> Unit = {},
 ) {
+    var filters by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+        // Only the search stays: sort and filters fold away under its Filters button, and one line says what's in effect
+        // (at large text the chips took 40 % of the screen).
         OutlinedTextField(state.query, onSearch, label = { Text("Search recipes") }, singleLine = true,
             leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
+            trailingIcon = {
+                IconButton({ filters = !filters },
+                    colors = if (filters) IconButtonDefaults.filledTonalIconButtonColors() else IconButtonDefaults.iconButtonColors()) {
+                    Icon(painterResource(R.drawable.ic_tune), contentDescription = if (filters) HIDE_FILTERS else SHOW_FILTERS)
+                }
+            },
             modifier = Modifier.fillMaxWidth())
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.Center) {
-            // The sort is one choice of three (radio buttons); Good for company is a toggle on its own (a checkbox).
-            Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                LibrarySort.entries.forEach { s -> GardenChip(state.sort == s, { onSort(s) }, s.label) }
+        if (filters) {
+            FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.Center) {
+                // The sort is one choice of three (radio buttons); Good for company is a toggle on its own (a checkbox).
+                Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LibrarySort.entries.forEach { s -> GardenChip(state.sort == s, { onSort(s) }, s.label) }
+                }
+                GardenChip(state.company, { onCompany(!state.company) }, "Good for company", toggle = true)
             }
-            GardenChip(state.company, { onCompany(!state.company) }, "Good for company", toggle = true)
-        }
-        if (state.all.isNotEmpty()) SourceFilter(state.sources, state.source, onSource)
+            if (state.all.isNotEmpty()) SourceFilter(state.sources, state.source, onSource)
+        } else Text(filterSummary(state), Modifier.padding(vertical = 4.dp), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         OfflineBanner(state.offlineSince)
         MessageText(state.error)
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -142,17 +163,37 @@ const val NO_COMPANY = "None rated good for company yet. After dinner, rate it a
 const val EMPTY_LIBRARY = "No recipes yet. Tap Add recipe to scan a cookbook page, choose photos or paste an NYT " +
     "Cooking link — or share a recipe from the NYT Cooking app."
 
+const val SHOW_FILTERS = "Sort and filter"
+const val HIDE_FILTERS = "Hide sort and filters"
+
+/** What the folded filters do now: "Newest first · all sources", "A–Z · NYT Cooking · good for company". */
+fun filterSummary(state: LibraryState): String = listOfNotNull(
+    when (state.sort) { LibrarySort.NEWEST -> "Newest first"; LibrarySort.FAVOURITES -> "Favourites first"; LibrarySort.AZ -> "A–Z" },
+    if (state.source == Sources.ALL) "all sources" else state.sources.firstOrNull { it.key == state.source }?.label ?: "one source",
+    if (state.company) "good for company" else null,
+).joinToString(" · ")
+
+/** A library row's one quiet line: "★ 4.5 · good for company · Invented Pantry Book, p. 88" (or "Not rated · …"). */
+fun rowDetail(r: Recipe): String = listOfNotNull(r.ratings.avgFamily?.let { "★ ${RatingText.number(it)}" } ?: "Not rated",
+    if (r.ratings.company == "yes") "good for company" else null, Sources.label(r)).joinToString(" · ")
+
+/** [rowDetail] for TalkBack: "Family 4.5 out of 5, good for company, …" (not "black star 4.5"). */
+fun spokenRowDetail(r: Recipe): String = listOfNotNull(r.ratings.avgFamily?.let { "Family ${RatingText.number(it)} out of 5" } ?: "Not rated",
+    if (r.ratings.company == "yes") "good for company" else null, Sources.label(r)).joinToString(", ")
+
+/** Title, then one quiet line; "On the plan: …" and a missing page only when they apply. */
 @Composable
 private fun RecipeRow(r: Recipe, today: LocalDate, onClick: () -> Unit) {
-    Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onClick).padding(vertical = 8.dp)) {
-        Text(r.title, style = MaterialTheme.typography.bodyLarge)
-        val small = MaterialTheme.typography.bodySmall
-        Text(Sources.label(r), style = small, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        val rating = RatingText.summary(r.ratings) ?: "Not rated yet"
-        Text(rating, Modifier.semantics { contentDescription = RatingText.spoken(rating) }, style = small,
+    Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onClick).padding(vertical = 10.dp)) {
+        Text(r.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+        Text(rowDetail(r), Modifier.semantics { contentDescription = spokenRowDetail(r) }, style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        plannedText(r.plannedWeeks, today)?.let { Text(it, style = small) }
-        refPrompt(r)?.let { Text("Uses page ${it.page}: add a photo of it so its ingredients are on the list.", style = small) }
+        val label = MaterialTheme.typography.labelMedium
+        plannedText(r.plannedWeeks, today)?.let { Text(it, style = label, color = MaterialTheme.colorScheme.primary) }
+        refPrompt(r)?.let {
+            Text("⚠ Page ${it.page} missing", Modifier.semantics { contentDescription = "Page ${it.page} missing: its ingredients aren't on the list" },
+                style = label, color = MaterialTheme.colorScheme.error)
+        }
     }
 }
 

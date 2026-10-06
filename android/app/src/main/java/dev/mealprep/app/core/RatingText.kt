@@ -18,6 +18,9 @@ object RatingText {
     /** For TalkBack: "Family 4.5 out of 5" (it reads "4.5/5" as "4.5 slash 5"). */
     fun spoken(text: String): String = text.replace(Regex("""(\d+(?:\.\d+)?)/5\b"""), "$1 out of 5")
 
+    /** 4.0 → "4", 4.5 → "4.5". */
+    fun number(d: Double) = fmt(d)
+
     private fun fmt(d: Double) = if (d % 1.0 == 0.0) d.toInt().toString() else String.format(Locale.US, "%.1f", d)
 }
 
