@@ -118,4 +118,40 @@ class AppLaunchTest {
             compose.onNodeWithText("Which week is it for?").assertDoesNotExist()
         }
     }
+
+    @Test fun `a recipe file shared from another app is copied in and opens the import screen under Recipes`() {
+        configure()
+        val uri = android.net.Uri.parse("content://com.example.files/doc/backup.json")
+        shadowOf(app.contentResolver).registerInputStream(uri, """{"@type":"Recipe","name":"Test Soup"}""".byteInputStream())
+        val send = Intent(app, MainActivity::class.java).setAction(Intent.ACTION_SEND).setType("application/json")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+        ActivityScenario.launch<MainActivity>(send).use {
+            compose.waitUntil(5_000) { compose.onAllNodes(hasText("Import recipes")).fetchSemanticsNodes().isNotEmpty() }
+            // Offline in the test (port 1): the preview says what to do.
+            compose.waitUntil(5_000) {
+                compose.onAllNodes(hasText(dev.mealprep.app.ui.exchange.ExchangeText.OFFLINE_IMPORT)).fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(1, app.graph.importsDir.list()!!.size)            // the copy, not the shared URI, is read
+            compose.onNodeWithContentDescription("Navigate up").performClick()
+            compose.onNode(hasText("Recipes") and isSelectable()).assertIsSelected()
+        }
+    }
+
+    @Test fun `the Recipes tab offers import and export`() {
+        configure()
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNode(hasText("Recipes") and isSelectable()).performClick()
+            compose.onNodeWithContentDescription("More options").performClick()
+            compose.onNodeWithText("Import recipes from a file").assertExists()
+            compose.onNodeWithText("Export all recipes (a backup file)").performClick()
+            compose.onNodeWithText("Export all recipes").assertExists()
+            compose.onNodeWithText("Send…").performClick()
+            compose.waitUntil(5_000) {
+                compose.onAllNodes(hasText(dev.mealprep.app.ui.exchange.ExchangeText.OFFLINE_EXPORT)).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("Close").performClick()
+            compose.onNodeWithText("Add recipe").performClick()
+            compose.onNodeWithText("Import from a file").assertExists()
+        }
+    }
 }

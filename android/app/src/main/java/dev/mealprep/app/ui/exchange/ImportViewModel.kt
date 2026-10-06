@@ -54,7 +54,7 @@ class ImportViewModel(
     name: String,
     initialError: String?,
     jobId: Int,
-    private val saved: SavedStateHandle = SavedStateHandle(),
+    private val saved: SavedStateHandle,
     /** Keep watching the job in the background (JobWatcher.watchImport). */
     private val watch: (Int) -> Unit = {},
     private val pollMs: Long = 2_000,

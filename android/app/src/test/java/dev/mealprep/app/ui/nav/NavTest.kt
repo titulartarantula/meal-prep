@@ -21,6 +21,14 @@ class NavTest {
         assertEquals(ListRoute(""), Nav.parse(Nav.list()))
         assertEquals(RecipeRoute(4), Nav.parse(Nav.recipe(4)))
         assertEquals(RecipeRoute(4, addToWeek = true), Nav.parse(Nav.recipe(4, addToWeek = true)))
+        assertEquals(ImportRoute(jobId = 7), Nav.parse(Nav.importJob(7)))
+    }
+
+    @Test fun `a copied file or a copy error becomes the import route`() {
+        val f = java.io.File("/cache/imports/abc.json")
+        assertEquals(ImportRoute(f.path, "Lentil soup.json"),
+            importRoute(dev.mealprep.app.core.CopyResult.Ok(dev.mealprep.app.core.ImportFile(f, "Lentil soup.json"))))
+        assertEquals(ImportRoute(error = "too big"), importRoute(dev.mealprep.app.core.CopyResult.Err("too big")))
     }
 
     @Test fun `the overflow menu keeps the extras, the bottom bar the main screens`() {

@@ -97,4 +97,50 @@ class JobWatchWorkerTest {
         assertTrue(worker(JobWatchWorker.DRAFT, 99).doWork() is Result.Failure)   // TestEnv: unknown route → 404
         assertTrue(notes().isEmpty())
     }
+
+    private fun importWorker(id: Int, foreground: Boolean = false) = TestListenableWorkerBuilder<JobWatchWorker>(env.context)
+        .setInputData(workDataOf(JobWatchWorker.KIND to JobWatchWorker.IMPORT, JobWatchWorker.ID to id,
+            JobWatchWorker.POLL_MS to 10L, JobWatchWorker.MAX_POLLS to 20))
+        .setWorkerFactory(object : WorkerFactory() {
+            override fun createWorker(c: Context, n: String, p: WorkerParameters) = JobWatchWorker(c, p, env.repo, Notifier(c), { foreground })
+        }).build()
+
+    @Test fun `an import is watched without a week and told once, with the result`() = runTest {
+        env.onSequence("GET", "/imports/7", listOf(fixture("import_job_running.json"), fixture("import_job_done.json")))
+        val r = importWorker(7).doWork() as Result.Success
+        assertEquals("done", r.outputData.getString(JobWatchWorker.OUT_STATUS))
+        val n = notes().single()
+        assertEquals("Recipes imported, with problems", title(n))
+        assertEquals("Added 2 recipes. Updated 1 recipe. 1 was already in Recipes. 1 couldn't be added.", text(n))
+        importWorker(7).doWork()
+        assertEquals(1, notes().size)                                    // send-once
+        env.offline = true
+        assertEquals("done", env.repo.importJob(7).value!!.status)      // the result's copy kept for offline
+    }
+
+    @Test fun `an import done while the app is open stays quiet`() = runTest {
+        env.on("GET", "/imports/7", body = fixture("import_job_done.json"))
+        assertTrue(importWorker(7, foreground = true).doWork() is Result.Success)
+        assertTrue(notes().isEmpty())
+    }
+
+    @Test fun `an import cut off by a server restart says what to do`() = runTest {
+        env.on("GET", "/imports/7", body = fixture("import_job_done.json")
+            .replace("\"status\": \"done\"", "\"status\": \"failed\"").replace("\"error\": null", "\"error\": \"interrupted by a server restart\""))
+        importWorker(7).doWork()
+        val n = notes().single()
+        assertEquals("Import stopped", title(n))
+        assertTrue(text(n).contains("The import stopped when the server restarted."))
+    }
+
+    @Test fun `an import still running keeps polling, then retries`() = runTest {
+        env.on("GET", "/imports/7", body = fixture("import_job_running.json"))
+        assertTrue(TestListenableWorkerBuilder<JobWatchWorker>(env.context)
+            .setInputData(workDataOf(JobWatchWorker.KIND to JobWatchWorker.IMPORT, JobWatchWorker.ID to 7,
+                JobWatchWorker.POLL_MS to 10L, JobWatchWorker.MAX_POLLS to 3))
+            .setWorkerFactory(object : WorkerFactory() {
+                override fun createWorker(c: Context, n: String, p: WorkerParameters) = JobWatchWorker(c, p, env.repo, Notifier(c), { false })
+            }).build().doWork() is Result.Retry)
+        assertTrue(notes().isEmpty())
+    }
 }

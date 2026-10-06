@@ -194,9 +194,9 @@ class ExportTest {
         assertNull(timesLine(Recipe(1, "Plain", "nyt")))
     }
 
-    @Test fun `the Recipes tab menu has Export before the main items`() {
+    @Test fun `the Recipes tab menu has Import and Export before the main items`() {
         val m = libraryMenu(listOf("Staples" to "s", "Settings" to "t"))
-        assertEquals(listOf(LibraryMenu.EXPORT_ALL, "s", "t"), m.map { it.second })
-        assertEquals("Export all recipes (a backup file)", m[0].first)
+        assertEquals(listOf(LibraryMenu.IMPORT, LibraryMenu.EXPORT_ALL, "s", "t"), m.map { it.second })
+        assertEquals(listOf("Import recipes from a file", "Export all recipes (a backup file)"), m.take(2).map { it.first })
     }
 }
