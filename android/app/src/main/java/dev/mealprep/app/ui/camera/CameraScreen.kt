@@ -48,6 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -103,7 +104,7 @@ fun CameraContent(
     onCancel: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        Text(title, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
+        Text(title, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium)
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             when (mode) {
                 CameraMode.Ready -> preview()

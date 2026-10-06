@@ -41,6 +41,8 @@ class GardenContrastTest {
         Triple("checkbox, progress", s.primary to s.surface, 3.0),
         Triple("progress on its track", s.primary to s.secondaryContainer, 3.0),
         Triple("field & chip outlines", s.outline to s.surface, 3.0),
+        Triple("field outlines in dialogs", s.outline to s.surfaceContainerHigh, 3.0),
+        Triple("advice (prep warnings)", s.onTertiaryContainer to s.tertiaryContainer, 4.5),
     )
 
     private fun check(name: String, s: ColorScheme, a: Accent) = pairs(s, a).forEach { (what, fb, need) ->
@@ -51,6 +53,35 @@ class GardenContrastTest {
     @Test fun `light meets AA`() = check("light", GardenLight, LightAccent)
 
     @Test fun `dark meets AA`() = check("dark", GardenDark, DarkAccent)
+
+    /**
+     * WCAG 1.4.11 for chip states, on the page (surface) and in dialogs (surfaceContainerHigh): each chip's edge holds
+     * 3:1 against what is around it, and what only the selected chip has (its check mark, on its fill) holds 3:1
+     * against both its own fill and the plain background an unselected chip shows there. Before 0.7.2 the selected
+     * fill alone (1.0:1 in light dialogs) and an outlineVariant edge (1.4:1) told the states apart.
+     */
+    private fun chipPairs(s: ColorScheme, a: Accent) = listOf("page" to s.surface, "dialog" to s.surfaceContainerHigh).flatMap { (where, bg) ->
+        listOf(
+            Triple("unselected chip edge on the $where", chipEdge(s, a, selected = false) to bg, 3.0),
+            Triple("selected chip edge on the $where", chipEdge(s, a, selected = true) to bg, 3.0),
+            Triple("check mark vs an unselected chip on the $where", a.onContainer to bg, 3.0),
+        )
+    } + Triple("check mark on the selected fill", a.onContainer to a.container, 3.0)
+
+    private fun checkChips(name: String, s: ColorScheme, a: Accent) = chipPairs(s, a).forEach { (what, fb, need) ->
+        val r = ratio(fb.first, fb.second)
+        assertTrue("$name $what: ${"%.2f".format(r)} < $need", r >= need)
+    }
+
+    @Test fun `light chip states are told apart at 3 to 1`() = checkChips("light", GardenLight, LightAccent)
+
+    @Test fun `dark chip states are told apart at 3 to 1`() = checkChips("dark", GardenDark, DarkAccent)
+
+    @Test fun `a selected chip also has a thicker edge, not only another colour`() {
+        assertTrue(CHIP_EDGE_SELECTED > CHIP_EDGE)
+        // The old edge (Material's default outlineVariant) is the one that failed.
+        assertTrue(ratio(GardenLight.outlineVariant, GardenLight.surface) < 3.0)
+    }
 
     @Test fun `the ratio matches the WCAG reference values`() {
         assertEquals(21.0, ratio(Color.Black, Color.White), 0.01)

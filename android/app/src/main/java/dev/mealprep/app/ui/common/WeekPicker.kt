@@ -3,6 +3,7 @@ package dev.mealprep.app.ui.common
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -40,8 +41,8 @@ fun WeekPicker(options: List<WeekOption>, selected: LocalDate?, onSelect: (Local
     Column(Modifier.selectableGroup()) {
         options.forEach { o ->
             Row(
-                Modifier.fillMaxWidth().selectable(o.week == selected, onClick = { onSelect(o.week) }, role = Role.RadioButton)
-                    .padding(vertical = 6.dp),
+                Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .selectable(o.week == selected, onClick = { onSelect(o.week) }, role = Role.RadioButton).padding(vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RadioButton(selected = o.week == selected, onClick = null)

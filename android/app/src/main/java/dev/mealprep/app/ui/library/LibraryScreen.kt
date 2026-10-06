@@ -20,7 +20,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import dev.mealprep.app.ui.common.GardenChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -54,7 +57,6 @@ import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.TabHeader
 import dev.mealprep.app.ui.common.graphViewModel
-import dev.mealprep.app.ui.theme.GardenAccent
 import java.time.LocalDate
 
 /**
@@ -105,8 +107,11 @@ fun LibraryContent(
             leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
             modifier = Modifier.fillMaxWidth())
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.Center) {
-            LibrarySort.entries.forEach { s -> FilterChip(state.sort == s, { onSort(s) }, { Text(s.label) }, colors = GardenAccent.chipColors()) }
-            FilterChip(state.company, { onCompany(!state.company) }, { Text("Good for company") }, colors = GardenAccent.chipColors())
+            // The sort is one choice of three (radio buttons); Good for company is a toggle on its own (a checkbox).
+            Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                LibrarySort.entries.forEach { s -> GardenChip(state.sort == s, { onSort(s) }, s.label) }
+            }
+            GardenChip(state.company, { onCompany(!state.company) }, "Good for company", toggle = true)
         }
         if (state.all.isNotEmpty()) SourceFilter(state.sources, state.source, onSource)
         OfflineBanner(state.offlineSince)
@@ -143,7 +148,9 @@ private fun RecipeRow(r: Recipe, today: LocalDate, onClick: () -> Unit) {
         Text(r.title, style = MaterialTheme.typography.bodyLarge)
         val small = MaterialTheme.typography.bodySmall
         Text(Sources.label(r), style = small, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(RatingText.summary(r.ratings) ?: "Not rated yet", style = small, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val rating = RatingText.summary(r.ratings) ?: "Not rated yet"
+        Text(rating, Modifier.semantics { contentDescription = RatingText.spoken(rating) }, style = small,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         plannedText(r.plannedWeeks, today)?.let { Text(it, style = small) }
         refPrompt(r)?.let { Text("Uses page ${it.page}: add a photo of it so its ingredients are on the list.", style = small) }
     }

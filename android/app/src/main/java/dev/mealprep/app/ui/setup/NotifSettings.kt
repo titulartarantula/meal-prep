@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -47,7 +47,7 @@ import dev.mealprep.app.notify.Notifier
 import dev.mealprep.app.notify.PlannedReminder
 import dev.mealprep.app.notify.ReminderKind
 import dev.mealprep.app.ui.nav.Nav
-import dev.mealprep.app.ui.theme.GardenAccent
+import dev.mealprep.app.ui.common.GardenChip
 import dev.mealprep.app.work.StaplesReminder
 import dev.mealprep.app.work.SyncWorker
 import java.time.DayOfWeek
@@ -155,10 +155,8 @@ fun NotifSettingsContent(
             if (n.staples) reminderSummary(n) else "A notification to check the staples before you shop.",
             n.staples, { onChange(n.copy(staples = it)) })
         if (n.staples) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                WEEK_DAYS.forEach { d ->
-                    FilterChip(n.staplesDay == d, { onChange(n.copy(staplesDay = d)) }, { Text(Weeks.dayLabel(d.value % 7)) }, colors = GardenAccent.chipColors())
-                }
+            FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                WEEK_DAYS.forEach { d -> GardenChip(n.staplesDay == d, { onChange(n.copy(staplesDay = d)) }, Weeks.dayLabel(d.value % 7)) }
             }
             TimeButton("staples reminder", n.staplesAt) { onChange(n.copy(staplesAt = it)) }
         }

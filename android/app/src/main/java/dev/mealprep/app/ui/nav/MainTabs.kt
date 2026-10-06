@@ -7,6 +7,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -41,9 +42,12 @@ fun MainTabs(selected: Tab, onSelect: (Tab) -> Unit) {
     NavigationBar {
         val colors = GardenAccent.navItemColors()
         Tab.entries.forEach { t ->
-            // The label names the tab, so the icon itself is decoration for TalkBack.
-            NavigationBarItem(selected = t == selected, onClick = { onSelect(t) },
-                icon = { Icon(painterResource(t.icon), contentDescription = null) }, label = { Text(t.label) }, colors = colors)
+            // The label names the tab, so the icon itself is decoration for TalkBack. The selected label is also bold:
+            // its terracotta and pill alone barely show in grayscale.
+            val on = t == selected
+            NavigationBarItem(selected = on, onClick = { onSelect(t) },
+                icon = { Icon(painterResource(t.icon), contentDescription = null) },
+                label = { Text(t.label, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal) }, colors = colors)
         }
     }
 }

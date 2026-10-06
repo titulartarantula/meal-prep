@@ -1,5 +1,6 @@
 package dev.mealprep.app.ui.theme
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
@@ -166,4 +167,17 @@ object GardenAccent {
         FilterChipDefaults.filterChipColors(selectedContainerColor = a.container, selectedLabelColor = a.onContainer,
             selectedLeadingIconColor = a.onContainer, selectedTrailingIconColor = a.onContainer)
     }
+
+    /** Chip edges that hold 3:1 on the page and in dialogs: `outline` (Material's default `outlineVariant` is 1.4:1),
+     *  and a thicker terracotta edge on the selected chip, which also gets a check mark (GardenChip). */
+    @Composable
+    fun chipBorder(selected: Boolean): BorderStroke = MaterialTheme.colorScheme.let { s ->
+        BorderStroke(if (selected) CHIP_EDGE_SELECTED else CHIP_EDGE, chipEdge(s, current, selected))
+    }
 }
+
+internal val CHIP_EDGE = 1.dp
+internal val CHIP_EDGE_SELECTED = 2.dp
+
+/** The edge colour of a chip (GardenContrastTest holds both to 3:1 on the page and in dialogs). */
+internal fun chipEdge(s: ColorScheme, a: Accent, selected: Boolean): Color = if (selected) a.text else s.outline

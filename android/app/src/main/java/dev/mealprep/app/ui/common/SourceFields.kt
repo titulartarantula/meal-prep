@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
@@ -26,9 +26,9 @@ import dev.mealprep.app.ui.theme.GardenAccent
 /** Book or Other (a family recipe, a card from a friend …): which fields follow. */
 @Composable
 fun SourceKindChips(kind: String, onKind: (String) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(kind == Sources.BOOK, { onKind(Sources.BOOK) }, { Text("Book") }, colors = GardenAccent.chipColors())
-        FilterChip(kind == Sources.OTHER, { onKind(Sources.OTHER) }, { Text("Other") }, colors = GardenAccent.chipColors())
+    Row(modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        GardenChip(kind == Sources.BOOK, { onKind(Sources.BOOK) }, "Book")
+        GardenChip(kind == Sources.OTHER, { onKind(Sources.OTHER) }, "Other")
     }
 }
 
@@ -37,17 +37,21 @@ fun SourceKindChips(kind: String, onKind: (String) -> Unit, modifier: Modifier =
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OtherFields(name: String, onName: (String) -> Unit, note: String, onNote: (String) -> Unit, names: List<String>,
-                modifier: Modifier = Modifier) {
+                modifier: Modifier = Modifier,
+                /** Save was tapped without a name: the field says so (Save stays enabled, so the reason is next to it). */
+                nameMissing: Boolean = false) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        val missing = nameMissing && name.isBlank()
         OutlinedTextField(name, onName, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
-            supportingText = { Text("Needed, e.g. Mum's recipes") })
+            isError = missing,
+            supportingText = { Text(if (missing) NAME_NEEDED else "Needed, e.g. Mum's recipes", Modifier.announced()) })
         val shown = Sources.suggestNames(names, name)
         if (shown.isNotEmpty()) {
             Text("Used before", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp).semantics { heading() })
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                shown.forEach { n -> SuggestionChip({ onName(n) }, { Text(n) }) }
+                shown.forEach { n -> SuggestionChip({ onName(n) }, { Text(n) }, border = GardenAccent.chipBorder(selected = false)) }
             }
         }
         OutlinedTextField(note, onNote, label = { Text("Note (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
@@ -55,3 +59,5 @@ fun OtherFields(name: String, onName: (String) -> Unit, note: String, onNote: (S
             supportingText = { Text("Shown after the name, e.g. the blue binder") })
     }
 }
+
+const val NAME_NEEDED = "Add a name to save"
