@@ -347,6 +347,37 @@ def _lead(raw: str) -> float:
     return q if q is not None else float("nan")
 
 
+# --- pantry: what most kitchens keep (the deterministic stand-in for the AI's likely_on_hand) -----------------
+
+PANTRY = {"salt", "pepper", "black pepper", "white pepper", "ground pepper", "ground black pepper", "peppercorn",
+          "black peppercorn", "water", "ice", "baking soda", "baking powder", "vanilla", "vanilla extract",
+          "cornstarch", "honey", "soy sauce", "vinegar", "cooking spray", "garlic powder", "onion powder",
+          "chili powder", "chile powder", "paprika", "smoked paprika", "cayenne", "cayenne pepper",
+          "red pepper flake", "crushed red pepper", "crushed red pepper flake", "bay leaf", "dried bay leaf",
+          "curry powder", "italian seasoning", "dijon mustard", "ketchup", "mayonnaise"}
+PANTRY_HEADS = {"salt", "flour", "sugar", "oil", "butter", "egg", "vinegar"}   # "kosher salt", "olive oil" …
+SPICES = {"cumin", "cinnamon", "nutmeg", "ginger", "coriander", "clove", "allspice", "cardamom", "turmeric",
+          "oregano", "thyme", "basil", "rosemary", "sage", "dill", "marjoram", "tarragon", "parsley", "mint",
+          "fennel seed", "cumin seed", "mustard seed", "chili flake", "red pepper", "black pepper"}
+
+
+def likely_on_hand(name: str) -> bool:
+    """Pantry staples (the AI prompt's rule: salt, pepper, oil, common dried spices, flour, sugar, butter, eggs …).
+    Fresh herbs and produce are not: "dried oregano" / "ground cumin" are, "red bell pepper" isn't."""
+    words = re.sub(r"[\s-]+", " ", (name or "").lower()).strip().split()
+    while len(words) > 1 and (words[0] in STATE or words[0] in ADVERBS or words[0] in {"fine", "coarse"}):
+        words = words[1:]
+    if not words:
+        return False
+    words[-1] = _singular(words[-1])
+    n = " ".join(words)
+    if n in PANTRY or words[-1] in PANTRY_HEADS:
+        return True
+    if words[0] in ("dried", "ground") and " ".join(words[1:]) in SPICES:
+        return True
+    return n in SPICES and n not in {"basil", "parsley", "mint", "dill", "red pepper"}   # bare herbs are usually fresh
+
+
 # --- merge keys -------------------------------------------------------------------------------------------------
 
 _PLURAL_KEEP = {"molasses", "hummus", "couscous", "asparagus", "swiss", "grits", "greens", "oats", "brussels",

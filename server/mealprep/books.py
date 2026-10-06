@@ -17,6 +17,16 @@ MIN_GOOD = 3                    # fewer good Open Library results than this → 
 TIMEOUT = 3.0                   # seconds, each upstream
 
 
+def normalise_isbn(v: str | None) -> str | None:
+    """Digits (and a final X) only; blank → None; must be 10 or 13 long (else ValueError)."""
+    if v is None:
+        return None
+    v = "".join(ch for ch in v if ch.isalnum()).upper()
+    if v and not (len(v) in (10, 13) and v[:-1].isdigit() and (v[-1].isdigit() or (len(v) == 10 and v[-1] == "X"))):
+        raise ValueError("source_isbn must be an ISBN-10 or ISBN-13")
+    return v or None
+
+
 def _norm(s: str | None) -> str:
     """Lowercase, accents and punctuation dropped, single spaces: "Crème  Brûlée!" → "creme brulee"."""
     s = unicodedata.normalize("NFKD", s or "")

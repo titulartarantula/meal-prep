@@ -1,0 +1,3 @@
+{"@type": "Recipe", "name": "Test Book Muffins",
+ "isBasedOn": {"@type": "Book", "name": "Test Kitchen Basics", "author": [{"@type": "Person", "name": "A. Cook"}, {"@type": "Person", "name": "B. Baker"}], "isbn": "978-0-00-000000-2", "mealprep:page": "p. 42"},
+ "recipeIngredient": ["2 cups flour", "1 cup milk"], "recipeInstructions": ["Mix.", "Bake 20 minutes."], "recipeYield": "12 muffins"}

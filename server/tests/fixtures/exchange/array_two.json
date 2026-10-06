@@ -1,0 +1,8 @@
+[{"@context": "https://schema.org", "@type": "Recipe", "name": "Test Tomato Toast", "identifier": "urn:uuid:3f2b8c1e-6d4a-4b7f-9e0a-1c2d3e4f5a6b",
+  "recipeIngredient": ["2 slices bread", "1 ripe tomato, sliced", "1 tbsp olive oil"],
+  "recipeInstructions": [{"@type": "HowToStep", "text": "Toast the bread."}, {"@type": "HowToStep", "text": "Top with tomato and oil."}],
+  "recipeYield": "2"},
+ {"@context": "https://schema.org", "@type": "Recipe", "name": "Test Rice Bowl", "@id": "urn:uuid:8a7b6c5d-4e3f-4a1b-8c2d-0e9f8a7b6c5d",
+  "recipeIngredient": ["1 cup rice", "2 cups water"],
+  "recipeInstructions": ["Rinse the rice.", "Cook the rice in the water for 18 minutes."],
+  "recipeYield": "4 servings"}]

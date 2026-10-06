@@ -221,3 +221,14 @@ def test_item_key_singularizes():
     assert item_key("berries", "vol") == "berry|vol"
     assert item_key("molasses", "vol") == "molasses|vol"
     assert item_key("couscous", "vol") == "couscous|vol"
+
+
+@pytest.mark.parametrize("name, want", [
+    ("salt", True), ("kosher salt", True), ("olive oil", True), ("all-purpose flour", True), ("unsalted butter", True),
+    ("large eggs", True), ("egg", True), ("ground cumin", True), ("dried oregano", True), ("black pepper", True),
+    ("brown sugar", True), ("baking soda", True), ("vanilla extract", True), ("water", True),
+    ("chicken thigh", False), ("black beans", False), ("red bell pepper", False), ("basil", False),
+    ("eggplant", False), ("", False), ("onion", False), ("whipping cream", False)])
+def test_pantry(name, want):
+    from mealprep.ingredients import likely_on_hand
+    assert likely_on_hand(name) is want

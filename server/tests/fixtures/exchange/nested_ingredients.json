@@ -1,0 +1,3 @@
+{"@type": "Recipe", "name": "Test Taco Night",
+ "recipeIngredient": [["For the filling:", "1 lb ground beef", ["2 tbsp taco seasoning"]], {"@type": "PropertyValue", "text": "8 small tortillas"}, {"name": "1 cup shredded cheese"}, "TOPPINGS:", "1 cup salsa", "", "   "],
+ "recipeInstructions": ["Brown the beef with the seasoning.", "Fill the tortillas."]}

@@ -1,0 +1,9 @@
+{"@context": "https://schema.org", "@graph": [
+  {"@type": "Organization", "@id": "https://recipes.example.org/#org", "name": "Example Recipes"},
+  {"@type": "WebPage", "@id": "https://recipes.example.org/test-bean-chili", "name": "Test Bean Chili page"},
+  {"@type": "Recipe", "name": "Test Bean Chili", "url": "https://recipes.example.org/test-bean-chili",
+   "publisher": {"@type": "Organization", "name": "Example Recipes"},
+   "recipeIngredient": ["2 (14 oz) cans black beans, drained", "1 onion, chopped", "2 tsp ground cumin"],
+   "recipeInstructions": [{"@type": "HowToStep", "text": "Soften the onion."}, {"@type": "HowToStep", "text": "Add the beans and cumin; simmer 20 minutes."}],
+   "recipeYield": ["4", "4 servings"], "totalTime": "PT35M", "aggregateRating": {"@type": "AggregateRating", "ratingValue": 4.9, "ratingCount": 1200},
+   "recipeCuisine": "Test", "keywords": "beans, chili"}]}

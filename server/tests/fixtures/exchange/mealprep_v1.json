@@ -1,0 +1,200 @@
+{
+ "@context": [
+  "https://schema.org",
+  {
+   "mealprep": "https://github.com/titulartarantula/meal-prep/ns/v1#"
+  }
+ ],
+ "@type": "Recipe",
+ "@id": "urn:uuid:5c0ffee0-1234-4abc-8def-0123456789ab",
+ "identifier": "urn:uuid:5c0ffee0-1234-4abc-8def-0123456789ab",
+ "name": "Test Crêpe Cake",
+ "description": "An invented layered cake for the tests.",
+ "isBasedOn": {
+  "@type": "Book",
+  "name": "Test Kitchen Basics",
+  "author": "A. Cook",
+  "isbn": "9780000000002",
+  "mealprep:page": "p. 88"
+ },
+ "recipeYield": [
+  "6",
+  "6 servings"
+ ],
+ "prepTime": "PT30M",
+ "cookTime": "PT45M",
+ "dateCreated": "2026-08-01T12:00:00+00:00",
+ "recipeIngredient": [
+  "Batter for 24 crêpes, page 191",
+  "3 cups flour",
+  "6 large eggs",
+  "2 cups whipping cream",
+  "1/4 cup icing sugar",
+  "Pastry cream, page 202"
+ ],
+ "recipeInstructions": [
+  {
+   "@type": "HowToSection",
+   "name": "Crêpe batter",
+   "itemListElement": [
+    {
+     "@type": "HowToStep",
+     "text": "Whisk the flour and eggs."
+    },
+    {
+     "@type": "HowToStep",
+     "text": "Fry 24 thin crêpes."
+    }
+   ]
+  },
+  {
+   "@type": "HowToStep",
+   "text": "Whip the cream with the sugar."
+  },
+  {
+   "@type": "HowToStep",
+   "text": "Layer the crêpes with the cream."
+  }
+ ],
+ "mealprep:recipe": {
+  "format": 1,
+  "uid": "5c0ffee0-1234-4abc-8def-0123456789ab",
+  "title": "Test Crêpe Cake",
+  "servings": 6,
+  "made_as_written": false,
+  "source": {
+   "kind": "book",
+   "title": "Test Kitchen Basics",
+   "ref": "p. 88",
+   "author": "A. Cook",
+   "isbn": "9780000000002",
+   "url": null,
+   "imported_via": "photo"
+  },
+  "ingredients": [
+   {
+    "raw": "Batter for 24 crêpes, page 191",
+    "name": "crêpe batter",
+    "qty": null,
+    "unit": null,
+    "prep": null,
+    "likely_on_hand": false,
+    "ref_page": null,
+    "sub_recipe": "Crêpe batter",
+    "expanded": true
+   },
+   {
+    "raw": "1 1/2 cups flour",
+    "name": "all-purpose flour",
+    "qty": 3.0,
+    "unit": "cup",
+    "prep": null,
+    "likely_on_hand": true,
+    "ref_page": null,
+    "sub_recipe": "Crêpe batter",
+    "expanded": false
+   },
+   {
+    "raw": "3 large eggs",
+    "name": "egg",
+    "qty": 6.0,
+    "unit": null,
+    "prep": "large",
+    "likely_on_hand": true,
+    "ref_page": null,
+    "sub_recipe": "Crêpe batter",
+    "expanded": false
+   },
+   {
+    "raw": "2 cups whipping cream",
+    "name": "whipping cream",
+    "qty": 2.0,
+    "unit": "cup",
+    "prep": null,
+    "likely_on_hand": false,
+    "ref_page": null,
+    "sub_recipe": null,
+    "expanded": false
+   },
+   {
+    "raw": "1/4 cup icing sugar",
+    "name": "icing sugar",
+    "qty": 0.25,
+    "unit": "cup",
+    "prep": null,
+    "likely_on_hand": true,
+    "ref_page": null,
+    "sub_recipe": null,
+    "expanded": false
+   },
+   {
+    "raw": "Pastry cream, page 202",
+    "name": "pastry cream",
+    "qty": null,
+    "unit": null,
+    "prep": null,
+    "likely_on_hand": false,
+    "ref_page": 202,
+    "sub_recipe": null,
+    "expanded": false
+   }
+  ],
+  "steps": [
+   "Crêpe batter: Whisk the flour and eggs.",
+   "Crêpe batter: Fry 24 thin crêpes.",
+   "Whip the cream with the sugar.",
+   "Layer the crêpes with the cream."
+  ],
+  "description": "An invented layered cake for the tests.",
+  "notes": "Make the batter the night before.",
+  "prep_minutes": 30,
+  "cook_minutes": 45,
+  "total_minutes": null,
+  "yield_text": null,
+  "image": null,
+  "schema_extra": {
+   "recipeCategory": "Dessert",
+   "keywords": "test, cake"
+  }
+ },
+ "mealprep:ratings": {
+  "summary": {
+   "times_cooked": 3,
+   "times_rated": 2,
+   "avg_family": 4.5,
+   "last_family": 5,
+   "last_rated_at": "2026-09-28T01:00:00+00:00",
+   "company": "yes",
+   "notes": []
+  },
+  "good_for_company": true,
+  "entries": [
+   {
+    "date": "2026-09-27",
+    "multiplier": 1.0,
+    "family": 5,
+    "company": "yes",
+    "note": "Less sugar next time.",
+    "rated_at": "2026-09-28T01:00:00+00:00"
+   },
+   {
+    "date": "2026-09-06",
+    "multiplier": 2.0,
+    "family": 4,
+    "company": null,
+    "note": null,
+    "rated_at": "2026-09-07T00:30:00+00:00"
+   },
+   {
+    "date": "2026-08-16",
+    "multiplier": 1.0,
+    "family": null,
+    "company": null,
+    "note": null,
+    "rated_at": null
+   }
+  ]
+ },
+ "recipeCategory": "Dessert",
+ "keywords": "test, cake"
+}

@@ -1,0 +1,3 @@
+{"@type": "Recipe", "name": "Test Book Scones",
+ "isBasedOn": {"@type": "Book", "name": "Test Baking", "author": "C. Oven", "isbn": "12345"},
+ "recipeIngredient": ["2 cups flour"], "recipeInstructions": "Bake."}

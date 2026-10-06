@@ -1,0 +1,8 @@
+{"@context": "https://schema.org", "@type": "Recipe", "name": "Test Dumpling Soup",
+ "recipeIngredient": ["For the dumplings:", "1 cup flour", "1/2 cup milk", "For the broth:", "4 cups stock", "1 bay leaf"],
+ "recipeInstructions": [
+   {"@type": "HowToSection", "name": "Dumplings", "itemListElement": [
+     {"@type": "HowToStep", "text": "Stir the flour and milk."},
+     {"@type": "HowToSection", "name": "Shaping", "itemListElement": [{"@type": "HowToStep", "text": "Roll into balls."}]}]},
+   {"@type": "HowToSection", "name": "Broth", "itemListElement": [
+     {"@type": "HowToStep", "text": "Simmer the stock with the bay leaf."}, {"@type": "HowToStep", "text": "Drop in the dumplings."}]}]}

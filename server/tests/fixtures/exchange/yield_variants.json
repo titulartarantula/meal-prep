@@ -1,0 +1,9 @@
+[{"@type": "Recipe", "name": "Y1", "recipeIngredient": ["1 egg"], "recipeYield": 4},
+ {"@type": "Recipe", "name": "Y2", "recipeIngredient": ["1 egg"], "recipeYield": "4"},
+ {"@type": "Recipe", "name": "Y3", "recipeIngredient": ["1 egg"], "recipeYield": "4 servings"},
+ {"@type": "Recipe", "name": "Y4", "recipeIngredient": ["1 egg"], "recipeYield": ["4", "4 servings"]},
+ {"@type": "Recipe", "name": "Y5", "recipeIngredient": ["1 egg"], "recipeYield": "Makes 24 cookies"},
+ {"@type": "Recipe", "name": "Y6", "recipeIngredient": ["1 egg"], "recipeYield": {"@type": "QuantitativeValue", "value": 6}},
+ {"@type": "Recipe", "name": "Y7", "recipeIngredient": ["1 egg"], "recipeYield": "Serves 4 to 6"},
+ {"@type": "Recipe", "name": "Y8", "recipeIngredient": ["1 egg"], "recipeYield": ["6", "One 9-inch pie"]},
+ {"@type": "Recipe", "name": "Y9", "recipeIngredient": ["1 egg"], "recipeYield": "5000"}]

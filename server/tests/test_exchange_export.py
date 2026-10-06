@@ -29,6 +29,7 @@ def test_yield():
     assert jsonld.to_jsonld(recipe(servings=4), [])["recipeYield"] == ["4", "4 servings"]
     assert jsonld.to_jsonld(recipe(servings=None, yield_text="Makes 24 cookies"), [])["recipeYield"] == "Makes 24 cookies"
     assert "recipeYield" not in jsonld.to_jsonld(recipe(servings=None), [])
+    assert jsonld.to_jsonld(recipe(servings=8, yield_text="One 9-inch pie"), [])["recipeYield"] == ["8", "One 9-inch pie"]
     n = jsonld.to_jsonld(recipe(servings=None), [])
     assert n["mealprep:recipe"]["made_as_written"] is True and n["mealprep:recipe"]["servings"] is None
 

@@ -36,14 +36,7 @@ def _text(v: str | None, limit: int, what: str) -> str | None:
     return v or None
 
 
-def _isbn(v: str | None) -> str | None:
-    """Digits (and a final X) only; blank → None; must be 10 or 13 long."""
-    if v is None:
-        return None
-    v = "".join(ch for ch in v if ch.isalnum()).upper()
-    if v and not (len(v) in (10, 13) and v[:-1].isdigit() and (v[-1].isdigit() or (len(v) == 10 and v[-1] == "X"))):
-        raise ValueError("source_isbn must be an ISBN-10 or ISBN-13")
-    return v or None
+_isbn = books.normalise_isbn
 
 
 class RecipePatch(BaseModel):   # partial update: omitted fields are left unchanged; null clears the source fields

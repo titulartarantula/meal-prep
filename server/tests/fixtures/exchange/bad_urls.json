@@ -1,0 +1,8 @@
+[{"@type": "Recipe", "name": "Test Bad Link", "url": "javascript:alert(1)", "image": "file:///etc/passwd",
+  "recipeIngredient": ["1 cup water"], "recipeInstructions": "Boil."},
+ {"@type": "Recipe", "name": "Test Secret Link", "url": "https://user:secret@recipes.example.org/r",
+  "image": ["https://recipes.example.org/a.jpg", "https://recipes.example.org/b.jpg"],
+  "recipeIngredient": ["1 cup water"], "recipeInstructions": "Boil."},
+ {"@type": "Recipe", "name": "Test Image Object", "url": "https://www.recipes.example.org/image-object",
+  "image": {"@type": "ImageObject", "url": "https://recipes.example.org/c.jpg"},
+  "recipeIngredient": ["1 cup water"], "recipeInstructions": "Boil."}]
