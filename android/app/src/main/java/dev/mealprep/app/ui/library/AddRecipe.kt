@@ -29,8 +29,10 @@ import androidx.compose.ui.unit.dp
 import dev.mealprep.app.R
 import dev.mealprep.app.core.ShareParser
 
-/** The three ways to add a recipe from the Recipes tab. */
-enum class AddWay(val label: String) { CAMERA("Scan with camera"), PHOTOS("Choose photos"), LINK("Paste an NYT link") }
+/** The ways to add a recipe from the Recipes tab (a file: a recipe or a whole library exported from another app). */
+enum class AddWay(val label: String) {
+    CAMERA("Scan with camera"), PHOTOS("Choose photos"), LINK("Paste an NYT link"), FILE("Import from a file"),
+}
 
 /** "Add recipe" (bottom right, in thumb reach) and its menu. */
 @Composable

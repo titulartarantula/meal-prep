@@ -20,6 +20,15 @@ import kotlinx.serialization.Serializable
 /** [addToWeek]: open with the "Add to a week" picker showing (from an import card or notification). */
 @Serializable data class RecipeRoute(val id: Int, val addToWeek: Boolean = false)
 
+/** Import recipes from a file: [path] = the copy in the app's cache ([name] = its name where it came from), or
+ *  [error] when it couldn't be copied, or [jobId] > 0 = an import already started (its progress / result). */
+@Serializable data class ImportRoute(val path: String = "", val name: String = "", val error: String? = null, val jobId: Int = 0)
+
+fun importRoute(r: dev.mealprep.app.core.CopyResult): ImportRoute = when (r) {
+    is dev.mealprep.app.core.CopyResult.Ok -> ImportRoute(r.value.file.path, r.value.name)
+    is dev.mealprep.app.core.CopyResult.Err -> ImportRoute(error = r.message)
+}
+
 /** Deep links carried in notification intents (extra "nav"). */
 object Nav {
     const val EXTRA = "nav"
@@ -31,6 +40,7 @@ object Nav {
     fun prep(week: LocalDate) = "prep/$week"
     fun list() = "list"
     fun recipe(id: Int, addToWeek: Boolean = false) = "recipe/$id" + if (addToWeek) "/week" else ""
+    fun importJob(id: Int) = "import/$id"
 
     fun parse(s: String?): Any? {
         val p = s?.split("/") ?: return null
@@ -44,6 +54,7 @@ object Nav {
                 "prep" -> PrepRoute(LocalDate.parse(p[1]).toString())
                 "list" -> ListRoute("")
                 "recipe" -> RecipeRoute(p[1].toInt(), p.getOrNull(2) == "week")
+                "import" -> ImportRoute(jobId = p[1].toInt())
                 else -> null
             }
         }.getOrNull()

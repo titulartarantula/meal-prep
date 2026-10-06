@@ -106,6 +106,14 @@ class Notifier(private val context: Context) {
         post("$kind-$id", CH_JOBS, title, text, if (draft) Nav.draft(id) else Nav.prep(week))
     }
 
+    /** A recipe import finished (JobWatchWorker, app closed): what happened; tap opens the result. */
+    fun importDone(id: Int, job: dev.mealprep.app.data.api.ImportReport) = post("import-job-$id", CH_JOBS,
+        dev.mealprep.app.ui.exchange.ImportLogic.doneTitle(job),
+        listOfNotNull(dev.mealprep.app.ui.exchange.ImportLogic.result(job), dev.mealprep.app.ui.exchange.ImportLogic.jobError(job))
+            .joinToString(" "), Nav.importJob(id))
+
+    fun importGaveUp(id: Int, text: String) = post("import-job-$id", CH_JOBS, "Still importing", text, Nav.importJob(id))
+
     /** The weekly staples reminder (StaplesReminderWorker): opens the shopping list. */
     fun staplesReminder() = post("staples-reminder", CH_REMINDERS, "Time to check the staples",
         "Untick what you don't need this week, then build the cart.", Nav.list())

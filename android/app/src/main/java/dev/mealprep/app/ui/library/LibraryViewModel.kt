@@ -25,6 +25,11 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
+import dev.mealprep.app.work.WatchedImport
 import kotlinx.coroutines.launch
 
 /** [server] is the GET /recipes sort; A–Z sorts the newest-first list on the phone. */
@@ -75,6 +80,8 @@ class LibraryViewModel(
     jobs: Flow<List<ImportJob>> = queue?.let(::importJobs) ?: emptyFlow(),
     /** Dismissed import cards, shared with This week (AppGraph.hiddenImports). */
     hidden: MutableStateFlow<Set<UUID>> = MutableStateFlow(emptySet()),
+    /** Imports from a file being watched in the background (JobWatcher.imports). */
+    watches: Flow<List<WatchedImport>> = emptyFlow(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(LibraryState())
     val state = _state.asStateFlow()
@@ -86,6 +93,16 @@ class LibraryViewModel(
     fun dismissImport(id: UUID) = feed.dismiss(id)
     fun cancelImport(id: UUID) = feed.cancel(id)
     fun retryImport(id: UUID) = feed.retry(id)
+
+    private var finishedImports: Set<Int>? = null
+
+    /** Running imports from a file (a card each); one finishing reloads the library (its recipes are in). */
+    val fileImports: StateFlow<List<WatchedImport>> = watches.onEach { ws ->
+        val finished = ws.filter { !it.running }.map { it.jobId }.toSet()
+        val before = finishedImports
+        finishedImports = finished
+        if (before != null && (finished - before).isNotEmpty()) load()
+    }.map { ws -> ws.filter { it.running } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init { load() }
 

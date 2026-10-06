@@ -58,6 +58,11 @@ import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.ui.camera.PagesState
 import dev.mealprep.app.ui.camera.refPrompt
 import dev.mealprep.app.ui.exchange.ExportHost
+import dev.mealprep.app.ui.exchange.rememberRecipeFilePicker
+import dev.mealprep.app.ui.nav.ImportRoute
+import dev.mealprep.app.ui.nav.importRoute
+import dev.mealprep.app.work.WatchedImport
+import androidx.compose.material3.Card
 import dev.mealprep.app.ui.home.ImportCards
 import dev.mealprep.app.ui.nav.CameraRoute
 import dev.mealprep.app.ui.common.MessageText
@@ -75,16 +80,24 @@ fun LibraryScreen(
     menu: List<Pair<String, Any>>, onOpen: (Any) -> Unit, onRecipe: (Int) -> Unit,
     onPhotos: (List<Uri>) -> Unit, onLink: (String) -> Unit,
 ) {
-    val vm = graphViewModel { g -> LibraryViewModel(g.repo, g.imports, hidden = g.hiddenImports) }
+    val vm = graphViewModel { g -> LibraryViewModel(g.repo, g.imports, hidden = g.hiddenImports, watches = g.jobs.imports) }
     val state by vm.state.collectAsStateWithLifecycle()
     val imports by vm.imports.collectAsStateWithLifecycle()
+    val fileImports by vm.fileImports.collectAsStateWithLifecycle()
+    val pickFile = rememberRecipeFilePicker { r -> onOpen(importRoute(r)) }
     LifecycleResumeEffect(Unit) { vm.onResume(); onPauseOrDispose { } }
     val ctx = LocalContext.current
     var paste by remember { mutableStateOf<String?>(null) }   // non-null: the dialog is open (value = copied link or "")
     var exporting by rememberSaveable { mutableStateOf(false) }
     // More options: the library's own items first (they act here), then Staples and Settings (screens).
     val menuHere = libraryMenu(menu)
-    val openHere: (Any) -> Unit = { r -> if (r == LibraryMenu.EXPORT_ALL) exporting = true else onOpen(r) }
+    val openHere: (Any) -> Unit = { r ->
+        when (r) {
+            LibraryMenu.EXPORT_ALL -> exporting = true
+            LibraryMenu.IMPORT -> pickFile()
+            else -> onOpen(r)
+        }
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(PagesState.MAX_PAGES)) { uris ->
         if (uris.isNotEmpty()) onPhotos(uris)
     }
@@ -93,6 +106,7 @@ fun LibraryScreen(
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.semantics { isTraversalGroup = true; traversalIndex = 0f }) { TabHeader("Recipes", menuHere, openHere) }
             Column(Modifier.weight(1f).semantics { isTraversalGroup = true; traversalIndex = 2f }) {
+                fileImports.forEach { w -> FileImportCard(w) { onOpen(ImportRoute(jobId = w.jobId)) } }
                 ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
                 LibraryContent(state, vm::search, vm::sort, onRecipe, vm::load, onSource = vm::source, onCompany = vm::company)
             }
@@ -102,6 +116,7 @@ fun LibraryScreen(
                 AddWay.CAMERA -> onOpen(CameraRoute())
                 AddWay.PHOTOS -> picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 AddWay.LINK -> paste = clipboardNytLink(ctx) ?: ""
+                AddWay.FILE -> pickFile()
             }
         })
     }
@@ -165,12 +180,30 @@ fun LibraryContent(
 }
 
 /** The Recipes tab's own More options items (handled on the tab, not routes). */
-enum class LibraryMenu { EXPORT_ALL }
+enum class LibraryMenu { IMPORT, EXPORT_ALL }
 
+const val IMPORT_MENU = "Import recipes from a file"
 const val EXPORT_ALL_MENU = "Export all recipes (a backup file)"
 
 /** The Recipes tab's More options: its own items, then the main screens' (Staples, Settings). */
-fun libraryMenu(main: List<Pair<String, Any>>): List<Pair<String, Any>> = listOf(EXPORT_ALL_MENU to LibraryMenu.EXPORT_ALL) + main
+fun libraryMenu(main: List<Pair<String, Any>>): List<Pair<String, Any>> =
+    listOf(IMPORT_MENU to LibraryMenu.IMPORT, EXPORT_ALL_MENU to LibraryMenu.EXPORT_ALL) + main
+
+/** "Adding recipes from a file: 3 of 12 done" (the Recipes tab's card while an import runs in the background). */
+fun fileImportText(w: WatchedImport): String =
+    if (w.total > 0) "Adding recipes from a file: ${w.done} of ${w.total} done" else "Adding recipes from a file…"
+
+/** A background import from a file, while it runs: Open shows its progress and, later, what was added. */
+@Composable
+fun FileImportCard(w: WatchedImport, onOpen: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            Text(fileImportText(w))
+            LinearProgressIndicator({ if (w.total > 0) w.done.toFloat() / w.total else 0f }, Modifier.fillMaxWidth().padding(vertical = 6.dp))
+            TextButton(onOpen, Modifier.heightIn(min = 48.dp)) { Text("Open") }
+        }
+    }
+}
 
 const val NO_COMPANY = "None rated good for company yet. After dinner, rate it and answer “Yes” to “Would you make it for company?”."
 

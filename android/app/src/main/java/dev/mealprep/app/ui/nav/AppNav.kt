@@ -35,6 +35,7 @@ import dev.mealprep.app.ui.loblaws.LoblawsSettings
 import dev.mealprep.app.ui.home.HomeScreen
 import dev.mealprep.app.ui.prep.PrepScreen
 import dev.mealprep.app.ui.setup.SettingsScreen
+import dev.mealprep.app.ui.exchange.ImportScreen
 import dev.mealprep.app.ui.share.ShareScreen
 import java.time.LocalDate
 import dev.mealprep.app.ui.setup.SetupScreen
@@ -130,6 +131,11 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
                 },
                 onBack = up)
         }
+        composable<ImportRoute> { back ->
+            ImportScreen(back.toRoute<ImportRoute>(), onBack = up, onRecipe = { id -> nav.navigate(RecipeRoute(id)) },
+                // The new recipes are at the top of Recipes (newest first; the tab reloads when it shows).
+                onDone = { nav.popBackStack(); nav.openTab(Tab.RECIPES) })
+        }
         composable<ShareRoute> {
             ShareScreen(graph,
                 // Saved recipes land in Recipes, where the import card shows its progress.
@@ -167,5 +173,9 @@ fun mainMenu(): List<Pair<String, Any>> = listOf("Staples" to StaplesRoute, "Set
 /** A link from a notification: a tab opens as that tab (no second copy); anything else goes on top. */
 fun NavController.openLink(route: Any) {
     val t = Tab.entries.firstOrNull { it.route::class == route::class && route !is HomeRoute }
-    if (t != null) navigate(route) { popUpTo<HomeRoute>(); launchSingleTop = true } else navigate(route)
+    when {
+        t != null -> navigate(route) { popUpTo<HomeRoute>(); launchSingleTop = true }
+        route is ImportRoute -> { openTab(Tab.RECIPES); navigate(route) }   // an import lands under Recipes
+        else -> navigate(route)
+    }
 }
