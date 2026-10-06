@@ -22,6 +22,7 @@ import android.net.Uri
 import org.junit.rules.TemporaryFolder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -51,13 +52,18 @@ class ShareViewModelTest {
             Configuration.Builder().setMinimumLoggingLevel(Log.DEBUG).setExecutor(SynchronousExecutor()).setWorkerFactory(factory).build())
         wm = WorkManager.getInstance(env.context)
     }
-    @After fun tearDown() = env.close()
+    private val vms = mutableListOf<ShareViewModel>()
+    // A book list still loading would read the cache after it is closed (an error in the next test).
+    @After fun tearDown() {
+        runBlocking { withTimeout(5_000) { vms.forEach { it.booksJob?.join() } } }
+        env.close()
+    }
 
     private var lastBook: String? = null
     private fun vm() = ShareViewModel(
         env.repo, ImportQueue(wm), PageStore(tmp.root),
         copy = { uri, out -> if (uri.toString().contains("bad")) error("gone") else out.writeText("img-${uri.lastPathSegment}") },
-        configured = { true }, lastBook = { lastBook }, rememberBook = { lastBook = it })
+        configured = { true }, lastBook = { lastBook }, rememberBook = { lastBook = it }).also { vms += it }
     private suspend fun awaitWork(id: java.util.UUID): WorkInfo = withContext(Dispatchers.Default) {
         withTimeout(5_000) { while (!wm.getWorkInfoById(id).get()!!.state.isFinished) delay(20) }
         wm.getWorkInfoById(id).get()!!

@@ -77,6 +77,8 @@ class ShareViewModel(
     private val _state = MutableStateFlow(ShareState())
     val state = _state.asStateFlow()
     private var copyJob: Job? = null
+    /** Loading the household's books (tests wait for it before closing the cache). */
+    internal var booksJob: Job? = null
     private val lookup = BookLookup(viewModelScope, { q -> repo.searchBooks(q, Books.LIMIT) })
 
     init {
@@ -85,6 +87,7 @@ class ShareViewModel(
 
     fun start(input: ShareInput) {
         abandon()
+        lookup.typed("")   // a new share starts without the last one's search rows
         val notRecipe = input is ShareInput.NotARecipe
         _state.value = ShareState(input, if (notRecipe) NOT_A_RECIPE else null, configured = configured())
         if (notRecipe) return
@@ -95,7 +98,9 @@ class ShareViewModel(
         }
         if (_state.value.isPhotos) {
             _state.update { it.copy(choice = BookChoice(lastBook().orEmpty())) }
-            viewModelScope.launch {   // the saved copy will do offline
+            val previous = booksJob
+            booksJob = viewModelScope.launch {   // the saved copy will do offline
+                previous?.join()                 // one after the other: the newest list wins
                 val books = Books.yours(repo.sources().value.orEmpty())
                 _state.update { it.copy(books = books) }
             }
