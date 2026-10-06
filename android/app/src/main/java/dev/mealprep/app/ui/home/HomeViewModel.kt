@@ -58,6 +58,23 @@ class HomeViewModel(
     }
     val imports: StateFlow<List<ImportUi>> = feed.cards
 
+    /** Weeks after this one the pager reaches (Weeks.weeksAhead): 3, more only for later weeks that have recipes. */
+    private val _ahead = MutableStateFlow(Weeks.HORIZON - 1)
+    val ahead: StateFlow<Int> = _ahead.asStateFlow()
+
+    private var aheadJob: Job? = null
+
+    init { refreshAhead() }
+
+    /** Re-reads which weeks after the horizon already have recipes (the saved copy will do offline). */
+    fun refreshAhead() {
+        aheadJob?.cancel()   // an older answer must not land after a newer one
+        aheadJob = viewModelScope.launch {
+            val t = today()
+            _ahead.value = Weeks.weeksAhead(t, repo.weeks(Weeks.afterHorizon(t), Weeks.LOOK_AHEAD).value)
+        }
+    }
+
     fun week(week: LocalDate): StateFlow<WeekUi> {
         val w = Weeks.weekStart(week)
         return weeks[w] ?: MutableStateFlow(WeekUi(w)).also { weeks[w] = it; refresh(w) }

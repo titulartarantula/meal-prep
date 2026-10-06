@@ -74,7 +74,7 @@ class RecipeViewModel(
     init {
         viewModelScope.launch { lookup.found.collect { f -> _state.update { it.copy(found = f) } } }
         load()
-        viewModelScope.launch { _state.update { it.copy(options = weekOptions(today(), repo.weeks(today(), 8).value)) } }
+        viewModelScope.launch { _state.update { it.copy(options = weekOptions(today(), repo.weeks(today(), Weeks.HORIZON).value)) } }
     }
 
     /** The household's books for Edit source's suggestions (asked when the dialog opens; the saved copy will do offline). */

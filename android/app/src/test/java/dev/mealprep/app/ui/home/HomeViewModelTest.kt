@@ -45,6 +45,29 @@ class HomeViewModelTest {
     }
     @After fun tearDown() = env.close()
 
+    @Test fun `the pager reaches 3 weeks ahead, further when a later week already has recipes`() = runTest {
+        assertEquals(3, vm.ahead.value)
+        fun later() = env.requests.firstOrNull { it.url.encodedPath == "/weeks" && it.url.queryParameter("count") == "48" }
+        withContext(Dispatchers.Default) { withTimeout(5_000) { while (later() == null) delay(10) } }
+        val asked = later()!!
+        assertEquals("2026-11-01", asked.url.queryParameter("from"))                // the first week after the horizon
+        env.on("GET", "/weeks", body = """[{"week":"2026-11-01","entries":0},{"week":"2026-11-15","entries":1}]""")
+        vm.refreshAhead()
+        vm.ahead.await { it == 6 }
+        env.offline = true                                                         // the saved copy still shows it
+        vm.refreshAhead()
+        withContext(Dispatchers.Default) { delay(300) }
+        assertEquals(6, vm.ahead.value)
+    }
+
+    @Test fun `pager span keeps past weeks and opens a linked week`() {
+        assertEquals(PagerSpan(pages = 8, initial = 4), pagerSpan(ahead = 3, opened = 0))      // 4 back, this, 3 ahead
+        assertEquals(PagerSpan(8, 5), pagerSpan(3, 1))
+        assertEquals(PagerSpan(11, 10), pagerSpan(3, 6))                                       // a link to a later week
+        assertEquals(PagerSpan(10, 4), pagerSpan(5, 0))
+        assertEquals(PagerSpan(8, 0), pagerSpan(3, -9))                                        // far past: the oldest page
+    }
+
     @Test fun `loads nights, tray, status and the next step`() = runTest {
         val ui = vm.week(wk).await { !it.loading }
         assertEquals(listOf(23), ui.view!!.unplaced.map { it.id })

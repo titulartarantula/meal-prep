@@ -41,6 +41,16 @@ class ListViewModelTest {
 
     private fun vm(initial: List<String>) = ListViewModel(env.repo, JobWatcher(wm), initial.map(LocalDate::parse), today = { LocalDate.parse("2026-10-07") })
 
+    @Test fun `shopping for offers the four planning weeks only, plus a chosen later one`() = runTest {
+        val s = vm(listOf("2026-10-11")).state.await { !it.loading }
+        assertEquals(listOf("2026-10-04", "2026-10-11", "2026-10-18", "2026-10-25"), s.options.map { it.week.toString() })
+        assertEquals("4", env.requests.first { it.url.encodedPath == "/weeks" }.url.queryParameter("count"))
+        assertEquals("1 recipe · cart sent", s.options[1].detail)
+        // a later week that already has recipes (Build cart from that week) is shown so it can be unticked
+        val later = vm(listOf("2026-11-15")).state.await { !it.loading && it.options.size == 5 }
+        assertEquals(LocalDate.parse("2026-11-15"), later.options.last().week)
+    }
+
     @Test fun `no week given uses the server's next uncarted week`() = runTest {
         env.on("GET", "/cart/default-week", body = """{"week":"2026-10-18"}""")
         val s = vm(emptyList()).state.await { !it.loading }

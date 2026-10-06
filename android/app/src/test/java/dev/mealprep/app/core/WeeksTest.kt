@@ -1,5 +1,6 @@
 package dev.mealprep.app.core
 
+import dev.mealprep.app.data.api.WeekSummary
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -8,6 +9,24 @@ class WeeksTest {
     private val sun = LocalDate.parse("2026-10-04")
     private val wed = LocalDate.parse("2026-10-07")
     private val sat = LocalDate.parse("2026-10-10")
+
+    @Test fun `the planning horizon is this week and the next three`() {
+        val four = listOf("2026-10-04", "2026-10-11", "2026-10-18", "2026-10-25").map(LocalDate::parse)
+        assertEquals(four, Weeks.horizon(wed))
+        assertEquals(four, Weeks.horizon(sun))
+        assertEquals(four, Weeks.horizon(sat))
+        assertEquals(LocalDate.parse("2026-11-01"), Weeks.afterHorizon(sat))
+    }
+
+    @Test fun `the pager reaches further only for weeks that already have recipes or are opened`() {
+        assertEquals(3, Weeks.weeksAhead(wed, null))                                    // offline, nothing saved
+        assertEquals(3, Weeks.weeksAhead(wed, listOf(WeekSummary("2026-11-01", 0), WeekSummary("2026-11-08", 0))))
+        assertEquals(5, Weeks.weeksAhead(wed, listOf(WeekSummary("2026-11-01", 0), WeekSummary("2026-11-08", 2),
+            WeekSummary("2026-11-15", 0))))                                              // Nov 8 is 5 weeks after Oct 4
+        assertEquals(7, Weeks.weeksAhead(wed, emptyList(), open = LocalDate.parse("2026-11-22")))
+        assertEquals(3, Weeks.weeksAhead(wed, emptyList(), open = LocalDate.parse("2026-09-20")))
+        assertEquals(3, Weeks.weeksAhead(wed, listOf(WeekSummary("not a date", 3))))
+    }
 
     @Test fun `week starts on the Sunday on or before`() {
         assertEquals(sun, Weeks.weekStart(sun))

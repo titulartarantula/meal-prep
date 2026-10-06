@@ -64,7 +64,8 @@ fun stapleAmount(s: Staple): String = if (s.unit == null) {
     "${qty(n)} " + if (n == 1.0) "pack" else "packs"
 } else amountText(s.qty, s.unit) ?: s.unit
 
-/** Selected weeks first appear in the picker even when they're outside its 8 weeks (e.g. a far-off default). */
+/** Selected weeks also appear in the picker when they're outside its 4 weeks (a far-off default, or a later week
+ *  planned before the horizon), so they can be unticked; nothing else beyond the horizon is offered. */
 internal fun withSelected(options: List<WeekOption>, selected: Set<LocalDate>, today: LocalDate): List<WeekOption> {
     val missing = selected.filter { w -> options.none { it.week == w } }
         .map { WeekOption(it, Weeks.weekChoiceLabel(it, today), null) }
@@ -90,7 +91,7 @@ class ListViewModel(
             val weeks = initial.map(Weeks::weekStart).ifEmpty {
                 listOf((repo.defaultCartWeek() as? ApiResult.Ok)?.value?.let(Weeks::weekStart) ?: Weeks.upcomingSunday(t))
             }.toSet()
-            val options = weekOptions(t, repo.weeks(t, 8).value)
+            val options = weekOptions(t, repo.weeks(t, Weeks.HORIZON).value)
             _state.update { it.copy(weeks = weeks, options = withSelected(options, weeks, t)) }
             loadStaples()
             started = true

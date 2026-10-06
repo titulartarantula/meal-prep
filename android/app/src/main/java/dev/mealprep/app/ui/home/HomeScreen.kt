@@ -91,16 +91,18 @@ import dev.mealprep.app.work.ImportWorker
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 
-private const val PAGES = 27
-private const val BACK = 4   // weeks reachable before this one
+private const val BACK = Weeks.PAST   // weeks reachable before this one
 
 @Composable
 fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction) -> Unit, onOpen: (Any) -> Unit, menu: List<Pair<String, Any>>) {
     val vm = graphViewModel { g -> HomeViewModel(g.repo, g.imports, hidden = g.hiddenImports) }
     var today by remember { mutableStateOf(LocalDate.now()) }
     val current = Weeks.weekStart(today)
-    val initial = BACK + (startWeek?.let { Weeks.weeksBetween(today, it) } ?: 0).coerceIn(-BACK, PAGES - BACK - 1)
-    val pager = rememberPagerState(initialPage = initial) { PAGES }
+    // The planning horizon: this week + the next 3, further only to a later week that already has recipes or that
+    // a link opens. Past weeks stay reachable.
+    val ahead by vm.ahead.collectAsStateWithLifecycle()
+    val span = pagerSpan(ahead, startWeek?.let { Weeks.weeksBetween(today, it) } ?: 0)
+    val pager = rememberPagerState(initialPage = span.initial) { span.pages }
     val imports by vm.imports.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     AskForNotificationsOnce(graph)
@@ -109,6 +111,7 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
     // Back on Home (or the app resumed days later): reload the visible week and re-read today's date.
     LifecycleResumeEffect(pager.currentPage) {
         today = LocalDate.now()
+        vm.refreshAhead()
         vm.refresh(Weeks.weekStart(LocalDate.now()).plusWeeks((pager.currentPage - BACK).toLong()))
         onPauseOrDispose { }
     }

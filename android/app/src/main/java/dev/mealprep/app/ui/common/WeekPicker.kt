@@ -20,8 +20,9 @@ import java.time.LocalDate
 
 data class WeekOption(val week: LocalDate, val label: String, val detail: String?)
 
-/** This week + the next count−1 weeks; details ("2 recipes · cart sent") only when the server answered. */
-fun weekOptions(today: LocalDate, summaries: List<WeekSummary>?, count: Int = 8): List<WeekOption> {
+/** This week + the next count−1 weeks (the planning horizon: 4 in all); details ("2 recipes · cart sent") only when
+ *  the server answered. */
+fun weekOptions(today: LocalDate, summaries: List<WeekSummary>?, count: Int = Weeks.HORIZON): List<WeekOption> {
     val first = Weeks.weekStart(today)
     val byWeek = summaries.orEmpty().associateBy { LocalDate.parse(it.week) }
     return (0 until count).map { i ->

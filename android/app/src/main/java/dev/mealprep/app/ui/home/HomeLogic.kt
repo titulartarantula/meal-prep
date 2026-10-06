@@ -19,6 +19,16 @@ fun weekView(week: LocalDate, entries: List<PlanEntry>): WeekView {
     )
 }
 
+/** The This-week pager: [pages] in all, the first one [Weeks.PAST] weeks back; [initial] = the page shown first. */
+data class PagerSpan(val pages: Int, val initial: Int)
+
+/** [ahead] weeks after this one (Weeks.weeksAhead), widened to a week a link opens [opened] weeks from now (a past
+ *  one is clamped to the oldest page). */
+fun pagerSpan(ahead: Int, opened: Int): PagerSpan {
+    val pages = Weeks.PAST + 1 + maxOf(ahead, opened)
+    return PagerSpan(pages, Weeks.PAST + opened.coerceIn(-Weeks.PAST, pages - Weeks.PAST - 1))
+}
+
 /** Planned → Cart sent → Prep done (DESIGN "App: home screen"). */
 data class StatusStrip(val planned: Boolean, val cartSent: Boolean, val prepDone: Boolean)
 
