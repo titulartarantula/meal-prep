@@ -373,3 +373,26 @@ def recipe_history(conn, recipe_id: int) -> list[dict]:
         "ORDER BY p.week DESC, COALESCE(p.day, -1) DESC, p.id DESC", (recipe_id,))
     return [{"entry_id": i, "week": w.isoformat(), "day": dy, "date": d.isoformat() if d else None, "multiplier": m,
              "rating": (rt.model_dump() if (rt := _rating(*r)) else None)} for i, w, dy, d, m, *r in rows]
+
+
+def rating_entries(conn, today: date, recipe_ids: list[int] | None = None) -> dict[int, list[dict]]:
+    """{recipe_id: [entry, …]} — every time cooked, for the export's `mealprep:ratings.entries`: plan entries that are
+    rated or were placed on a night before today (so times_cooked survives a trip to another library). Each entry:
+    date (the night, or null), multiplier, family, company, note, rated_at. Newest first (rated_at, else the night)."""
+    rows = conn.execute(
+        "SELECT p.recipe_id, p.week + p.day::int AS d, p.multiplier, r.family, r.company, r.note, r.rated_at "
+        "FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id "
+        "WHERE (r.plan_id IS NOT NULL OR (p.day IS NOT NULL AND p.week + p.day::int < %(t)s))"
+        + ("" if recipe_ids is None else " AND p.recipe_id = ANY(%(ids)s)")
+        + " ORDER BY COALESCE(r.rated_at, (p.week + p.day::int)::timestamptz) DESC NULLS LAST, p.id DESC",
+        {"t": today, "ids": recipe_ids})
+    out: dict[int, list[dict]] = {}
+    for rid, d, m, family, company, note, rated_at in rows:
+        out.setdefault(rid, []).append({"date": d.isoformat() if d else None, "multiplier": float(m), "family": family,
+                                        "company": company, "note": note,
+                                        "rated_at": rated_at.isoformat() if rated_at else None})
+    return out
+
+
+def created_at(conn, recipe_ids: list[int]) -> dict[int, datetime]:
+    return dict(conn.execute("SELECT id, created_at FROM recipes WHERE id = ANY(%s)", (recipe_ids,)).fetchall())

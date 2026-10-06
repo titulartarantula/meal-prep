@@ -1,14 +1,16 @@
 import logging, tempfile, threading
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Callable, Literal
 
 import httpx
 import psycopg
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from . import books, db, drafts, prepplan, staples, subrecipe
 from .ai import AIError, get_provider
+from .exchange import jsonld
 from .config import Settings
 from .importers.nyt import extract_nyt_url, fetch_nyt, parse_nyt_html
 from .importers.photo import import_photo, import_subrecipe
@@ -364,6 +366,44 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                 # the page is part of the same recipe, so it keeps the recipe's source (book, page) as it is
             db.update_recipe(c, recipe_id, subrecipe.attach_subrecipe(cur, line, name, ings, steps))
         return _recipe_out(c, recipe_id)
+
+    def _export_nodes(c, rs: list[Recipe], standalone: bool) -> list[dict]:
+        ids = [r.id for r in rs]
+        if not ids:
+            return []
+        summaries, planned = db.rating_summaries(c, today(), ids), db.planned_weeks(c, today(), ids)
+        entries, created = db.rating_entries(c, today(), ids), db.created_at(c, ids)
+        return [jsonld.to_jsonld(RecipeOut(**r.model_dump(), ratings=summaries.get(r.id, {}),
+                                           planned_weeks=planned.get(r.id, [])),
+                                 entries.get(r.id, []), standalone=standalone, created_at=created.get(r.id))
+                for r in rs]
+
+    def _ld(content: dict, filename: str) -> JSONResponse:
+        return JSONResponse(content, media_type="application/ld+json; charset=utf-8",
+                            headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+    @app.get("/recipes/export", dependencies=A)
+    def export_library(source: str | None = None, ids: str | None = None, c=Depends(get_conn)):
+        """The library (or the `source` filter, as GET /recipes, and/or `ids`=1,2,3; unknown ids are ignored) as one
+        schema.org JSON-LD file with an @graph of recipes, ratings and notes included, newest first."""
+        wanted = None
+        if ids is not None:
+            try:
+                wanted = {int(x) for x in ids.split(",") if x.strip()}
+            except ValueError:
+                raise HTTPException(422, "ids must be recipe ids separated by commas")
+        rs = [r for r in db.list_recipes(c, source) if wanted is None or r.id in wanted]
+        day = today()
+        return _ld(jsonld.bundle(_export_nodes(c, rs, standalone=False), datetime.now(timezone.utc)),
+                   f"meal-prep-recipes-{day.isoformat()}.json")
+
+    @app.get("/recipes/{recipe_id}/export", dependencies=A)
+    def export_recipe(recipe_id: int, c=Depends(get_conn)):
+        """One recipe as a schema.org JSON-LD file (ratings and notes included)."""
+        r = db.get_recipe(c, recipe_id)
+        if r is None:
+            raise HTTPException(404, f"recipe {recipe_id}")
+        return _ld(_export_nodes(c, [r], standalone=True)[0], f"{jsonld.slug(r.title, r.id)}.recipe.json")
 
     @app.get("/recipes", dependencies=A)
     def recipes(sort: Literal["newest", "favourites"] = "newest", source: str | None = None,
