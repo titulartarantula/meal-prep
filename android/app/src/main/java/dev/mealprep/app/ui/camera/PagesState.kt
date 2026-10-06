@@ -16,6 +16,9 @@ data class PagesState(val pages: List<File> = emptyList(), val retaking: Int? = 
     fun retake(i: Int) = copy(retaking = i.takeIf { it in pages.indices })
     fun cancelRetake() = copy(retaking = null)
     fun remove(i: Int) = copy(pages = pages.filterIndexed { j, _ -> j != i }, retaking = null)
+    /** Undo a [remove]: [f] goes back at [i] (or the end, if the strip got shorter meanwhile). */
+    fun restore(i: Int, f: File): PagesState =
+        if (f in pages) this else copy(pages = pages.toMutableList().also { it.add(i.coerceIn(0, it.size), f) }, retaking = null)
     /** Swap page [i] with its neighbour [by] places away (−1 earlier, +1 later); unchanged past either end. */
     fun move(i: Int, by: Int): PagesState {
         val j = i + by

@@ -89,6 +89,8 @@ class CameraViewModel(
     fun retake(i: Int) = _state.update { it.retake(i) }
     fun cancelRetake() = _state.update { it.cancelRetake() }
     fun remove(i: Int) = _state.update { it.remove(i) }
+    /** Undo a delete (the file stays in the folder until Done). Not past the limit: a photo may have been added since. */
+    fun restore(i: Int, f: File) = _state.update { if (it.pages.size < PagesState.MAX_PAGES) it.restore(i, f) else it }
     fun move(i: Int, by: Int) = _state.update { it.move(i, by) }
 
     /** Numbers the pages in the chosen order; the folder then belongs to the import (or the share screen). */

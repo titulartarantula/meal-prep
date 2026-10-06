@@ -1,6 +1,15 @@
 package dev.mealprep.app.ui.share
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import dev.mealprep.app.ui.camera.rememberDeleteWithUndo
+import dev.mealprep.app.ui.common.BackTopBar
+import java.io.File
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,13 +21,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
@@ -36,14 +42,31 @@ import dev.mealprep.app.ui.common.graphViewModel
 
 @Composable
 fun ShareContent(
-    state: ShareState, onConfirm: () -> Unit, onCancel: () -> Unit, onSetup: () -> Unit,
+    state: ShareState, onConfirm: () -> Unit, onBack: () -> Unit, onSetup: () -> Unit,
     onTitle: (String) -> Unit = {}, onMove: (Int, Int) -> Unit = { _, _ -> }, onRemove: (Int) -> Unit = {},
     onBook: (String) -> Unit = {}, onPage: (String) -> Unit = {}, onPickBook: (BookSuggestion) -> Unit = {},
     onKind: (String) -> Unit = {}, onOtherName: (String) -> Unit = {}, onNote: (String) -> Unit = {},
+    onRestore: (Int, File) -> Unit = { _, _ -> },
 ) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(if (state.isPhotos && state.kind == Sources.BOOK) "Save a cookbook recipe" else "Save a recipe", style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.semantics { heading() })
+    val snackbar = remember { SnackbarHostState() }
+    val delete = rememberDeleteWithUndo(state.pages, snackbar, onRemove, onRestore)
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            BackTopBar(if (state.isPhotos && state.kind == Sources.BOOK) "Save a cookbook recipe" else "Save a recipe", onBack)
+            ShareBody(state, onConfirm, onSetup, onTitle, onMove, delete, onBook, onPage, onPickBook, onKind, onOtherName, onNote)
+        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+@Composable
+private fun ColumnScope.ShareBody(
+    state: ShareState, onConfirm: () -> Unit, onSetup: () -> Unit, onTitle: (String) -> Unit, onMove: (Int, Int) -> Unit,
+    onRemove: (Int) -> Unit, onBook: (String) -> Unit, onPage: (String) -> Unit, onPickBook: (BookSuggestion) -> Unit,
+    onKind: (String) -> Unit, onOtherName: (String) -> Unit, onNote: (String) -> Unit,
+) {
+    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
         (state.input as? ShareInput.NytLink)?.let { Text("NYT Cooking · ${it.url.substringAfterLast('/')}") }
         if (!state.configured) {
             Text("Connect to the meal-prep server first.")
@@ -56,7 +79,7 @@ fun ShareContent(
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             } else if (state.pages.pages.isNotEmpty()) {
                 Text(if (state.pages.pages.size == 1) "1 page" else "${state.pages.pages.size} pages, in reading order — " +
-                    "use ◀ ▶ if they're out of order.")
+                    "use ‹ › if they're out of order.")
                 PageStrip(state.pages, retakeEnabled = false, onRetake = null, onRemove = onRemove, onMove = onMove)
                 OutlinedTextField(state.title, onTitle, label = { Text("Title (optional)") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth())
@@ -73,14 +96,13 @@ fun ShareContent(
             if (state.isPhotos) Text("Reading pages takes about a minute. You can leave the app; it will let you know.",
                 style = MaterialTheme.typography.bodySmall)
         }
-        TextButton(onClick = onCancel) { Text(if (state.canSave || state.copying) "Cancel" else "Close") }
     }
 }
 
 const val SAVE = "Save to Recipes"
 
 @Composable
-fun ShareScreen(graph: AppGraph, onQueued: () -> Unit, onCancel: () -> Unit, onSetup: () -> Unit) {
+fun ShareScreen(graph: AppGraph, onQueued: () -> Unit, onBack: () -> Unit, onSetup: () -> Unit) {
     val vm = graphViewModel { g ->
         ShareViewModel(g.repo, g.imports, g.pages, g.copyPage, { g.settings.value.configured },
             lastBook = { g.settings.value.lastBook },
@@ -90,6 +112,6 @@ fun ShareScreen(graph: AppGraph, onQueued: () -> Unit, onCancel: () -> Unit, onS
     LaunchedEffect(pending) { pending?.let { vm.start(it); graph.pendingShare.value = null } }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.queued) { if (state.queued) onQueued() }
-    ShareContent(state, { vm.confirm() }, onCancel, onSetup, vm::setTitle, vm::movePage, vm::removePage, vm::setBook, vm::setPage,
-        vm::pickBook, vm::setKind, vm::setOtherName, vm::setNote)
+    ShareContent(state, { vm.confirm() }, onBack, onSetup, vm::setTitle, vm::movePage, vm::removePage, vm::setBook, vm::setPage,
+        vm::pickBook, vm::setKind, vm::setOtherName, vm::setNote, onRestore = vm::restorePage)
 }

@@ -19,6 +19,22 @@ import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import dev.mealprep.app.R
+import dev.mealprep.app.ui.common.BackTopBar
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,7 +64,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -101,57 +116,92 @@ fun CameraContent(
     onRemove: (Int) -> Unit,
     onMove: (Int, Int) -> Unit,
     onDone: () -> Unit,
-    onCancel: () -> Unit,
+    onBack: () -> Unit,
+    onRestore: (Int, File) -> Unit = { _, _ -> },
 ) {
-    Column(Modifier.fillMaxSize()) {
-        Text(title, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium)
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            when (mode) {
-                CameraMode.Ready -> preview()
-                CameraMode.NoPermission -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Meal Prep needs the camera to photograph cookbook pages. You can also choose photos you already took.")
-                    Button(onClick = onAllowCamera) { Text("Allow camera") }
+    val snackbar = remember { SnackbarHostState() }
+    val delete = rememberDeleteWithUndo(pages, snackbar, onRemove, onRestore)
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            BackTopBar(title, onBack)
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                when (mode) {
+                    CameraMode.Ready -> preview()
+                    CameraMode.NoPermission -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Meal Prep needs the camera to photograph cookbook pages. You can also choose photos you already took.")
+                        Button(onClick = onAllowCamera) { Text("Allow camera") }
+                    }
+                    CameraMode.Unavailable -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("The camera couldn't start here. Use the phone's camera app instead, or choose photos you already took.")
+                        Button(onClick = onSystemCamera, enabled = pages.canShoot && !busy) { Text("Use the camera app") }
+                    }
                 }
-                CameraMode.Unavailable -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("The camera couldn't start here. Use the phone's camera app instead, or choose photos you already took.")
-                    Button(onClick = onSystemCamera, enabled = pages.canShoot && !busy) { Text("Use the camera app") }
+            }
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            MessageText(error)
+            if (pages.pages.isNotEmpty()) {
+                Text("${pages.pages.size} of ${PagesState.MAX_PAGES} pages, in reading order" +
+                    if (mode != CameraMode.NoPermission) " · tap a page to retake it" else "",
+                    Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodySmall)
+                PageStrip(pages, retakeEnabled = mode != CameraMode.NoPermission, onRetake = onRetake, onRemove = delete, onMove = onMove)
+            }
+            if (pages.retaking != null) {
+                Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Retaking page ${pages.retaking + 1}", Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                    TextButton(onClick = onCancelRetake) { Text("Keep the old one") }
                 }
             }
-        }
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        MessageText(error)
-        if (pages.pages.isNotEmpty()) {
-            Text("${pages.pages.size} of ${PagesState.MAX_PAGES} pages, in reading order", Modifier.padding(horizontal = 12.dp),
-                style = MaterialTheme.typography.bodySmall)
-            PageStrip(pages, retakeEnabled = mode != CameraMode.NoPermission, onRetake = onRetake, onRemove = onRemove, onMove = onMove)
-        }
-        if (pages.retaking != null) {
-            Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Retaking page ${pages.retaking + 1}", Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                TextButton(onClick = onCancelRetake) { Text("Keep the old one") }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                OutlinedButton(onClick = onPick, enabled = pages.canShoot && !busy && pages.retaking == null) { Text("From Photos") }
+            }
+            Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onShoot, enabled = mode == CameraMode.Ready && pages.canShoot && !busy, modifier = Modifier.weight(1f)) {
+                    Text(shootLabel(pages, busy))
+                }
+                Button(onClick = onDone, enabled = pages.pages.isNotEmpty() && !busy, modifier = Modifier.weight(1f)) {
+                    Text("Done (${pages.pages.size})")
+                }
+            }
+            if (!pages.canShoot && pages.retaking == null) {
+                Text("That's the most a recipe can have (${PagesState.MAX_PAGES} pages).", Modifier.padding(horizontal = 12.dp),
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onCancel) { Text("Cancel") }
-            OutlinedButton(onClick = onPick, enabled = pages.canShoot && !busy && pages.retaking == null) { Text("From Photos") }
-        }
-        Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onShoot, enabled = mode == CameraMode.Ready && pages.canShoot && !busy, modifier = Modifier.weight(1f)) {
-                Text(shootLabel(pages, busy))
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+/**
+ * Delete with Undo (camera and share screens): the page leaves the strip at once and "Deleted page 2 · Undo" puts it
+ * back where it was. The file itself stays in the recipe's folder until Done / Save.
+ */
+@Composable
+fun rememberDeleteWithUndo(
+    pages: PagesState, snackbar: SnackbarHostState, onRemove: (Int) -> Unit, onRestore: (Int, File) -> Unit,
+): (Int) -> Unit {
+    val scope = rememberCoroutineScope()
+    val current by rememberUpdatedState(pages)
+    val remove by rememberUpdatedState(onRemove)
+    val restore by rememberUpdatedState(onRestore)
+    return remember(snackbar) {
+        { i: Int ->
+            current.pages.getOrNull(i)?.let { f ->
+                remove(i)
+                scope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    val r = snackbar.showSnackbar("Deleted page ${i + 1}", actionLabel = "Undo", withDismissAction = true,
+                        duration = SnackbarDuration.Short)
+                    if (r == SnackbarResult.ActionPerformed) restore(i, f)
+                }
             }
-            Button(onClick = onDone, enabled = pages.pages.isNotEmpty() && !busy, modifier = Modifier.weight(1f)) {
-                Text("Done (${pages.pages.size})")
-            }
-        }
-        if (!pages.canShoot && pages.retaking == null) {
-            Text("That's the most a recipe can have (${PagesState.MAX_PAGES} pages).", Modifier.padding(horizontal = 12.dp),
-                style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
-/** Thumbnails in reading order, each with Earlier / Later / Retake / Delete. */
+/**
+ * Thumbnails in reading order. Each has a small × (delete) and, under it, 48 dp ‹ › buttons with its page number
+ * between them; with [onRetake], tapping the picture retakes that page.
+ */
 @Composable
 fun PageStrip(
     pages: PagesState, retakeEnabled: Boolean, onRetake: ((Int) -> Unit)?, onRemove: (Int) -> Unit, onMove: (Int, Int) -> Unit,
@@ -160,19 +210,23 @@ fun PageStrip(
         itemsIndexed(pages.pages, key = { _, f -> f.path }) { i, f ->
             val n = i + 1
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Thumbnail(f, "Page $n", highlighted = pages.retaking == i)
-                Text(if (pages.retaking == i) "Retaking…" else "Page $n", style = MaterialTheme.typography.labelMedium)
-                Row {
-                    TextButton(onClick = { onMove(i, -1) }, enabled = i > 0,
-                        modifier = Modifier.semantics { contentDescription = "Move page $n earlier" }) { Text("◀") }
-                    TextButton(onClick = { onMove(i, 1) }, enabled = i < pages.pages.lastIndex,
-                        modifier = Modifier.semantics { contentDescription = "Move page $n later" }) { Text("▶") }
+                Box {
+                    Thumbnail(f, "Page $n", highlighted = pages.retaking == i,
+                        onClick = onRetake?.takeIf { retakeEnabled }?.let { r -> { r(i) } }, clickLabel = "Retake page $n",
+                        modifier = Modifier.padding(top = 8.dp, end = 8.dp))
+                    FilledTonalIconButton({ onRemove(i) }, Modifier.align(Alignment.TopEnd)) {
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = "Delete page $n")
+                    }
                 }
-                Row {
-                    if (onRetake != null) TextButton(onClick = { onRetake(i) }, enabled = retakeEnabled,
-                        modifier = Modifier.semantics { contentDescription = "Retake page $n" }) { Text("Retake") }
-                    TextButton(onClick = { onRemove(i) },
-                        modifier = Modifier.semantics { contentDescription = "Delete page $n" }) { Text("Delete") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton({ onMove(i, -1) }, enabled = i > 0) {
+                        Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Move page $n earlier")
+                    }
+                    // The thumbnail already says "Page 2" to TalkBack.
+                    Text("$n", Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.labelLarge)
+                    IconButton({ onMove(i, 1) }, enabled = i < pages.pages.lastIndex) {
+                        Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Move page $n later")
+                    }
                 }
             }
         }
@@ -180,20 +234,23 @@ fun PageStrip(
 }
 
 @Composable
-fun Thumbnail(f: File, description: String, highlighted: Boolean = false) {
+fun Thumbnail(
+    f: File, description: String, highlighted: Boolean = false, onClick: (() -> Unit)? = null, clickLabel: String? = null,
+    modifier: Modifier = Modifier,
+) {
     val bmp by produceState<ImageBitmap?>(null, f) {
         value = withContext(Dispatchers.IO) {
             BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = 8 })?.asImageBitmap()
         }
     }
-    val m = Modifier.width(72.dp).height(96.dp).let {
-        if (highlighted) it.border(3.dp, MaterialTheme.colorScheme.primary) else it
-    }
+    val m = modifier.width(72.dp).height(96.dp)
+        .let { if (highlighted) it.border(3.dp, MaterialTheme.colorScheme.primary) else it }
+        .let { if (onClick != null) it.clickable(onClickLabel = clickLabel, role = Role.Button, onClick = onClick) else it }
     bmp?.let { Image(it, description, m) } ?: Box(m.semantics { contentDescription = description })
 }
 
 @Composable
-fun CameraScreen(vm: CameraViewModel, title: String, onDone: (File) -> Unit, onCancel: () -> Unit) {
+fun CameraScreen(vm: CameraViewModel, title: String, onDone: (File) -> Unit, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val owner = LocalLifecycleOwner.current
     fun hasPermission() = ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
@@ -272,7 +329,7 @@ fun CameraScreen(vm: CameraViewModel, title: String, onDone: (File) -> Unit, onC
             else ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ctx.packageName, null)))
         },
         onRetake = vm::retake, onCancelRetake = vm::cancelRetake, onRemove = vm::remove, onMove = vm::move,
-        onDone = { onDone(vm.done()) }, onCancel = onCancel,
+        onDone = { onDone(vm.done()) }, onBack = onBack, onRestore = vm::restore,
     )
 }
 

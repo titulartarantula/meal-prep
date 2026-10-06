@@ -156,6 +156,8 @@ class ShareViewModel(
     fun setNote(n: String) = _state.update { it.copy(note = n) }
     fun movePage(i: Int, by: Int) = _state.update { it.copy(pages = it.pages.move(i, by)) }
     fun removePage(i: Int) { _state.update { it.copy(pages = it.pages.remove(i)) }; checkCount() }
+    /** Undo a delete: the page's file is still in the folder until Save. */
+    fun restorePage(i: Int, f: java.io.File) { _state.update { it.copy(pages = it.pages.restore(i, f)) }; checkCount() }
 
     /** Hands the import to the background queue; returns the work id (null if nothing to do). */
     fun confirm(): UUID? {
