@@ -108,13 +108,13 @@ class ImportViewModelTest {
         env.on("POST", "/recipes/import", code = 422, body = """{"detail":"This file isn't valid JSON."}""")
         val vm = vm()
         val s = vm.state.await { it.error != null }
-        assertEquals(ExchangeText.NOT_JSON, s.error); assertTrue(s.canRetry)
+        assertEquals(ExchangeText.NOT_JSON, s.error); assertFalse(s.canRetry)      // the same file would fail again
         env.on("POST", "/recipes/import", code = 413, body = """{"detail":"This file is too big to import (max 20 MB)."}""")
         vm.preview()
         assertTrue(vm.state.await { it.error?.startsWith("This file is too big") == true }.error!!.contains("Export fewer"))
         env.offline = true
         vm.preview()
-        assertEquals(ExchangeText.OFFLINE_IMPORT, vm.state.await { it.error == ExchangeText.OFFLINE_IMPORT }.error)
+        assertTrue(vm.state.await { it.error == ExchangeText.OFFLINE_IMPORT }.canRetry)
     }
 
     @Test fun `a copy error from the route, or a missing file, never calls the server`() = runTest {

@@ -14,6 +14,11 @@ servers for the app and receives none of your data.
 sent to the server address you enter in Settings. The server reads the recipe and stores it, along with your
 week plan (which recipe is on which night, and the scale you choose).
 
+**Recipe files you export or import.** You can export your recipes (with their ratings and notes) to a file you
+choose or send it to an app you choose, and import recipe files you pick or share to the app. Files go only
+between your phone and your household's server; the app reads only the file you chose, and links inside a file
+are kept as text, never opened.
+
 **The saved copy on your phone.** To work offline, the app keeps a copy of the current week's plan on the
 phone, in the app's private storage. Uninstalling the app removes it.
 

@@ -10,8 +10,11 @@ It has two parts:
   link or scan a cookbook page into Recipes (with its book and page), then add recipes from Recipes to a week and
   arrange them on nights in the "This week" view. After dinner, rate it (family score, good for company, a note
   that shows on the recipe's next cook card). Each phone plans its own local reminders (thaw the evening before,
-  how was dinner the morning after, optional tonight, cart ready) from its copy of the week. The app talks only
-  to the household's own server; it keeps an offline copy of the current week.
+  how was dinner the morning after, optional tonight, cart ready) from its copy of the week. Recipes move in and
+  out as schema.org JSON-LD files: export one recipe or the whole library (ratings and notes included) to a file
+  or another app, and import files from Meal Prep or other recipe apps (or a saved recipe web page) with a preview
+  before anything is added. The app talks only to the household's own server; it keeps an offline copy of the
+  current week.
 - **Server** (`server/`, Python 3.12 + FastAPI + Postgres). Imports recipes (schema.org JSON-LD from recipe
   pages, or cookbook photos read by an AI model), suggests cookbook titles and authors for the app (Open Library,
   with Google Books as a fallback), stores the weekly plan and ratings, builds a grocery cart

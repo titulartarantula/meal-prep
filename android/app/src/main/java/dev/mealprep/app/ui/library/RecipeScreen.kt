@@ -172,7 +172,7 @@ private fun ColumnScope.RecipeBody(
             }
         }
         r.notes?.let { n ->
-            item { Section("Recipe notes") }
+            item { Section("Notes from the recipe") }
             item { Text(n) }
         }
         if (r.ratings.notes.isNotEmpty()) {

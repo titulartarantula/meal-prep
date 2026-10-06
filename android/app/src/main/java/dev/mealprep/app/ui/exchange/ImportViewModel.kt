@@ -103,7 +103,9 @@ class ImportViewModel(
                     val ticks = keep?.intersect(selectable) ?: ImportLogic.defaultTicks(r.value)
                     _state.update { it.copy(loading = false, report = r.value, ticks = ticks) }
                 }
-                is ApiResult.Err -> _state.update { it.copy(loading = false, error = ExchangeText.importError(r.error), canRetry = true) }
+                // Try again only helps when the file wasn't the problem (offline, slow, the token, the server).
+                is ApiResult.Err -> _state.update { it.copy(loading = false, error = ExchangeText.importError(r.error),
+                    canRetry = r.error !is ApiError.Http || r.error.code >= 500) }
             }
         }
     }
