@@ -75,11 +75,11 @@ class AppLaunchTest {
             compose.onNode(hasText("This week") and isSelectable()).assertIsSelected()
             compose.onNode(hasText("Shopping list") and isSelectable()).performClick()
             compose.onNode(hasText("Shopping list") and isSelectable()).assertIsSelected()
-            compose.onNodeWithText("Shopping for").assertExists()
+            compose.onNodeWithText("Shopping for:").assertExists()
             compose.onNode(hasText("Recipes") and isSelectable()).performClick()
             compose.onNode(hasText("Recipes") and isSelectable()).assertIsSelected()
             compose.onNode(hasText("This week") and isSelectable()).performClick()
-            compose.onNodeWithText("Shopping for").assertDoesNotExist()
+            compose.onNodeWithText("Shopping for:").assertDoesNotExist()
             compose.onNodeWithContentDescription("More options").performClick()
             compose.onNodeWithText("Staples").assertExists()
             compose.onNodeWithText("Shopping list", useUnmergedTree = true).assertExists()   // the tab, not a menu item
@@ -91,7 +91,7 @@ class AppLaunchTest {
         val link = Intent(app, MainActivity::class.java).putExtra(dev.mealprep.app.ui.nav.Nav.EXTRA, dev.mealprep.app.ui.nav.Nav.list())
         ActivityScenario.launch<MainActivity>(link).use {
             compose.onNode(hasText("Shopping list") and isSelectable()).assertIsSelected()
-            compose.onNodeWithText("Shopping for").assertExists()
+            compose.onNodeWithText("Shopping for:").assertExists()
         }
     }
 

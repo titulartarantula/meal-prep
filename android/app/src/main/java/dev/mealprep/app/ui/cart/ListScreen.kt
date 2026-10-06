@@ -1,10 +1,8 @@
 package dev.mealprep.app.ui.cart
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,7 +14,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,23 +23,30 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.mealprep.app.R
+import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.data.api.ListItem
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.TabHeader
+import dev.mealprep.app.ui.common.WeekOption
 import dev.mealprep.app.ui.common.graphViewModel
 import java.time.LocalDate
 import java.util.Locale
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ListContent(
     state: ListState, onWeek: (LocalDate) -> Unit, onToggle: (String) -> Unit, onBuild: () -> Unit, onRetry: () -> Unit = {},
@@ -48,12 +54,7 @@ fun ListContent(
     today: LocalDate = LocalDate.now(),
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Text("Shopping for", style = MaterialTheme.typography.titleMedium)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            state.options.forEach { o ->
-                FilterChip(o.week in state.weeks, { onWeek(o.week) }, { Text(o.label + (o.detail?.let { " · $it" } ?: "")) })
-            }
-        }
+        WeekSelector(state.options, state.weeks, onWeek)
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         MessageText(state.error)
         if (!state.loading && state.items.isEmpty() && state.error != null) TextButton(onRetry) { Text("Try again") }
@@ -91,6 +92,36 @@ fun ListContent(
     }
 }
 
+/** One line, "Shopping for: Next week (Oct 11) ▾". Its menu ticks weeks on and off as you tap (the list reloads
+ *  each time) and stays open for more; a tap outside or Back closes it. */
+@Composable
+private fun WeekSelector(options: List<WeekOption>, weeks: Set<LocalDate>, onWeek: (LocalDate) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClickLabel = "Choose weeks", role = Role.DropdownList) { open = true },
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("Shopping for:", style = MaterialTheme.typography.titleMedium)
+            Text(weeksLabel(weeks, options), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 6.dp).weight(1f, fill = false))
+            Icon(painterResource(R.drawable.ic_arrow_drop_down), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        }
+        DropdownMenu(open, { open = false }) {
+            options.forEach { o -> CheckRow(o.week in weeks, onToggle = { onWeek(o.week) }, title = o.label, lines = listOfNotNull(o.detail)) }
+        }
+    }
+}
+
+/** "Next week (Oct 11)" for one week, "Oct 11 + Oct 18" for two, "3 weeks" for more. */
+internal fun weeksLabel(weeks: Set<LocalDate>, options: List<WeekOption>): String {
+    val sorted = weeks.sorted()
+    return when (sorted.size) {
+        0 -> "…"
+        1 -> options.firstOrNull { it.week == sorted[0] }?.label ?: "Week of ${Weeks.shortDate(sorted[0])}"
+        2 -> sorted.joinToString(" + ") { Weeks.shortDate(it) }
+        else -> "${sorted.size} weeks"
+    }
+}
+
 /** A cart already made for the chosen week: the list leads back to it whatever its state. */
 @Composable
 private fun ExistingCart(d: Draft, onOpen: () -> Unit) {
@@ -114,7 +145,7 @@ private fun CheckRow(checked: Boolean, enabled: Boolean = true, onToggle: () -> 
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(checked, enabled = enabled, role = Role.Checkbox) { onToggle() },
         verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked, onCheckedChange = null, enabled = enabled, modifier = Modifier.padding(horizontal = 12.dp))
-        Column(Modifier.padding(vertical = 4.dp)) {
+        Column(Modifier.padding(top = 4.dp, bottom = 4.dp, end = 12.dp)) {
             Text(title)
             lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
