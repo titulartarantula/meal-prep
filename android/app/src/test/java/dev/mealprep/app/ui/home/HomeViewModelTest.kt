@@ -131,6 +131,48 @@ class HomeViewModelTest {
         assertEquals(listOf(22), done.view!!.nights[4].entries.map { it.id })
     }
 
+    @Test fun `a removed dinner waits for Undo, Undo keeps it and nothing is deleted`() = runTest {
+        env.on("DELETE", "/plan/21", code = 204)
+        val chili = vm.week(wk).await { !it.loading }.view!!.all.first { it.id == 21 }
+        vm.remove(chili)
+        assertEquals(chili, vm.removed.value)
+        assertEquals(false, vm.week(wk).value.view!!.all.any { it.id == 21 })        // gone from the screen at once
+        vm.refresh(wk)                                                                // a reload doesn't bring it back
+        withContext(Dispatchers.Default) { delay(300) }
+        assertEquals(false, vm.week(wk).value.view!!.all.any { it.id == 21 })
+        vm.undoRemove()
+        assertEquals(null, vm.removed.value)
+        vm.week(wk).await { v -> v.view!!.all.any { it.id == 21 } }
+        withContext(Dispatchers.Default) { delay(200) }
+        assertEquals(0, env.count("DELETE", "/plan/21"))
+    }
+
+    @Test fun `a removal is deleted once the snackbar goes, or when another dinner is removed`() = runTest {
+        var changes = 0
+        val v = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-07") },
+            afterChange = { changes++ })
+        env.on("DELETE", "/plan/21", code = 204)
+        env.on("DELETE", "/plan/23", code = 204)
+        val all = v.week(wk).await { !it.loading }.view!!.all
+        v.remove(all.first { it.id == 21 })
+        assertEquals(0, env.count("DELETE", "/plan/21"))
+        v.remove(all.first { it.id == 23 })                                          // the first one is final now
+        env.awaitBody("DELETE", "/plan/21")
+        assertEquals(23, v.removed.value!!.id)
+        v.commitRemove()
+        env.awaitBody("DELETE", "/plan/23")
+        withContext(Dispatchers.Default) { withTimeout(5_000) { while (changes < 2) delay(10) } }
+        assertEquals(null, v.removed.value)
+    }
+
+    @Test fun `a failed load with no saved copy is unknown, not an empty week`() = runTest {
+        env.offline = true
+        val ui = vm.week(LocalDate.parse("2026-11-01")).await { !it.loading }
+        assertEquals(null, ui.view)
+        assertNotNull(ui.error)
+        assertEquals(true, ui.failed)
+    }
+
     @Test fun `a rejected token is an error, not offline`() = runTest {
         vm.week(wk).await { !it.loading }
         env.on("GET", "/weeks/2026-10-11", code = 401, body = """{"detail":"nope"}""")

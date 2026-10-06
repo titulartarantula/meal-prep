@@ -37,7 +37,7 @@ class NavTest {
         val wk = LocalDate.parse("2026-10-11")
         assertEquals(ListRoute("2026-10-11"), contextRoute(ContextAction.BuildCart(wk)))
         assertEquals(LibraryRoute, contextRoute(ContextAction.AddRecipes))
-        assertEquals("Add recipes from Recipes", ContextAction.AddRecipes.label)
+        assertEquals("Choose from Recipes", ContextAction.AddRecipes.label)
         assertNull(contextRoute(ContextAction.AllSet))
     }
 

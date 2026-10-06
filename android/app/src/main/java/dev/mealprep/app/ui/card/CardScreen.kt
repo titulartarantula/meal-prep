@@ -101,19 +101,22 @@ fun CardContent(s: CardState, done: Set<Int>, a: CardUiActions, today: LocalDate
 @Composable
 private fun StepRow(i: Int, step: CardStep, checked: Boolean, onStep: () -> Unit, onTimer: (Int) -> Unit) {
     Card(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.fillMaxWidth().padding(4.dp)) {
             // Ticks are only for keeping your place on this phone (not sent to the server).
-            Row(Modifier.weight(1f).heightIn(min = 48.dp).toggleable(checked, role = Role.Checkbox) { onStep() }.padding(4.dp),
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(checked, role = Role.Checkbox) { onStep() }.padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked, onCheckedChange = null, modifier = Modifier.padding(end = 8.dp))
                 Column {
                     Text("${i + 1}. ${step.text}",
                         color = if (checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                    step.minutes?.let { Text("~$it min", style = MaterialTheme.typography.bodySmall) }
+                    step.minutes?.let { Text("about $it min", style = MaterialTheme.typography.bodySmall) }
                 }
             }
+            // Under the step, not beside it: at large text a side button squeezed the step to a word a line.
             step.timerMinutes?.takeIf { it > 0 }?.let { m ->
-                TextButton({ onTimer(m) }, Modifier.semantics { contentDescription = "Start a $m-minute timer" }) { Text("Timer $m min") }
+                TextButton({ onTimer(m) }, Modifier.padding(start = 40.dp).semantics { contentDescription = "Start a $m-minute timer" }) {
+                    Text("Timer $m min")
+                }
             }
         }
     }

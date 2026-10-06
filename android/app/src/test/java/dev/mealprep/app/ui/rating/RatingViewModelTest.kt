@@ -116,14 +116,22 @@ class RatingViewModelTest {
         var family: Int? = null; var saved = 0
         val s = RatingState(title = "Chili", night = "Tuesday", family = 4, existing = true, loading = false,
             summary = RatingSummary(timesRated = 2, avgFamily = 4.5, notes = listOf(RatingNote("less salt", "2026-10-06"))))
-        compose.setContent { RatingContent(s, { family = it }, {}, {}, { saved++ }, {}) }
+        var cleared = 0
+        compose.setContent { RatingContent(s, { family = it }, {}, {}, { saved++ }, { cleared++ }) }
         compose.onNodeWithText("How was Tuesday's Chili?").assertExists()
         compose.onNodeWithContentDescription("4 out of 5").assertIsSelected()
         compose.onNodeWithContentDescription("5 out of 5").performClick()
         assertEquals(5, family)
         compose.onNodeWithText("Update rating").performScrollTo().performClick()
         assertEquals(1, saved)
-        compose.onNodeWithText("Remove rating").assertExists()
         compose.onNodeWithText("“less salt” — Oct 6").assertExists()
+        // Removing asks first (the screen closes once it's gone).
+        compose.onNodeWithText("Remove rating").performScrollTo().performClick()
+        compose.onNodeWithText("Remove this rating?").assertExists()
+        compose.onNodeWithText("Keep it").performClick()
+        assertEquals(0, cleared)
+        compose.onNodeWithText("Remove rating").performClick()
+        compose.onNodeWithText("Remove").performClick()
+        assertEquals(1, cleared)
     }
 }

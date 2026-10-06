@@ -137,6 +137,18 @@ class PrepViewModelTest {
         assertNull(s.error)
     }
 
+    @Test fun `offline with nothing saved the plan is unknown, not missing`() = runTest {
+        env.offline = true
+        val s = vm().state.await { !it.loading }
+        assertNull(s.plan)
+        assertTrue(s.unknown)
+        assertNotNull(s.error)
+        env.offline = false
+        env.on("GET", "/weeks/2026-10-11/prep-plan", code = 404, body = """{"detail":"none"}""")
+        val none = vm().state.await { !it.loading }
+        assertFalse(none.unknown)                                                    // the server says there's none
+    }
+
     @Test fun `start asks the server for this week and watches the job`() = runTest {
         env.on("POST", "/prep-plans", code = 202, body = """{"id":5,"status":"building"}""")
         val vm = vm()

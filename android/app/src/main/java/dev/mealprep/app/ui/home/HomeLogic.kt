@@ -42,7 +42,7 @@ fun statusStrip(entries: List<PlanEntry>, carted: Boolean, prep: PrepPlan?) =
 sealed interface ContextAction {
     val label: String
     /** Nothing in the week: recipes are picked from the library (the Recipes tab). */
-    data object AddRecipes : ContextAction { override val label = "Add recipes from Recipes" }
+    data object AddRecipes : ContextAction { override val label = "Choose from Recipes" }
     data class BuildCart(val week: LocalDate) : ContextAction { override val label get() = "Build cart" }
     data class ReviewCart(val draftId: Int, val building: Boolean) : ContextAction {
         override val label get() = if (building) "Cart building…" else "Review cart"
@@ -52,7 +52,7 @@ sealed interface ContextAction {
         override val label get() = if (building) "Prep plan on its way…" else "Prep: $done of $total done"
     }
     data class Tonight(val entryId: Int, val title: String) : ContextAction { override val label get() = "Tonight: $title" }
-    data object AllSet : ContextAction { override val label = "All set" }
+    data object AllSet : ContextAction { override val label = "✓ All set for this week" }
 }
 
 fun contextAction(week: LocalDate, today: LocalDate, entries: List<PlanEntry>, carted: Boolean, draft: Draft?, prep: PrepPlan?): ContextAction {

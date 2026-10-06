@@ -9,7 +9,7 @@ import dev.mealprep.app.data.api.PlanEntry
  * Dragging a recipe on "This week" (Android drag and drop, started by holding a recipe).
  *
  * The drag carries "mealprep-entry:<id>" as plain text, so text dragged in from another app is never taken for a
- * recipe. Drop zones are the seven nights and the tray ("Not on a night yet").
+ * recipe. Drop zones are the seven nights and the tray ("No night yet").
  */
 object WeekDragText {
     const val PREFIX = "mealprep-entry:"

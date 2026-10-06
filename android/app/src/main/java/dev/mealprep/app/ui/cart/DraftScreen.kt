@@ -26,7 +26,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.text.input.ImeAction
+import dev.mealprep.app.R
+import dev.mealprep.app.ui.common.announced
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextDecoration
@@ -61,11 +70,14 @@ class DraftActions(
 fun DraftContent(s: DraftState, a: DraftActions) {
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         val d = s.draft
-        Text("Cart", style = MaterialTheme.typography.titleLarge)
+        Text("Cart", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
         if (d == null || d.status == "building") {
             if (d != null || s.loading) {
-                Text(d?.let { "Finding products… ${it.progress.done} of ${it.progress.total}" } ?: "Loading…")
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(d?.let { "Finding products… ${it.progress.done} of ${it.progress.total}" } ?: "Loading…", Modifier.announced())
+                // The count is known while building: a bar that fills, not one that only moves.
+                val p = d?.progress
+                if (p != null && p.total > 0) LinearProgressIndicator({ p.done.toFloat() / p.total }, Modifier.fillMaxWidth())
+                else LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text("You can leave this screen — you'll get a notification when it's ready.", style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -137,10 +149,17 @@ private fun SwapDialog(swap: SwapState, onSearch: (String) -> Unit, onChoose: (P
         title = { Text("Swap ${swap.term}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(term, { term = it }, singleLine = true, modifier = Modifier.weight(1f), label = { Text("Search Loblaws") })
-                    TextButton({ onSearch(term) }, enabled = !swap.searching && term.isNotBlank()) { Text("Search") }
-                }
+                // Search is the keyboard's action and an icon in the field: a button beside it left the field too
+                // narrow for its label at large text.
+                val canSearch = !swap.searching && term.isNotBlank()
+                OutlinedTextField(term, { term = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text("Search Loblaws") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { if (canSearch) onSearch(term) }),
+                    trailingIcon = {
+                        IconButton({ onSearch(term) }, enabled = canSearch) {
+                            Icon(painterResource(R.drawable.ic_search), contentDescription = "Search")
+                        }
+                    })
                 if (swap.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
                 MessageText(swap.error)
                 if (swap.results.isEmpty() && !swap.searching && swap.error == null) {

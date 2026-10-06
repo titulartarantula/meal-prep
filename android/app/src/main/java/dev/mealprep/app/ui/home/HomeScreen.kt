@@ -29,12 +29,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -66,6 +71,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -80,6 +87,9 @@ import dev.mealprep.app.data.api.PendingRating
 import dev.mealprep.app.data.api.PlanEntry
 import dev.mealprep.app.ui.nav.DraftRoute
 import dev.mealprep.app.ui.common.MessageText
+import dev.mealprep.app.ui.common.GardenChip
+import dev.mealprep.app.ui.common.announced
+import dev.mealprep.app.core.RatingText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.OverflowMenu
 import dev.mealprep.app.ui.common.graphViewModel
@@ -91,7 +101,6 @@ import dev.mealprep.app.ui.camera.RefPrompt
 import dev.mealprep.app.ui.camera.refPromptText
 import dev.mealprep.app.ui.rating.ratingQuestion
 import dev.mealprep.app.work.SyncWorker
-import dev.mealprep.app.ui.theme.GardenAccent
 import dev.mealprep.app.work.ImportWorker
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
@@ -100,7 +109,8 @@ private const val BACK = Weeks.PAST   // weeks reachable before this one
 
 @Composable
 fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction) -> Unit, onOpen: (Any) -> Unit, menu: List<Pair<String, Any>>) {
-    val vm = graphViewModel { g -> HomeViewModel(g.repo, g.imports, hidden = g.hiddenImports, afterChange = { SyncWorker.now(g.workManager) }) }
+    val vm = graphViewModel { g -> HomeViewModel(g.repo, g.imports, hidden = g.hiddenImports,
+        afterChange = { SyncWorker.now(g.workManager) }, later = g.scope) }
     var today by remember { mutableStateOf(LocalDate.now()) }
     val current = Weeks.weekStart(today)
     // The planning horizon: this week + the next 3, further only to a later week that already has recipes or that
@@ -111,6 +121,16 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
     val imports by vm.imports.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val pending by vm.pending.collectAsStateWithLifecycle()
+    val removed by vm.removed.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    // Taking a dinner off the week waits for this snackbar: Undo keeps it, anything else makes it final. (Leaving
+    // the screen while it shows brings it back on return; the ViewModel finishes it if Home goes away.)
+    LaunchedEffect(removed) {
+        val e = removed ?: return@LaunchedEffect
+        val r = snackbar.showSnackbar("Took ${e.title ?: "the recipe"} off the week", actionLabel = "Undo", withDismissAction = true,
+            duration = SnackbarDuration.Long)
+        if (r == SnackbarResult.ActionPerformed) vm.undoRemove() else vm.commitRemove()
+    }
     AskForNotificationsOnce(graph)
     val drag = remember { WeekDrag() }
 
@@ -123,26 +143,29 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
         onPauseOrDispose { }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(Weeks.weekTitle(current.plusWeeks((pager.currentPage - BACK).toLong()), today),
-                style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-            OverflowMenu(menu, onOpen)
-        }
-        message?.let { m ->
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                MessageText(m); TextButton(onClick = vm::clearMessage) { Text("OK") }
+                Text(Weeks.weekTitle(current.plusWeeks((pager.currentPage - BACK).toLong()), today),
+                    style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+                OverflowMenu(menu, onOpen)
+            }
+            message?.let { m ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    MessageText(m); TextButton(onClick = vm::clearMessage) { Text("OK") }
+                }
+            }
+            pending?.let { p -> RatingBanner(p, onRate = { onOpen(RatingRoute(p.entryId, p.week)) }, onLater = vm::dismissPending) }
+            ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
+            // While a recipe is held the drag has priority: the week can't be swiped away underneath it.
+            HorizontalPager(pager, Modifier.weight(1f), userScrollEnabled = !drag.dragging) { page ->
+                val week = current.plusWeeks((page - BACK).toLong())
+                val ui by vm.week(week).collectAsStateWithLifecycle()
+                WeekContent(ui, today, onAction, vm::place, vm::scale, vm::remove, onOpen, onRefresh = { vm.refresh(week) },
+                    loadRef = vm::refPromptFor, drag = drag)
             }
         }
-        pending?.let { p -> RatingBanner(p, onRate = { onOpen(RatingRoute(p.entryId, p.week)) }, onLater = vm::dismissPending) }
-        ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
-        // While a recipe is held the drag has priority: the week can't be swiped away underneath it.
-        HorizontalPager(pager, Modifier.weight(1f), userScrollEnabled = !drag.dragging) { page ->
-            val week = current.plusWeeks((page - BACK).toLong())
-            val ui by vm.week(week).collectAsStateWithLifecycle()
-            WeekContent(ui, today, onAction, vm::place, vm::scale, vm::remove, onOpen, onRefresh = { vm.refresh(week) },
-                loadRef = vm::refPromptFor, drag = drag)
-        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 }
 
@@ -189,7 +212,8 @@ fun ImportCards(
     val max = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * 0.35f).toDp() }
     Column(Modifier.heightIn(max = max).verticalScroll(rememberScrollState())) { imports.forEach { i ->
         Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-            Column(Modifier.padding(12.dp)) {
+            // Reading → Added (or failed) happens without focus: TalkBack reads the card when it changes.
+            Column(Modifier.padding(12.dp).announced()) {
                 when (i) {
                     is ImportUi.Waiting -> {
                         Text("Waiting for the home network — it will be sent automatically.")
@@ -208,7 +232,7 @@ fun ImportCards(
                     }
                     is ImportUi.Done -> {
                         Text(doneTitle(i.title, i.existing), fontWeight = FontWeight.Bold)
-                        i.ratingLine?.let { Text(it) }
+                        i.ratingLine?.let { Text(it, Modifier.semantics { contentDescription = RatingText.spoken(it) }) }
                         // Imports queued by 0.4.1 and earlier also went into a week.
                         i.week?.let { Text("Also in the week of ${Weeks.shortDate(it)}, in the tray until you put it on a night.") }
                         i.ref?.let { RefLine(it) }
@@ -259,6 +283,11 @@ fun WeekContent(
     val drop: (Slot, String?) -> Boolean = { slot, text -> dropMove(all, text, slot)?.let { (e, d) -> onPlace(e, d); true } ?: false }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { OfflineBanner(ui.offlineSince); MessageText(ui.error) }
+        // Nothing known about the week (no saved copy either): only the message and Try again, not an empty week.
+        if (ui.failed) {
+            item { Button(onClick = onRefresh) { Text("Try again") } }
+            return@LazyColumn
+        }
         item {
             StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } },
                 onPrep = if (ui.hasPrep) { { onOpen(PrepRoute(ui.week.toString())) } } else null)
@@ -266,13 +295,17 @@ fun WeekContent(
         when {
             ui.loading && ui.view == null -> {}   // the first load: no button until we know what the week needs
             ui.action == ContextAction.AddRecipes -> item { EmptyWeek { onAction(ui.action) } }
+            // Nothing left to do: a line of text, not a big button that goes nowhere.
+            ui.action == ContextAction.AllSet -> item {
+                Text(ui.action.label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+            }
             else -> item { Button(onClick = { onAction(ui.action) }, modifier = Modifier.fillMaxWidth()) { Text(ui.action.label) } }
         }
         val view = ui.view
         if (view != null) {
             item {
                 Column(Modifier.fillMaxWidth().dropZone(drag, Slot.TRAY, drop).padding(4.dp)) {
-                    Text("Not on a night yet", style = MaterialTheme.typography.titleSmall)
+                    Text(NO_NIGHT, style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
                     DropHint(drag, Slot.TRAY, "Drop here to take it off its night")
                     if (view.unplaced.isEmpty()) Text("Recipes you add to this week wait here until you put them on a night.",
                         style = MaterialTheme.typography.bodySmall)
@@ -323,6 +356,9 @@ private fun EmptyWeek(onRecipes: () -> Unit) {
 
 const val EMPTY_WEEK = "Nothing planned yet — add recipes from your Recipes."
 
+/** The tray's one name: its heading on the week, the entry dialog's Move to and Add to a week's night choice. */
+const val NO_NIGHT = "No night yet"
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?, onPrep: (() -> Unit)? = null) {
@@ -333,8 +369,14 @@ private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?, onPrep: (() ->
             val color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             // A sent cart can be reopened (to open it in Loblaws again); the week's prep plan too.
             val open = when (label) { "Cart sent" -> onCart; "Prep done" -> onPrep; else -> null }
-            if (open != null) TextButton(onClick = open) { Text(text, color = color, softWrap = false) }
-            else Text(text, color = color, softWrap = false)
+            // TalkBack: "Prep done, not yet", not "white circle Prep done".
+            val said = Modifier.semantics { contentDescription = label; stateDescription = if (done) "done" else "not yet" }
+            if (open != null) {
+                val what = if (label == "Cart sent") "Open the cart" else "Open the prep plan"
+                TextButton(onClick = open, modifier = said.semantics { onClick(label = what) { open(); true } }) {
+                    Text(text, color = color, softWrap = false)
+                }
+            } else Text(text, said, color = color, softWrap = false)
         }
     }
 }
@@ -416,6 +458,9 @@ private fun DropHint(drag: WeekDrag, slot: Slot, text: String) {
 
 private fun fmt(m: Double) = if (m % 1.0 == 0.0) m.toInt().toString() else m.toString()
 
+/** The entry dialog's amounts in words ("×0.5" meant nothing to a second cook). */
+internal val AMOUNTS = listOf(0.5 to "Half", 1.0 to "Normal", 1.5 to "1½", 2.0 to "Double")
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EntryDialog(e: PlanEntry, ref: RefPrompt?, onDismiss: () -> Unit, onPlace: (Int?) -> Unit, onScale: (Double) -> Unit, onRemove: () -> Unit, onOpen: (Any) -> Unit) {
@@ -432,17 +477,21 @@ private fun EntryDialog(e: PlanEntry, ref: RefPrompt?, onDismiss: () -> Unit, on
                     TextButton({ onOpen(refRoute(r)) }) { Text("Add photo of p.${r.page}") }
                 }
                 Text("Move to")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    (0..6).forEach { d -> FilterChip(e.day == d, { if (e.day != d) onPlace(d) }, { Text(Weeks.dayLabel(d)) }, colors = GardenAccent.chipColors()) }
-                    FilterChip(e.day == null, { if (e.day != null) onPlace(null) }, { Text("No night (tray)") }, colors = GardenAccent.chipColors())
+                FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    (0..6).forEach { d -> GardenChip(e.day == d, { if (e.day != d) onPlace(d) }, Weeks.dayLabel(d)) }
+                    GardenChip(e.day == null, { if (e.day != null) onPlace(null) }, NO_NIGHT)
                 }
-                Text("Make")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf(0.5, 1.0, 1.5, 2.0).forEach { m -> FilterChip(e.multiplier == m, { onScale(m) }, { Text("×${fmt(m)}") }, colors = GardenAccent.chipColors()) }
+                Text("Amount")
+                FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    AMOUNTS.forEach { (m, label) -> GardenChip(e.multiplier == m, { onScale(m) }, label,
+                        description = if (m == 1.5) "One and a half" else null) }
                 }
-                if (e.day != null) Row {
+                if (e.day != null) FlowRow {
                     TextButton({ onOpen(CardRoute(e.id)) }) { Text("Cook card") }
-                    TextButton({ onOpen(RatingRoute(e.id, e.week)) }) { Text(if (e.rating != null) "Rating: ${e.rating.family}/5" else "Rate") }
+                    val rate = if (e.rating != null) "Rating: ${e.rating.family}/5" else "Rate"
+                    TextButton({ onOpen(RatingRoute(e.id, e.week)) }, Modifier.semantics { contentDescription = RatingText.spoken(rate) }) {
+                        Text(rate)
+                    }
                 }
 
             }

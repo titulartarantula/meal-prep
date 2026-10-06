@@ -43,6 +43,8 @@ data class PrepState(
     val offlineSince: Instant? = null,
     val error: String? = null,
     val starting: Boolean = false,
+    /** The server couldn't be asked and there is no saved copy: whether the week has a plan is unknown. */
+    val unknown: Boolean = false,
 ) {
     val shown: PrepPlan? get() = plan?.takeIf { it.status == "ready" } ?: previous
     /** Writing a new plan throws away this one's ticks, so the screen asks first. */
@@ -71,8 +73,11 @@ class PrepViewModel(
             while (true) {
                 val r = repo.weekPrepPlan(week)
                 val p = r.value
-                _state.update { it.copy(plan = p ?: it.plan.takeIf { r.error != null }, loading = false, offlineSince = r.offlineSince,
-                    error = r.errorMessage) }
+                _state.update { s ->
+                    val plan = p ?: s.plan.takeIf { r.error != null }
+                    s.copy(plan = plan, loading = false, offlineSince = r.offlineSince, error = r.errorMessage,
+                        unknown = plan == null && r.error != null && r.fetchedAt == null)
+                }
                 val prevId = p?.lastReadyId?.takeIf { p.status != "ready" && it != p.id }
                 // Read once per reload (fresh ticks from the other phone), not on every poll while the new one is written.
                 if (prevId == null) _state.update { it.copy(previous = null) }

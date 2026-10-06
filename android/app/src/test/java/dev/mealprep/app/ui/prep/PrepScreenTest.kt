@@ -1,6 +1,11 @@
 package dev.mealprep.app.ui.prep
 
+import androidx.compose.ui.test.assertAll
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -90,9 +95,29 @@ class PrepScreenTest {
 
     @Test fun `task details name the nights, minutes and the safety rule`() {
         val t = ready.sections[2].tasks[0]
-        assertEquals("Thu Fish soup · ~7 min · freeze", taskDetails(t))
-        assertEquals("Tue Chili · ~3 min · do it on the night", taskDetails(ready.sections[0].tasks[1]))
+        assertEquals("Thu Fish soup · about 7 min · freeze", taskDetails(t))
+        assertEquals("Tue Chili · about 3 min", taskDetails(ready.sections[0].tasks[1]))
         compose.setContent { PrepContent(PrepState(plan = ready, loading = false), wk, today, PrepActions()) }
         scrollTo("Portion the cod and freeze").assertIsOff()
+        // A task for the night says so instead of showing a disabled checkbox.
+        scrollTo("Chop the cilantro")
+        compose.onAllNodesWithText(ON_THE_NIGHT).onFirst().assertExists()
+        compose.onAllNodes(isToggleable()).assertAll(isEnabled())
+    }
+
+    @Test fun `prep warnings are advice, not errors`() {
+        compose.setContent { PrepContent(PrepState(plan = ready, loading = false), wk, today, PrepActions()) }
+        compose.onNodeWithText("⚠ Thu fish soup: cod frozen Sunday").assertExists()
+    }
+
+    @Test fun `no answer and nothing saved, only Try again, no offer to write a plan`() {
+        var reloaded = 0; var started = 0
+        compose.setContent { PrepContent(PrepState(loading = false, error = "Can't reach the meal-prep server.", unknown = true), wk, today,
+            PrepActions(onStart = { started++ }, onReload = { reloaded++ })) }
+        compose.onNodeWithText(NO_PLAN).assertDoesNotExist()
+        compose.onNodeWithText("Write my prep plan").assertDoesNotExist()
+        compose.onNodeWithText("Refresh").assertDoesNotExist()
+        compose.onNodeWithText("Try again").performClick()
+        assertEquals(1, reloaded); assertEquals(0, started)
     }
 }

@@ -34,7 +34,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.PrepPlan
 import dev.mealprep.app.data.api.PrepTask
+import dev.mealprep.app.ui.common.AdviceText
 import dev.mealprep.app.ui.common.MessageText
+import dev.mealprep.app.ui.common.announced
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.graphViewModel
 import java.time.LocalDate
@@ -42,8 +44,8 @@ import java.time.LocalDate
 /** The line under a task: which nights it serves, the estimate, and what the safety rules said. */
 internal fun taskDetails(t: PrepTask): String = listOfNotNull(
     t.serves.joinToString(", ") { "${it.night} ${it.title}" }.ifBlank { null },
-    t.estMinutes.takeIf { it > 0 }?.let { "~$it min" },
-    when (t.shelfLife) { "day_of" -> "do it on the night"; "freeze_then_thaw" -> "freeze"; else -> null },
+    t.estMinutes.takeIf { it > 0 }?.let { "about $it min" },
+    when (t.shelfLife) { "freeze_then_thaw" -> "freeze"; else -> null },
 ).joinToString(" · ")
 
 /** "2 of 4 done · about 27 min"; once everything is ticked, how long it really took. */
@@ -76,6 +78,8 @@ fun PrepContent(s: PrepState, week: LocalDate, today: LocalDate, a: PrepActions)
         }
         when {
             s.loading && newest == null -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            // Couldn't ask the server and nothing saved: unknown, not "no plan" (writing one could make a second).
+            s.unknown -> item { Button(a.onReload) { Text("Try again") } }
             newest == null -> item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -90,13 +94,14 @@ fun PrepContent(s: PrepState, week: LocalDate, today: LocalDate, a: PrepActions)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(WRITING)
                     LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text(buildingText(newest), style = MaterialTheme.typography.bodySmall)
+                    Text(buildingText(newest), style = MaterialTheme.typography.bodySmall, modifier = Modifier.announced())
                     if (s.previous != null) Text("Below: the last plan, until the new one is ready.", style = MaterialTheme.typography.bodySmall)
                 }
             }
             newest.status == "failed" -> item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("The prep plan couldn't be written: ${newest.error ?: "unknown error"}", color = MaterialTheme.colorScheme.error)
+                    Text("The prep plan couldn't be written: ${newest.error ?: "unknown error"}", Modifier.announced(),
+                        color = MaterialTheme.colorScheme.error)
                     if (s.previous != null) Text("Below: the last plan that worked.", style = MaterialTheme.typography.bodySmall)
                     Button(a.onStart, enabled = !s.starting) { Text("Try again") }
                 }
@@ -109,11 +114,12 @@ fun PrepContent(s: PrepState, week: LocalDate, today: LocalDate, a: PrepActions)
                     Text(checklistText(plan), style = MaterialTheme.typography.titleMedium)
                     LinearProgressIndicator({ if (c.total == 0) 0f else c.done.toFloat() / c.total }, Modifier.fillMaxWidth())
                     // Only the newest ready plan can be out of date; a building/failed newer one already says so above.
-                    if (plan.stale && plan.id == newest?.id) Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("The week changed since this plan was written.", Modifier.weight(1f))
+                    // The button goes under the note: side by side, large text squeezed the note to a word a line.
+                    if (plan.stale && plan.id == newest?.id) {
+                        Text("The week changed since this plan was written.")
                         TextButton(writeNew, enabled = !s.starting) { Text("Write a new plan") }
                     }
-                    plan.warnings.forEach { Text("⚠ $it", color = MaterialTheme.colorScheme.error) }
+                    plan.warnings.forEach { AdviceText("⚠ $it") }
                 }
             }
             plan.sections.filter { it.tasks.isNotEmpty() }.forEach { sec ->
@@ -135,7 +141,7 @@ fun PrepContent(s: PrepState, week: LocalDate, today: LocalDate, a: PrepActions)
                 }
             }
         }
-        if ((newest == null && !s.loading) || s.offlineSince != null) item { TextButton(a.onReload) { Text("Refresh") } }
+        if ((newest == null && !s.loading && !s.unknown) || s.offlineSince != null) item { TextButton(a.onReload) { Text("Refresh") } }
     }
     if (confirmNew) AlertDialog(
         onDismissRequest = { confirmNew = false },
@@ -150,12 +156,14 @@ fun PrepContent(s: PrepState, week: LocalDate, today: LocalDate, a: PrepActions)
 private fun TaskRow(t: PrepTask, onToggle: (PrepTask) -> Unit) {
     val sunday = t.shelfLife != "day_of"
     Card(Modifier.fillMaxWidth()) {
-        // The whole row is the checkbox (a big target with wet hands); day-of tasks are listed for the night only.
+        // The whole row is the checkbox (a big target with wet hands); day-of tasks are listed for the night only,
+        // with a label instead of a disabled box (it looked broken).
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
             .then(if (sunday) Modifier.toggleable(t.done, role = Role.Checkbox) { onToggle(t) } else Modifier)
             .padding(8.dp), verticalAlignment = Alignment.Top) {
-            Checkbox(t.done, onCheckedChange = null, enabled = sunday, modifier = Modifier.padding(end = 8.dp))
+            if (sunday) Checkbox(t.done, onCheckedChange = null, modifier = Modifier.padding(end = 8.dp))
             Column {
+                if (!sunday) Text(ON_THE_NIGHT, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 Text(t.text, color = if (t.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
                 taskDetails(t).ifBlank { null }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 t.thaw?.let { Text("Thaw: $it", style = MaterialTheme.typography.bodySmall) }
@@ -165,6 +173,7 @@ private fun TaskRow(t: PrepTask, onToggle: (PrepTask) -> Unit) {
     }
 }
 
+const val ON_THE_NIGHT = "On the night"
 const val NO_PLAN = "No prep plan for this week yet. It's written from the recipes on this week's nights and takes about 4 minutes."
 const val WRITING = "Writing your prep plan… usually about 4 minutes. You can leave — you'll get a notification."
 

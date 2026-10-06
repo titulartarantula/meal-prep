@@ -17,7 +17,10 @@ import dev.mealprep.app.work.ImportWorker
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -40,7 +43,10 @@ data class WeekUi(
     val loading: Boolean = true,
     val offlineSince: Instant? = null,
     val error: String? = null,
-)
+) {
+    /** The load failed and there is no saved copy: nothing is known about the week (not "nothing planned"). */
+    val failed: Boolean get() = !loading && view == null && error != null
+}
 
 class HomeViewModel(
     private val repo: Repository,
@@ -51,6 +57,8 @@ class HomeViewModel(
     hidden: MutableStateFlow<Set<UUID>> = MutableStateFlow(emptySet()),
     /** After a change to a week (placed, moved, scaled, removed): the phone's reminders are re-planned. */
     private val afterChange: () -> Unit = {},
+    /** Outlives this ViewModel: a removal still waiting for its Undo snackbar is made final there when Home goes away. */
+    private val later: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : ViewModel() {
     private val weeks = mutableMapOf<LocalDate, MutableStateFlow<WeekUi>>()   // main thread only
     private val _message = MutableStateFlow<String?>(null)
@@ -150,7 +158,46 @@ class HomeViewModel(
     fun scale(entry: PlanEntry, multiplier: Double) =
         mutate(entry, { es -> es.map { if (it.id == entry.id) it.copy(multiplier = multiplier) else it } }) { repo.scaleEntry(entry.id, multiplier) }
 
-    fun remove(entry: PlanEntry) = mutate(entry, { es -> es.filter { it.id != entry.id } }) { repo.removeEntry(entry.id) }
+    /** A dinner taken off the week, hidden at once but kept on the server until the Undo snackbar goes. */
+    private val _removed = MutableStateFlow<PlanEntry?>(null)
+    val removed: StateFlow<PlanEntry?> = _removed.asStateFlow()
+
+    /** Takes the entry off the week on screen; [commitRemove] (the snackbar went) deletes it, [undoRemove] puts it back. */
+    fun remove(entry: PlanEntry) {
+        commitRemove()   // an earlier one is final once another dinner is removed
+        val w = weekOf(entry)
+        val f = weeks[w] ?: return
+        loads.remove(w)?.cancel()
+        writes[w] = (writes[w] ?: 0) + 1   // no load may show it again while Undo is offered
+        f.value.view?.let { v -> f.update { it.copy(view = weekView(w, v.all.filter { e -> e.id != entry.id })) } }
+        _removed.value = entry
+    }
+
+    fun undoRemove() {
+        val e = _removed.value ?: return
+        _removed.value = null
+        val w = weekOf(e)
+        writes[w] = (writes[w] ?: 1) - 1
+        weeks[w]?.let { f -> f.value.view?.let { v -> f.update { it.copy(view = weekView(w, v.all + e)) } } }
+        refresh(w)
+    }
+
+    fun commitRemove() {
+        val e = _removed.value ?: return
+        _removed.value = null
+        val w = weekOf(e)
+        viewModelScope.launch {
+            val r = try { repo.removeEntry(e.id) } finally { writes[w] = (writes[w] ?: 1) - 1 }
+            if (r is ApiResult.Err) _message.value = r.error.userMessage() else afterChange()
+            refresh(w)   // a failure puts it back
+        }
+    }
+
+    override fun onCleared() {
+        _removed.value?.let { e -> later.launch { if (repo.removeEntry(e.id) is ApiResult.Ok) afterChange() } }
+    }
+
+    private fun weekOf(e: PlanEntry) = Weeks.weekStart(LocalDate.parse(e.week))
 
     /** Show the change at once; on failure say why; the refresh afterwards puts the week back. */
     private fun mutate(entry: PlanEntry, optimistic: (List<PlanEntry>) -> List<PlanEntry>, call: suspend () -> ApiResult<*>) {

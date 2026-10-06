@@ -1,6 +1,14 @@
 package dev.mealprep.app.ui.home
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -53,7 +61,7 @@ class HomeScreenTest {
         compose.onNodeWithText("Fri").performClick()
         assertEquals(listOf(21 to 5), moves)
         compose.onNodeWithText("Chili").performClick()
-        compose.onNodeWithText("No night (tray)").performClick()
+        compose.onNode(hasText(NO_NIGHT) and hasClickAction()).performClick()      // the dialog's chip, not the tray heading
         assertEquals(listOf(21 to 5, 21 to null), moves)
     }
 
@@ -142,9 +150,43 @@ class HomeScreenTest {
         val empty = WeekUi(wk, weekView(wk, emptyList()), statusStrip(emptyList(), false, null), ContextAction.AddRecipes, loading = false)
         compose.setContent { WeekContent(empty, LocalDate.parse("2026-10-07"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
         compose.onNodeWithText(EMPTY_WEEK).assertExists()
-        compose.onNodeWithText("Add recipes from Recipes").performClick()
+        compose.onNodeWithText("Choose from Recipes").performClick()
         assertEquals(ContextAction.AddRecipes, action)
         compose.onNodeWithText("Recipes you add to this week wait here until you put them on a night.").assertExists()
+    }
+
+    @Test fun `a week that couldn't be loaded and has no saved copy shows only the message and Try again`() {
+        var refreshed = 0
+        val failed = WeekUi(wk, loading = false, error = "Can't reach the meal-prep server.")
+        compose.setContent { WeekContent(failed, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, { refreshed++ }) }
+        compose.onNodeWithText("Can't reach the meal-prep server.").assertExists()
+        compose.onNodeWithText(EMPTY_WEEK).assertDoesNotExist()
+        compose.onNodeWithText("Choose from Recipes").assertDoesNotExist()
+        compose.onNodeWithText("○ Planned").assertDoesNotExist()
+        compose.onNodeWithText("Try again").performClick()
+        assertEquals(1, refreshed)
+    }
+
+    @Test fun `all set is a line of text, not a button`() {
+        val done = ui.copy(action = ContextAction.AllSet)
+        compose.setContent { WeekContent(done, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
+        compose.onNodeWithText("✓ All set for this week").assertExists().assertHasNoClickAction()
+    }
+
+    @Test fun `the status strip says done or not yet`() {
+        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
+        compose.onNodeWithContentDescription("Planned").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "done"))
+        compose.onNodeWithContentDescription("Prep done").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not yet"))
+    }
+
+    @Test fun `the entry dialog's amounts are words, one choice`() {
+        var scaled: Double? = null
+        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, m -> scaled = m }, {}, {}, {}) }
+        compose.onNodeWithText("Chili").performClick()
+        compose.onNodeWithText("Amount").assertExists()
+        compose.onNodeWithText("Normal").assertIsSelected()
+        compose.onNodeWithText("Double").performClick()
+        assertEquals(2.0, scaled)
     }
 
     @Test fun `many import cards scroll in their own area instead of pushing the week away`() {
