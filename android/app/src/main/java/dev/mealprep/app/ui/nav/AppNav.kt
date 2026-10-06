@@ -30,6 +30,7 @@ import dev.mealprep.app.ui.home.ContextAction
 import dev.mealprep.app.ui.loblaws.LoblawsScreen
 import dev.mealprep.app.ui.loblaws.LoblawsSettings
 import dev.mealprep.app.ui.home.HomeScreen
+import dev.mealprep.app.ui.prep.PrepScreen
 import dev.mealprep.app.ui.setup.SettingsScreen
 import dev.mealprep.app.ui.share.ShareScreen
 import java.time.LocalDate
@@ -96,6 +97,9 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
             val prefs by graph.settings.collectAsStateWithLifecycle()
             LoblawsScreen(back.toRoute<LoblawsRoute>().cartId, prefs,
                 onDone = { nav.navigate(HomeRoute()) { popUpTo<HomeRoute> { inclusive = true } } })
+        }
+        composable<PrepRoute> { back ->
+            PrepScreen(LocalDate.parse(back.toRoute<PrepRoute>().week), onCard = { nav.navigate(CardRoute(it)) })
         }
         composable<CameraRoute> { back ->
             val r = back.toRoute<CameraRoute>()

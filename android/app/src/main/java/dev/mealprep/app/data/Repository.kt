@@ -115,7 +115,21 @@ class Repository(
     suspend fun sources(): Loaded<List<RecipeSource>> = load("sources", ListSerializer(RecipeSource.serializer())) { it.sources() }
     suspend fun weekPrepPlan(week: LocalDate): Loaded<PrepPlan?> =
         loadOptional("prep:${wk(week)}", PrepPlan.serializer()) { it.weekPrepPlan(wk(week)) }
+    /** One plan by id (the last ready one, shown while a newer plan is writing or after it failed). */
+    suspend fun prepPlanCopy(id: Int): Loaded<PrepPlan?> =
+        loadOptional("prepplan:$id", PrepPlan.serializer()) { it.prepPlan(id) }
     suspend fun card(entryId: Int): Loaded<CookCard?> = loadOptional("card:$entryId", CookCard.serializer()) { it.card(entryId) }
+
+    /** Saves a ready plan's cook cards for offline reading; cards already saved from this plan aren't asked for
+     *  again. Stops at the first failure (off the home network every call would wait for the connect timeout). */
+    suspend fun saveCards(plan: PrepPlan) {
+        if (plan.status != "ready") return
+        for (e in plan.entries.filter { it.hasCard }) {
+            val saved = cache.get("card:${e.entryId}")?.let { runCatching { json.decodeFromString(CookCard.serializer(), it.json) }.getOrNull() }
+            if (saved?.prepPlanId == plan.id) continue
+            if (card(e.entryId).error != null) return
+        }
+    }
     suspend fun weekDraft(week: LocalDate): Loaded<Draft?> =
         loadOptional("draft:${wk(week)}", Draft.serializer()) { it.weekDraft(wk(week)) }
     suspend fun staples(): Loaded<List<Staple>> = load("staples", ListSerializer(Staple.serializer())) { it.staples() }

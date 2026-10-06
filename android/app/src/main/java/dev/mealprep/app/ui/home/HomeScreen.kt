@@ -83,6 +83,7 @@ import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.OverflowMenu
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.nav.CardRoute
+import dev.mealprep.app.ui.nav.PrepRoute
 import dev.mealprep.app.ui.nav.RatingRoute
 import dev.mealprep.app.ui.nav.RecipeRoute
 import dev.mealprep.app.ui.camera.RefPrompt
@@ -233,7 +234,10 @@ fun WeekContent(
     val drop: (Slot, String?) -> Boolean = { slot, text -> dropMove(all, text, slot)?.let { (e, d) -> onPlace(e, d); true } ?: false }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { OfflineBanner(ui.offlineSince); MessageText(ui.error) }
-        item { StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } }) }
+        item {
+            StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } },
+                onPrep = if (ui.hasPrep) { { onOpen(PrepRoute(ui.week.toString())) } } else null)
+        }
         when {
             ui.loading && ui.view == null -> {}   // the first load: no button until we know what the week needs
             ui.action == ContextAction.AddRecipes -> item { EmptyWeek { onAction(ui.action) } }
@@ -296,14 +300,15 @@ const val EMPTY_WEEK = "Nothing planned yet — add recipes from your Recipes."
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?) {
+private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?, onPrep: (() -> Unit)? = null) {
     // Wraps whole steps onto a new line with large text, never "Prep" / "done" split across lines.
     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), itemVerticalAlignment = Alignment.CenterVertically) {
         listOf("Planned" to s.planned, "Cart sent" to s.cartSent, "Prep done" to s.prepDone).forEach { (label, done) ->
             val text = (if (done) "✓ " else "○ ") + label
             val color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-            // A sent cart can be reopened (to open it in Loblaws again).
-            if (label == "Cart sent" && onCart != null) TextButton(onClick = onCart) { Text(text, color = color, softWrap = false) }
+            // A sent cart can be reopened (to open it in Loblaws again); the week's prep plan too.
+            val open = when (label) { "Cart sent" -> onCart; "Prep done" -> onPrep; else -> null }
+            if (open != null) TextButton(onClick = open) { Text(text, color = color, softWrap = false) }
             else Text(text, color = color, softWrap = false)
         }
     }
