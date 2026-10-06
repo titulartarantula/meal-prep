@@ -1,4 +1,4 @@
-{"dry_run": true, "format": "jsonld", "file_sha": "3f5a0c9e1b7d2a4c6e8f0a1b3c5d7e9f1a2b3c4d5e6f708192a3b4c5d6e7f809", "warnings": [],
+{"dry_run": true, "format": "jsonld", "file_sha": "3f5a0c9e-invented", "warnings": [],
  "counts": {"new": 2, "duplicate": 3, "failed": 1},
  "items": [
   {"key": "0:9f2c1a7e", "index": 0, "title": "Test Lentil Soup", "status": "new", "action": "add", "can_update": false,
