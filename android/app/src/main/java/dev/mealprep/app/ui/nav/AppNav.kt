@@ -20,6 +20,7 @@ import androidx.navigation.toRoute
 import dev.mealprep.app.AppGraph
 import dev.mealprep.app.core.ShareInput
 import dev.mealprep.app.ui.camera.CameraScreen
+import dev.mealprep.app.ui.card.CardScreen
 import dev.mealprep.app.ui.camera.CameraViewModel
 import dev.mealprep.app.ui.cart.DraftScreen
 import dev.mealprep.app.ui.common.graphViewModel
@@ -101,6 +102,7 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
         composable<PrepRoute> { back ->
             PrepScreen(LocalDate.parse(back.toRoute<PrepRoute>().week), onCard = { nav.navigate(CardRoute(it)) })
         }
+        composable<CardRoute> { back -> CardScreen(back.toRoute<CardRoute>().entryId) }
         composable<CameraRoute> { back ->
             val r = back.toRoute<CameraRoute>()
             val vm = graphViewModel(key = "camera-${back.id}") { g -> CameraViewModel(g.pages, g.scalePage, g.copyPage) }

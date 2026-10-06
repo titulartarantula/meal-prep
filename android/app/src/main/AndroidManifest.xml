@@ -7,6 +7,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Cook-card timers are handed to the Clock app (AlarmClock.ACTION_SET_TIMER). -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SET_TIMER" />
+        </intent>
+    </queries>
 
     <application
         android:name=".MealPrepApp"
