@@ -235,8 +235,8 @@ fun PageStrip(
 
 @Composable
 fun Thumbnail(
-    f: File, description: String, highlighted: Boolean = false, onClick: (() -> Unit)? = null, clickLabel: String? = null,
-    modifier: Modifier = Modifier,
+    f: File, description: String, modifier: Modifier = Modifier, highlighted: Boolean = false, onClick: (() -> Unit)? = null,
+    clickLabel: String? = null,
 ) {
     val bmp by produceState<ImageBitmap?>(null, f) {
         value = withContext(Dispatchers.IO) {

@@ -64,7 +64,7 @@ fun BottomActionBar(modifier: Modifier = Modifier, above: @Composable ColumnScop
 
 /** [BottomActionBar] with one full-width filled button. */
 @Composable
-fun BottomAction(label: String, onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier) =
+fun BottomAction(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) =
     BottomActionBar(modifier) {
         Button(onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(label) }
     }
