@@ -104,3 +104,4 @@ def test_schema_migrates_legacy_carts_idempotently(conn):
     assert new == "building"
     conn.execute("INSERT INTO cart_lines(cart_id, item_key, source) VALUES(%s, 'k', 'user')", (cid,))
     assert db.week_summaries(conn, date(2026, 10, 11), 1)[0]["carted"] is True
+    assert conn.execute("SELECT plan_fingerprint FROM carts WHERE id=%s", (cid,)).fetchone()[0] is None   # unknown

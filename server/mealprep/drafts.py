@@ -33,18 +33,24 @@ class DraftFailed(Exception):
     pass
 
 
+class DraftStale(DraftStateError):
+    """The week's recipes changed since the draft was built: build a new cart instead of sending this one."""
+
+
 def _pj(p: Product | None):
     return Jsonb(p.model_dump()) if p else None
 
 
 def create_draft(conn, items, weeks, store_id: str, ai_provider: str | None) -> int:
-    """Record a building draft with one line per needed item (in list order). No PC Express calls."""
+    """Record a building draft with one line per needed item (in list order) and the fingerprint of its weeks'
+    plan (to tell later whether the week changed). No PC Express calls."""
     needed = [it for it in items if it.needed]
     wks = sorted({db.week_start(w) for w in weeks})
     with conn.transaction():
-        did = conn.execute("INSERT INTO carts(store_id, ai_provider, status, weeks, progress_total) "
-                           "VALUES(%s,%s,'building',%s,%s) RETURNING id",
-                           (store_id, ai_provider, wks, len(needed))).fetchone()[0]
+        fp = db.plan_fingerprint(conn, wks) if wks else None
+        did = conn.execute("INSERT INTO carts(store_id, ai_provider, status, weeks, progress_total, plan_fingerprint) "
+                           "VALUES(%s,%s,'building',%s,%s,%s) RETURNING id",
+                           (store_id, ai_provider, wks, len(needed), fp)).fetchone()[0]
         for pos, it in enumerate(needed):
             conn.execute("INSERT INTO cart_lines(cart_id, position, item, item_key, item_name, need_qty, need_unit, "
                          "status, source) VALUES(%s,%s,%s,%s,%s,%s,%s,'pending','none')",
@@ -176,18 +182,20 @@ _LINE_SQL = ("SELECT l.id, l.item, l.item_key, l.item_name, l.need_qty, l.need_u
 
 
 def get_draft(conn, draft_id: int) -> dict | None:
-    row = conn.execute("SELECT status, weeks, pcx_cart_id, progress_done, progress_total, error, created_at, sent_at "
-                       "FROM carts WHERE id=%s", (draft_id,)).fetchone()
+    """The draft and its lines; stale = the plan of its weeks changed since it was made (a newer cart is needed)."""
+    row = conn.execute("SELECT status, weeks, pcx_cart_id, progress_done, progress_total, error, created_at, sent_at, "
+                       "plan_fingerprint FROM carts WHERE id=%s", (draft_id,)).fetchone()
     if row is None:
         return None
-    status, weeks, pcx_id, done, total, error, created, sent = row
+    status, weeks, pcx_id, done, total, error, created, sent, fp = row
     lines = [_line_out(r) for r in conn.execute(_LINE_SQL + "WHERE l.cart_id=%s ORDER BY l.position NULLS LAST, l.id",
                                                 (draft_id,))]
     est = round(sum(((l["product"] or {}).get("price") or 0) * (l["quantity"] or 0)
                     for l in lines if l["product"] and not l["removed"]), 2)
     return {"id": draft_id, "status": status, "error": error, "progress": {"done": done, "total": total},
             "weeks": [w.isoformat() for w in weeks or []], "lines": lines, "pcx_cart_id": pcx_id,
-            "estimated_total": est, "created_at": created.isoformat(), "sent_at": sent.isoformat() if sent else None}
+            "estimated_total": est, "created_at": created.isoformat(), "sent_at": sent.isoformat() if sent else None,
+            "stale": db.cart_is_stale(conn, weeks or [], fp)}
 
 
 def latest_for_week(conn, week) -> dict | None:
@@ -293,16 +301,20 @@ def search_line(conn, draft_id: int, line_id: int, term: str, pcx, store_id: str
 
 
 def send_draft(conn, draft_id: int, pcx) -> str:
-    """Create the anonymous PC Express cart from the draft (once). Only now does the week count as carted."""
+    """Create the anonymous PC Express cart from the draft (once). Only now does the week count as carted.
+    A ready draft whose weeks' recipes changed since it was built is refused (DraftStale): build a new one."""
     with conn.transaction():
-        row = conn.execute("SELECT status, pcx_cart_id, weeks FROM carts WHERE id=%s FOR UPDATE", (draft_id,)).fetchone()
+        row = conn.execute("SELECT status, pcx_cart_id, weeks, plan_fingerprint FROM carts WHERE id=%s FOR UPDATE",
+                           (draft_id,)).fetchone()
         if row is None:
             raise DraftNotFound(f"draft {draft_id}")
-        status, pcx_id, weeks = row
+        status, pcx_id, weeks, fp = row
         if status == "sent":
             return pcx_id
         if status != "ready":
             raise DraftStateError(f"draft {draft_id} is {status}, not ready")
+        if db.cart_is_stale(conn, weeks or [], fp):
+            raise DraftStale(f"the week's recipes changed since draft {draft_id} was built; build a new cart")
         lines = conn.execute("SELECT id, product_code, quantity FROM cart_lines WHERE cart_id=%s AND NOT removed "
                              "AND product_code IS NOT NULL AND quantity > 0 ORDER BY position", (draft_id,)).fetchall()
         entries = {}

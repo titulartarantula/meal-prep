@@ -201,9 +201,9 @@ def test_list_then_cart_records_week(conn, nyt):
     res = c.post("/cart", headers=H, json={"items": items, "weeks": ["2026-10-11"]}).json()
     assert res["cart_id"] == "cart1" and all(l["status"] == "added" for l in res["lines"])
     weeks = c.get("/weeks", headers=H, params={"from": "2026-10-04", "count": 3}).json()
-    assert weeks == [{"week": "2026-10-04", "entries": 0, "carted": False},
-                     {"week": "2026-10-11", "entries": 1, "carted": True},
-                     {"week": "2026-10-18", "entries": 0, "carted": False}]
+    assert weeks == [{"week": "2026-10-04", "entries": 0, "carted": False, "cart_stale": False},
+                     {"week": "2026-10-11", "entries": 1, "carted": True, "cart_stale": False},
+                     {"week": "2026-10-18", "entries": 0, "carted": False, "cart_stale": False}]
 
 
 def test_same_week_carted_twice(conn, nyt):
@@ -392,3 +392,35 @@ def test_draft_accepts_items_omitting_qty_and_unit(conn):
     r = c.post("/drafts", headers=H, json={"weeks": ["2026-10-11"], "items": items})
     assert r.status_code == 202, r.text
     wait_status(c, r.json()["id"], "ready")
+
+
+def test_stale_cart_fields_and_send_refused(conn, nyt):
+    """Jordan's report: a cart sent, then the week's recipes changed → the week is no longer carted, the old cart is
+    stale, a ready draft of the old plan can't be sent, and a new cart for the week wins."""
+    pcx = GatePcx(); pcx.gate.set()
+    c = client(conn, today=date(2026, 10, 7), pcx=pcx, ai=PickAI())
+    share(c, "2026-10-11")
+    rid = c.get("/recipes", headers=H).json()[0]["id"]
+    wk = lambda: c.get("/weeks", headers=H, params={"from": "2026-10-11", "count": 1}).json()[0]
+    sent = c.post("/drafts", headers=H, json={"weeks": ["2026-10-11"], "items": ITEMS}).json()["id"]
+    assert wait_status(c, sent, "ready")["stale"] is False
+    assert c.post(f"/drafts/{sent}/send", headers=H).status_code == 200
+    assert wk() == {"week": "2026-10-11", "entries": 1, "carted": True, "cart_stale": False}
+    ready = c.post("/drafts", headers=H, json={"weeks": ["2026-10-11"], "items": ITEMS}).json()["id"]
+    wait_status(c, ready, "ready")
+    (e,) = c.get("/weeks/2026-10-11", headers=H).json()
+    assert c.patch(f"/plan/{e['id']}", headers=H, json={"day": 3}).status_code == 204       # a night move: no change
+    assert wk()["carted"] is True and c.get(f"/drafts/{sent}", headers=H).json()["stale"] is False
+    c.post("/weeks/2026-10-11/entries", headers=H, json={"recipe_id": rid})                 # the week changed
+    assert wk() == {"week": "2026-10-11", "entries": 2, "carted": False, "cart_stale": True}
+    assert c.get("/cart/default-week", headers=H).json() == {"week": "2026-10-11"}
+    assert c.get(f"/drafts/{sent}", headers=H).json()["stale"] is True
+    d = c.get("/weeks/2026-10-11/draft", headers=H).json()
+    assert d["id"] == ready and d["status"] == "ready" and d["stale"] is True             # newest, any status
+    r = c.post(f"/drafts/{ready}/send", headers=H)
+    assert r.status_code == 409 and "changed" in r.json()["detail"] and len(pcx.created) == 1
+    new = c.post("/drafts", headers=H, json={"weeks": ["2026-10-11"], "items": ITEMS}).json()["id"]
+    assert wait_status(c, new, "ready")["stale"] is False
+    assert c.post(f"/drafts/{new}/send", headers=H).status_code == 200                        # latest wins
+    assert wk() == {"week": "2026-10-11", "entries": 2, "carted": True, "cart_stale": False}
+    assert c.get(f"/drafts/{sent}", headers=H).json()["stale"] is True                        # the old one stays stale

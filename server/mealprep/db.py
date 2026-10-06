@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+import hashlib
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
@@ -209,22 +210,56 @@ def record_products(conn, store_id: str, products) -> None:
                          (p.code, store_id, p.price, p.stock))
 
 
+def plan_fingerprint(conn, weeks) -> str:
+    """Stable hash of the shopping-relevant plan of these weeks: the multiset of (week, recipe, scale) over every entry,
+    placed on a night or not (as the shopping list uses them). Moving a dinner to another night doesn't change it;
+    adding or removing a recipe or changing its scale does."""
+    wks = sorted({week_start(w) for w in weeks})
+    rows = conn.execute("SELECT week, recipe_id, multiplier FROM plan WHERE week = ANY(%s)", (wks,)).fetchall()
+    entries = sorted(f"{w.isoformat()}|{r}|{float(m):.4f}" for w, r, m in rows)
+    text = ",".join(w.isoformat() for w in wks) + ";" + ";".join(entries)
+    return hashlib.sha256(text.encode()).hexdigest()[:32]
+
+
+def cart_is_stale(conn, weeks, fingerprint: str | None, _cache: dict | None = None) -> bool:
+    """A cart is stale when its weeks' plan changed since it was made. No fingerprint (older carts) = not stale."""
+    if fingerprint is None or not weeks:
+        return False
+    key = tuple(sorted(weeks))
+    if _cache is None:
+        return plan_fingerprint(conn, key) != fingerprint
+    if key not in _cache:
+        _cache[key] = plan_fingerprint(conn, key)
+    return _cache[key] != fingerprint
+
+
+def sent_cart_stale(conn, weeks: list[date]) -> dict[date, bool]:
+    """{week: stale} for each of these weeks that has a sent cart, judged by the newest sent cart covering it."""
+    rows = conn.execute("SELECT DISTINCT ON (cw.week) cw.week, c.weeks, c.plan_fingerprint FROM cart_weeks cw "
+                        "JOIN carts c ON c.id = cw.cart_id WHERE c.status = 'sent' AND cw.week = ANY(%s) "
+                        "ORDER BY cw.week, c.id DESC", (weeks,)).fetchall()
+    cache: dict = {}
+    return {w: cart_is_stale(conn, cweeks or [w], fp, cache) for w, cweeks, fp in rows}
+
+
 def week_summaries(conn, start: date, count: int) -> list[dict]:
-    """One row per week from start's Sunday: number of plan entries and whether any cart covers it."""
+    """One row per week from start's Sunday: number of plan entries; carted = its newest sent cart still matches the
+    plan; cart_stale = a cart was sent but the week's recipes changed since."""
     first = week_start(start)
     weeks = [first + timedelta(weeks=i) for i in range(count)]
     entries = dict(conn.execute("SELECT week, count(*) FROM plan WHERE week = ANY(%s) GROUP BY week", (weeks,)).fetchall())
-    carted = {w for (w,) in conn.execute("SELECT DISTINCT cw.week FROM cart_weeks cw JOIN carts c ON c.id = cw.cart_id "
-                                         "WHERE c.status = 'sent' AND cw.week = ANY(%s)", (weeks,))}
-    return [{"week": w.isoformat(), "entries": entries.get(w, 0), "carted": w in carted} for w in weeks]
+    sent = sent_cart_stale(conn, weeks)
+    return [{"week": w.isoformat(), "entries": entries.get(w, 0), "carted": w in sent and not sent[w],
+             "cart_stale": sent.get(w, False)} for w in weeks]
 
 
 def default_cart_week(conn, today: date) -> date | None:
-    """Earliest week >= this week's Sunday that has plan entries and no cart yet."""
-    row = conn.execute("SELECT min(p.week) FROM plan p WHERE p.week >= %s "
-                       "AND NOT EXISTS (SELECT 1 FROM cart_weeks cw JOIN carts c ON c.id = cw.cart_id "
-                       "WHERE c.status = 'sent' AND cw.week = p.week)", (week_start(today),)).fetchone()
-    return row[0] if row else None
+    """Earliest week >= this week's Sunday that has plan entries and no up-to-date sent cart (a stale one counts as
+    none)."""
+    planned = [w for (w,) in conn.execute("SELECT DISTINCT week FROM plan WHERE week >= %s ORDER BY week",
+                                          (week_start(today),))]
+    sent = sent_cart_stale(conn, planned)
+    return next((w for w in planned if w not in sent or sent[w]), None)
 
 
 # --- ratings: one per plan entry (time cooked); rating_history is the append-only log for reports ---

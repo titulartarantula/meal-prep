@@ -230,3 +230,8 @@ CREATE INDEX IF NOT EXISTS recipes_source_idx ON recipes(source_kind, lower(sour
 -- search suggestion is picked (GET /books/search). Null = not known; only kept with a source_title.
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS source_author text;
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS source_isbn text;
+
+-- Stale carts (2026-10-06, 0.8.1): a fingerprint of the shopping-relevant plan (week, recipe, scale; not the night) of
+-- the cart's weeks when the draft was made. A cart whose weeks no longer match is stale: the week is no longer carted.
+-- Null = made before 0.8.1, unknown: never stale (history isn't rewritten).
+ALTER TABLE carts ADD COLUMN IF NOT EXISTS plan_fingerprint text;
