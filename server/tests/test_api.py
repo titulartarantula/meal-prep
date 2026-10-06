@@ -424,3 +424,12 @@ def test_stale_cart_fields_and_send_refused(conn, nyt):
     assert c.post(f"/drafts/{new}/send", headers=H).status_code == 200                        # latest wins
     assert wk() == {"week": "2026-10-11", "entries": 2, "carted": True, "cart_stale": False}
     assert c.get(f"/drafts/{sent}", headers=H).json()["stale"] is True                        # the old one stays stale
+
+
+def test_recipes_endpoint_has_uid(conn, nyt):
+    c = client(conn)
+    rid = share(c, None).json()["recipe"]["id"]
+    [row] = c.get("/recipes", headers=H).json()
+    detail = c.get(f"/recipes/{rid}", headers=H).json()
+    assert len(row["uid"]) == 36 and detail["uid"] == row["uid"]
+    assert conn.execute("SELECT uid::text FROM recipes WHERE id=%s", (rid,)).fetchone()[0] == row["uid"]

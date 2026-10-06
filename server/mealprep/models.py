@@ -17,6 +17,7 @@ class Ingredient(BaseModel):
 
 SourceKind = Literal["nyt", "book", "other"]
 SOURCE_FIELDS = {"source_kind", "source_title", "source_ref", "source_author", "source_isbn"}   # stored in recipes columns, not in `data`
+COLUMN_FIELDS = SOURCE_FIELDS | {"uid"}   # every Recipe field kept in a recipes column (never inside `data`)
 
 
 class Recipe(BaseModel):
@@ -35,6 +36,18 @@ class Recipe(BaseModel):
     # The book's author(s) and ISBN (0.4.3), filled when a book search suggestion is picked; only with a source_title.
     source_author: str | None = None
     source_isbn: str | None = None
+    # Stable id (import/export, 2026-10-06): a uuid in its own column, the schema.org identifier (urn:uuid:<uid>) and
+    # the de-dup key across libraries. None only before saving (the column default fills it; an import brings its own).
+    uid: str | None = None
+    # Optional details an imported recipe can bring (kept in `data`; None/{} for recipes from NYT or photos).
+    description: str | None = None
+    notes: str | None = None
+    prep_minutes: int | None = None
+    cook_minutes: int | None = None
+    total_minutes: int | None = None
+    yield_text: str | None = None    # the yield as the source wrote it ("Makes 24 cookies")
+    image: str | None = None         # an http(s) link, kept as text, never fetched
+    schema_extra: dict = {}          # whitelisted schema.org keys passed through (recipeCuisine, keywords …)
 
     def default_kind(self) -> str:
         if self.source_url and "nytimes.com" in self.source_url:

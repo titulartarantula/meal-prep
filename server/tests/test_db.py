@@ -1,4 +1,5 @@
 from datetime import date
+import pytest
 from mealprep import db
 from mealprep.models import Recipe, Ingredient
 
@@ -105,3 +106,63 @@ def test_schema_migrates_legacy_carts_idempotently(conn):
     conn.execute("INSERT INTO cart_lines(cart_id, item_key, source) VALUES(%s, 'k', 'user')", (cid,))
     assert db.week_summaries(conn, date(2026, 10, 11), 1)[0]["carted"] is True
     assert conn.execute("SELECT plan_fingerprint FROM carts WHERE id=%s", (cid,)).fetchone()[0] is None   # unknown
+
+
+# --- stable recipe uid + optional extra fields (import/export) ---
+
+def test_new_recipe_gets_uid(conn):
+    import uuid
+    a = db.save_recipe(conn, Recipe(title="A", source="photo", ingredients=[], steps=[]))
+    b = db.save_recipe(conn, Recipe(title="B", source="photo", ingredients=[], steps=[]))
+    ua, ub = db.get_recipe(conn, a).uid, db.get_recipe(conn, b).uid
+    assert str(uuid.UUID(ua)) == ua and str(uuid.UUID(ub)) == ub
+    assert ua != ub
+
+
+def test_uid_kept_when_given(conn):
+    import psycopg
+    uid = "7d1e0f3a-5b2c-4e8d-9a61-0c3b2a1f4e5d"
+    rid = db.save_recipe(conn, Recipe(title="A", source="import", uid=uid, ingredients=[], steps=[]))
+    assert db.get_recipe(conn, rid).uid == uid
+    assert db.get_recipe_by_uid(conn, uid).id == rid
+    assert db.get_recipe_by_uid(conn, "00000000-0000-4000-8000-000000000000") is None
+    assert db.get_recipe_by_uid(conn, "not-a-uuid") is None
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        db.save_recipe(conn, Recipe(title="B", source="import", uid=uid, ingredients=[], steps=[]))
+
+
+def test_backfill_is_idempotent(conn):
+    try:
+        conn.execute("ALTER TABLE recipes ALTER COLUMN uid DROP NOT NULL")   # a row from before the migration
+        conn.execute("INSERT INTO recipes(source, title, data, uid) VALUES('photo', 'Old', '{\"title\": \"Old\", "
+                     "\"source\": \"photo\", \"ingredients\": [], \"steps\": []}', NULL)")
+        conn.execute(db.SCHEMA)
+        [(uid,)] = conn.execute("SELECT uid::text FROM recipes WHERE title='Old'").fetchall()
+        assert uid is not None
+        conn.execute(db.SCHEMA)
+        assert conn.execute("SELECT uid::text FROM recipes WHERE title='Old'").fetchone()[0] == uid
+        assert conn.execute("SELECT is_nullable FROM information_schema.columns WHERE table_name='recipes' "
+                            "AND column_name='uid'").fetchone()[0] == "NO"
+        assert db.list_recipes(conn)[0].uid == uid
+    finally:
+        conn.execute("ALTER TABLE recipes ALTER COLUMN uid SET NOT NULL")
+
+
+def test_extra_fields_round_trip_via_data(conn):
+    r = Recipe(title="Test Lentil Soup", source="import", ingredients=[], steps=["Simmer."],
+               description="A thick soup.", notes="Freezes well.", prep_minutes=15, cook_minutes=40,
+               total_minutes=55, yield_text="Makes 6 bowls", image="https://example.org/soup.jpg",
+               schema_extra={"recipeCuisine": "Test", "keywords": "soup, lentils"})
+    rid = db.save_recipe(conn, r)
+    got = db.get_recipe(conn, rid)
+    for f in ("description", "notes", "prep_minutes", "cook_minutes", "total_minutes", "yield_text", "image",
+              "schema_extra"):
+        assert getattr(got, f) == getattr(r, f), f
+    assert conn.execute("SELECT data ? 'uid' FROM recipes WHERE id=%s", (rid,)).fetchone()[0] is False
+
+
+def test_old_data_without_extra_fields_still_reads(conn):
+    conn.execute("INSERT INTO recipes(source, title, data) VALUES('photo', 'Old', '{\"title\": \"Old\", "
+                 "\"source\": \"photo\", \"ingredients\": [], \"steps\": []}')")
+    [r] = db.list_recipes(conn)
+    assert r.description is None and r.schema_extra == {} and r.prep_minutes is None and r.uid

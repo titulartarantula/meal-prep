@@ -235,3 +235,11 @@ ALTER TABLE recipes ADD COLUMN IF NOT EXISTS source_isbn text;
 -- the cart's weeks when the draft was made. A cart whose weeks no longer match is stale: the week is no longer carted.
 -- Null = made before 0.8.1, unknown: never stale (history isn't rewritten).
 ALTER TABLE carts ADD COLUMN IF NOT EXISTS plan_fingerprint text;
+
+-- Stable recipe id (2026-10-06, import/export): the schema.org identifier (urn:uuid:<uid>) and the de-dup key across
+-- libraries. Backfilled once (only rows still null); new rows get one from the default; an import may bring its own.
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS uid uuid;
+UPDATE recipes SET uid = gen_random_uuid() WHERE uid IS NULL;
+ALTER TABLE recipes ALTER COLUMN uid SET DEFAULT gen_random_uuid();
+ALTER TABLE recipes ALTER COLUMN uid SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS recipes_uid_idx ON recipes(uid);

@@ -1,12 +1,13 @@
 from datetime import date, datetime, timedelta
 import hashlib
+import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .models import SOURCE_FIELDS, PlanEntry, Rating, Recipe
+from .models import COLUMN_FIELDS, PlanEntry, Rating, Recipe
 
 SCHEMA = (Path(__file__).parent / "schema.sql").read_text()
 
@@ -18,11 +19,12 @@ def connect(dsn: str) -> psycopg.Connection:
 
 
 def _data(r: Recipe) -> Jsonb:
-    return Jsonb(r.model_dump(mode="json", exclude={"id", *SOURCE_FIELDS}))
+    return Jsonb(r.model_dump(mode="json", exclude={"id", *COLUMN_FIELDS}))
 
 
 def save_recipe(conn, r: Recipe, ai_provider: str | None = None) -> int:
-    """Insert the recipe (an NYT link already in the library returns that recipe's id, unchanged)."""
+    """Insert the recipe (an NYT link already in the library returns that recipe's id, unchanged). r.uid is kept when
+    set (an import; an existing uid raises UniqueViolation), else the column default makes one."""
     if r.source_url:
         row = conn.execute("SELECT id FROM recipes WHERE source_url=%s", (r.source_url,)).fetchone()
         if row:
@@ -31,8 +33,9 @@ def save_recipe(conn, r: Recipe, ai_provider: str | None = None) -> int:
     title, ref, author, isbn = _source(kind, r.source_title, r.source_ref, r.source_author, r.source_isbn)
     return conn.execute(
         "INSERT INTO recipes(source, source_url, title, servings, data, ai_provider, source_kind, source_title, source_ref, "
-        "source_author, source_isbn) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-        (r.source, r.source_url, r.title, r.servings, _data(r), ai_provider, kind, title, ref, author, isbn),
+        "source_author, source_isbn, uid) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,COALESCE(%s::uuid, gen_random_uuid())) "
+        "RETURNING id",
+        (r.source, r.source_url, r.title, r.servings, _data(r), ai_provider, kind, title, ref, author, isbn, r.uid),
     ).fetchone()[0]
 
 
@@ -46,17 +49,28 @@ def _source(kind, title, ref, author, isbn) -> tuple:
     return (title, ref, author, isbn) if title else (None, ref, None, None)
 
 
-_RECIPE_COLS = "id, data, source_kind, source_title, source_ref, source_author, source_isbn"
+_RECIPE_COLS = "id, data, source_kind, source_title, source_ref, source_author, source_isbn, uid::text"
 
 
 def _recipe(row) -> Recipe:
-    i, d, kind, title, ref, author, isbn = row
-    return Recipe(**d, id=i, source_kind=kind, source_title=title, source_ref=ref, source_author=author, source_isbn=isbn)
+    i, d, kind, title, ref, author, isbn, uid = row
+    d = {k: v for k, v in d.items() if k not in COLUMN_FIELDS}
+    return Recipe(**d, id=i, source_kind=kind, source_title=title, source_ref=ref, source_author=author, source_isbn=isbn,
+                  uid=uid)
 
 
 def get_recipe(conn, rid: int, for_update: bool = False) -> Recipe | None:
     row = conn.execute(f"SELECT {_RECIPE_COLS} FROM recipes WHERE id=%s" + (" FOR UPDATE" if for_update else ""),
                        (rid,)).fetchone()
+    return _recipe(row) if row else None
+
+
+def get_recipe_by_uid(conn, uid: str) -> Recipe | None:
+    try:
+        uid = str(uuid.UUID(str(uid)))
+    except ValueError:
+        return None
+    row = conn.execute(f"SELECT {_RECIPE_COLS} FROM recipes WHERE uid=%s", (uid,)).fetchone()
     return _recipe(row) if row else None
 
 
