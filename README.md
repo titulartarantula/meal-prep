@@ -7,7 +7,8 @@ plus a cook card for each night.
 It has two parts:
 
 - **Android app** (`android/`, Kotlin + Jetpack Compose, package `dev.mealprep.app`). Share an NYT Cooking
-  link into the app, pick the week, and arrange recipes on nights in the "This week" view. The app talks only
+  link or scan a cookbook page into Recipes (with its book and page), then add recipes from Recipes to a week and
+  arrange them on nights in the "This week" view. The app talks only
   to the household's own server; it keeps an offline copy of the current week.
 - **Server** (`server/`, Python 3.12 + FastAPI + Postgres). Imports recipes (schema.org JSON-LD from recipe
   pages, or cookbook photos read by an AI model), stores the weekly plan and ratings, builds a grocery cart
@@ -32,6 +33,7 @@ Not affiliated with The New York Times or Loblaws.
 | `server/tests/` | pytest suite (DB tests need a Postgres test database). |
 | `server/deploy/` | systemd unit, deploy script, smoke scripts, and the API reference (`README.md`). |
 | `docker-compose.yml` | Postgres for the server. |
+| `docs/ux-review-0.4.md` | UX/accessibility review of the 0.4 screens: findings, fixes, backlog. |
 | `docs/play/`, `docs/play-assets/` | Google Play privacy policy, store listing text and graphics (`render.py` draws them). |
 
 ## Server

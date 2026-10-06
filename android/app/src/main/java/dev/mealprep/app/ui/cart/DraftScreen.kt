@@ -26,6 +26,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -113,9 +116,12 @@ private fun LineCard(line: DraftLine, editable: Boolean, busy: Boolean, onQty: (
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val hasProduct = line.product != null
-                TextButton({ onQty(q - 1) }, enabled = editable && hasProduct && !line.removed && q > 0) { Text("−") }
-                Text("$q")
-                TextButton({ onQty(q + 1) }, enabled = editable && hasProduct) { Text("+") }
+                // TalkBack: "One fewer onion", "Quantity 2", not "minus" / "2".
+                TextButton({ onQty(q - 1) }, enabled = editable && hasProduct && !line.removed && q > 0,
+                    modifier = Modifier.semantics { contentDescription = "One fewer ${line.name}" }) { Text("−") }
+                Text("$q", Modifier.semantics { contentDescription = "Quantity $q" })
+                TextButton({ onQty(q + 1) }, enabled = editable && hasProduct,
+                    modifier = Modifier.semantics { contentDescription = "One more ${line.name}" }) { Text("+") }
                 TextButton(onSwap, enabled = editable) { Text("Swap") }
                 TextButton(onRemove, enabled = editable) { Text(if (line.removed) "Put back" else "Remove") }
             }
@@ -142,7 +148,8 @@ private fun SwapDialog(swap: SwapState, onSearch: (String) -> Unit, onChoose: (P
                 }
                 LazyColumn(Modifier.heightIn(max = 360.dp)) {
                     items(swap.results, key = { it.code }) { p ->
-                        Text(productLine(p), Modifier.fillMaxWidth().clickable { onChoose(p) }.padding(vertical = 8.dp))
+                        Text(productLine(p), Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .clickable(role = Role.Button, onClickLabel = "Choose") { onChoose(p) }.padding(vertical = 12.dp))
                     }
                 }
             }

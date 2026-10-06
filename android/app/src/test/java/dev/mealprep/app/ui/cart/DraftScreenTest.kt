@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.isNotEnabled
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import dev.mealprep.app.data.api.Http
@@ -31,6 +32,15 @@ class DraftScreenTest {
         compose.onNodeWithText("Need 900 g").assertExists()
         compose.onNodeWithText("Send to Loblaws").performClick()
         assertEquals(1, sent)
+    }
+
+    @Test fun `quantity buttons say which item for TalkBack`() {
+        var qty: Int? = null
+        compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(onQty = { _, q -> qty = q })) }
+        compose.onNodeWithContentDescription("One more onion").performClick()
+        assertEquals(2, qty)
+        compose.onNodeWithContentDescription("One fewer onion").assertExists()
+        compose.onNodeWithContentDescription("Quantity 1").assertExists()
     }
 
     @Test fun `sent draft opens Loblaws with its cart id`() {

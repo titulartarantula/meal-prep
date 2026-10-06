@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -57,6 +58,8 @@ import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -152,7 +155,10 @@ fun ImportCards(
     imports: List<ImportUi>, onRetry: (java.util.UUID) -> Unit, onDismiss: (java.util.UUID) -> Unit, onOpen: (Any) -> Unit,
     onCancel: (java.util.UUID) -> Unit,
 ) {
-    imports.forEach { i ->
+    if (imports.isEmpty()) return
+    // At most about a third of the screen: several cards (or large text) must not push the week or the list away.
+    val max = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * 0.35f).toDp() }
+    Column(Modifier.heightIn(max = max).verticalScroll(rememberScrollState())) { imports.forEach { i ->
         Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
             Column(Modifier.padding(12.dp)) {
                 when (i) {
@@ -195,7 +201,7 @@ fun ImportCards(
                 }
             }
         }
-    }
+    } }
 }
 
 /** "This uses “Batter for 24 crêpes, page 191” — add a photo of page 191?" + why it matters. */
@@ -249,7 +255,8 @@ fun WeekContent(
                 val slot = Slot(n.day)
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).dropZone(drag, slot, drop).padding(4.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Text(Weeks.nightTitle(view.week, n.day), Modifier.width(64.dp),
+                    // At least 64 dp so the nights line up; wider (never wrapped) with large text.
+                    Text(Weeks.nightTitle(view.week, n.day), Modifier.widthIn(min = 64.dp).padding(end = 8.dp), softWrap = false,
                         fontWeight = if (n.date == today) FontWeight.Bold else FontWeight.Normal)
                     Column {
                         DropHint(drag, slot, "Drop here")
@@ -284,15 +291,17 @@ private fun EmptyWeek(onRecipes: () -> Unit) {
 
 const val EMPTY_WEEK = "Nothing planned yet — add recipes from your Recipes."
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Wraps whole steps onto a new line with large text, never "Prep" / "done" split across lines.
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), itemVerticalAlignment = Alignment.CenterVertically) {
         listOf("Planned" to s.planned, "Cart sent" to s.cartSent, "Prep done" to s.prepDone).forEach { (label, done) ->
             val text = (if (done) "✓ " else "○ ") + label
             val color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             // A sent cart can be reopened (to open it in Loblaws again).
-            if (label == "Cart sent" && onCart != null) TextButton(onClick = onCart) { Text(text, color = color) }
-            else Text(text, color = color)
+            if (label == "Cart sent" && onCart != null) TextButton(onClick = onCart) { Text(text, color = color, softWrap = false) }
+            else Text(text, color = color, softWrap = false)
         }
     }
 }

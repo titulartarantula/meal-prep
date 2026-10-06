@@ -32,4 +32,10 @@ class SetupScreenTest {
         compose.onNodeWithText("Connected.").assertIsDisplayed()
         compose.onNodeWithText("Continue").assertIsDisplayed()
     }
+
+    @Test fun `settings have no Continue (they have Done)`() {
+        compose.setContent { SetupContent(SetupState(result = "Connected.", ok = true), {}, {}, {}, {}, showContinue = false) }
+        compose.onNodeWithText("Connected.").assertIsDisplayed()
+        compose.onNodeWithText("Continue").assertDoesNotExist()
+    }
 }

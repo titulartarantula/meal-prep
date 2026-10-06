@@ -1,5 +1,6 @@
 package dev.mealprep.app.ui.home
 
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -144,6 +145,12 @@ class HomeScreenTest {
         compose.onNodeWithText("Add recipes from Recipes").performClick()
         assertEquals(ContextAction.AddRecipes, action)
         compose.onNodeWithText("Recipes you add to this week wait here until you put them on a night.").assertExists()
+    }
+
+    @Test fun `many import cards scroll in their own area instead of pushing the week away`() {
+        val cards = (1..8).map { ImportUi.Waiting(java.util.UUID.randomUUID()) }
+        compose.setContent { androidx.compose.foundation.layout.Column { ImportCards(cards, {}, {}, {}, {}); androidx.compose.material3.Text("The week") } }
+        compose.onNodeWithText("The week").assertIsDisplayed()
     }
 
     @Test fun `a failed page import is worded for a page`() {

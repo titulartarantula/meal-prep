@@ -17,6 +17,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,26 +26,28 @@ import dev.mealprep.app.AppGraph
 import dev.mealprep.app.ui.common.graphViewModel
 
 @Composable
-fun SetupContent(state: SetupState, onUrl: (String) -> Unit, onToken: (String) -> Unit, onSave: () -> Unit, onContinue: () -> Unit) {
+fun SetupContent(state: SetupState, onUrl: (String) -> Unit, onToken: (String) -> Unit, onSave: () -> Unit, onContinue: () -> Unit,
+                 /** First run only: Settings has its own Done. */
+                 showContinue: Boolean = true) {
     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Meal-prep server", style = MaterialTheme.typography.titleLarge)
+        Text("Meal-prep server", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
         Text("Works on home Wi-Fi (or WireGuard). Ask whoever runs the server for the token.", style = MaterialTheme.typography.bodyMedium)
         OutlinedTextField(state.url, onUrl, label = { Text("Server address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(state.token, onToken, label = { Text("Token") }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
         Button(onClick = onSave, enabled = !state.testing) { Text(if (state.testing) "Testing…" else "Save & test") }
         state.result?.let { Text(it, color = if (state.ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
-        if (state.ok) Button(onClick = onContinue) { Text("Continue") }
+        if (state.ok && showContinue) Button(onClick = onContinue) { Text("Continue") }
     }
 }
 
 @Composable
-fun SetupScreen(graph: AppGraph, onDone: () -> Unit, scrollable: Boolean = true) {
+fun SetupScreen(graph: AppGraph, onDone: () -> Unit, scrollable: Boolean = true, showContinue: Boolean = true) {
     val vm = graphViewModel { g -> SetupViewModel(g.settingsStore, g.settings, g.repo, g.settings.value) }
     val state by vm.state.collectAsStateWithLifecycle()
     // The form scrolls so the keyboard (adjustResize) can't hide Continue; Settings supplies its own scroll.
     Box(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier) {
-        SetupContent(state, vm::setUrl, vm::setToken, { vm.saveAndTest() }, onDone)
+        SetupContent(state, vm::setUrl, vm::setToken, { vm.saveAndTest() }, onDone, showContinue)
     }
 }
 
@@ -51,7 +55,9 @@ fun SetupScreen(graph: AppGraph, onDone: () -> Unit, scrollable: Boolean = true)
 @Composable
 fun SettingsScreen(graph: AppGraph, onDone: () -> Unit, extra: @Composable ColumnScope.() -> Unit = {}) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        SetupScreen(graph, onDone = onDone, scrollable = false)
+        Text("Settings", style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp).semantics { heading() })
+        SetupScreen(graph, onDone = onDone, scrollable = false, showContinue = false)
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { extra() }
         TextButton(onClick = onDone, modifier = Modifier.padding(16.dp)) { Text("Done") }
     }
