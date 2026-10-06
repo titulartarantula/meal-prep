@@ -3,6 +3,8 @@ package dev.mealprep.app.data.api
 import kotlinx.serialization.json.JsonObject
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -13,6 +15,7 @@ import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 /** The Stage 1/2 server (server/deploy/README.md). Dates are ISO strings ("2026-10-11"). */
 interface MealPrepApi {
@@ -61,4 +64,14 @@ interface MealPrepApi {
     @GET("weeks/{week}/prep-plan") suspend fun weekPrepPlan(@Path("week") week: String): PrepPlan
     @PATCH("prep-plans/{id}/tasks/{task}") suspend fun tickTask(@Path("id") id: Int, @Path("task") task: String, @Body body: TaskDone): PrepTask
     @GET("plan/{id}/card") suspend fun card(@Path("id") id: Int): CookCard
+
+    /** schema.org JSON-LD files (ratings and notes always included); the name comes in Content-Disposition. */
+    @Streaming @GET("recipes/{id}/export") suspend fun exportRecipe(@Path("id") id: Int): Response<ResponseBody>
+    @Streaming @GET("recipes/export") suspend fun exportLibrary(): Response<ResponseBody>
+    /** dry_run "true" = the preview (nothing written); "false" + [choices] (JSON object key → add/skip/update) = 202 and
+     *  a background job. */
+    @Multipart @POST("recipes/import")
+    suspend fun importRecipes(@Part file: MultipartBody.Part, @Part("dry_run") dryRun: RequestBody,
+                              @Part("choices") choices: RequestBody? = null): ImportReport
+    @GET("imports/{id}") suspend fun importJob(@Path("id") id: Int): ImportReport
 }

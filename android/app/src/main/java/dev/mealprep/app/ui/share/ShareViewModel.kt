@@ -8,6 +8,7 @@ import dev.mealprep.app.core.BookSuggestion
 import dev.mealprep.app.core.BookSuggestions
 import dev.mealprep.app.core.Books
 import dev.mealprep.app.core.ShareInput
+import dev.mealprep.app.core.ShareParser
 import dev.mealprep.app.core.Sources
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.ui.camera.PageStore
@@ -79,6 +80,9 @@ class ShareViewModel(
     companion object {
         const val NOT_A_RECIPE = "That isn't an NYT Cooking recipe link. Share a recipe from the NYT Cooking app or " +
             "site, or a photo of a cookbook page."
+        /** A shared web link that isn't NYT Cooking: the app never fetches other sites, so a file has to bring it in. */
+        const val NOT_NYT_LINK = "Only NYT Cooking links can be imported from a link. Save the recipe's web page " +
+            "(or export it from the other app), then import the file: Recipes → More options → Import recipes from a file."
         const val TOO_MANY = "A recipe can have up to 10 pages. Delete the extras first."
         const val UNREADABLE = "Couldn't open those photos. Try sharing them again."
         fun someUnreadable(failed: Int, total: Int) = "Couldn't open $failed of the $total photos; the rest are below."
@@ -100,7 +104,12 @@ class ShareViewModel(
         abandon()
         lookup.typed("")   // a new share starts without the last one's search rows
         val notRecipe = input is ShareInput.NotARecipe
-        _state.value = ShareState(input, if (notRecipe) NOT_A_RECIPE else null, configured = configured())
+        val message = when {
+            input is ShareInput.NotARecipe && ShareParser.hasLink(input.text) -> NOT_NYT_LINK
+            notRecipe -> NOT_A_RECIPE
+            else -> null
+        }
+        _state.value = ShareState(input, message, configured = configured())
         if (notRecipe) return
         when (input) {
             is ShareInput.Photos -> copyIn(input.uris)

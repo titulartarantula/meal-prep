@@ -1,5 +1,7 @@
 package dev.mealprep.app.data
 
+import dev.mealprep.app.core.ExportFile
+import dev.mealprep.app.core.ExportFiles
 import dev.mealprep.app.core.Sources
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.ApiError
@@ -12,6 +14,7 @@ import dev.mealprep.app.data.api.DraftIn
 import dev.mealprep.app.data.api.DraftLine
 import dev.mealprep.app.data.api.EntryIn
 import dev.mealprep.app.data.api.Health
+import dev.mealprep.app.data.api.ImportReport
 import dev.mealprep.app.data.api.Http
 import dev.mealprep.app.data.api.JobStarted
 import dev.mealprep.app.data.api.ListIn
@@ -43,11 +46,17 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.builtins.nullable
+import okhttp3.ResponseBody
 import retrofit2.HttpException
+import retrofit2.Response
 
 fun interface ApiProvider { fun api(): MealPrepApi? }
 
@@ -189,6 +198,35 @@ class Repository(
     suspend fun startPrep(weeks: List<LocalDate>): ApiResult<JobStarted> = call { it.startPrep(PrepIn(weeks.map(::wk))) }
     suspend fun tickTask(planId: Int, taskId: String, done: Boolean): ApiResult<PrepTask> =
         call { it.tickTask(planId, taskId, TaskDone(done)) }
+
+    // --- recipe files (import / export) ---
+    /** One recipe as a schema.org file, saved in [dir] under the server's file name (ratings and notes included). */
+    suspend fun exportRecipe(id: Int, dir: File): ApiResult<ExportFile> =
+        download(dir, "recipe-$id.recipe.json") { it.exportRecipe(id) }
+    /** The whole library as one file (a backup other recipe apps can read too). */
+    suspend fun exportLibrary(dir: File): ApiResult<ExportFile> =
+        download(dir, "meal-prep-recipes-${now().atZone(java.time.ZoneId.systemDefault()).toLocalDate()}.json") { it.exportLibrary() }
+
+    private suspend fun download(dir: File, fallback: String, get: suspend (MealPrepApi) -> Response<ResponseBody>): ApiResult<ExportFile> =
+        call { api ->
+            val r = get(api)
+            if (!r.isSuccessful) throw HttpException(r)
+            val name = ExportFiles.fileName(r.headers()["Content-Disposition"]) ?: fallback
+            val body = r.body() ?: throw HttpException(r)
+            withContext(Dispatchers.IO) { ExportFile(name, ExportFiles.save(body.byteStream(), dir, name, now().toEpochMilli())) }
+        }
+
+    /** What importing [file] would do (nothing is written). */
+    suspend fun importPreview(file: File): ApiResult<ImportReport> =
+        call { it.importRecipes(Http.filePart(file, file.name), Http.textPart("true")) }
+    /** Starts the import with [choices] (item key → add / skip / update): the job (202). Sending the same file and
+     *  choices again within minutes returns the same job (existing = true), so a retry never imports twice. */
+    suspend fun importApply(file: File, choices: Map<String, String>): ApiResult<ImportReport> = call {
+        it.importRecipes(Http.filePart(file, file.name), Http.textPart("false"),
+            Http.textPart(json.encodeToString(MapSerializer(String.serializer(), String.serializer()), choices)))
+    }
+    /** An import job, with its last copy kept for offline (the result stays readable away from home). */
+    suspend fun importJob(id: Int): Loaded<ImportReport> = load("import:$id", ImportReport.serializer()) { it.importJob(id) }
 
     // --- Importer ---
     override suspend fun shareLink(text: String, week: LocalDate?): ApiResult<ShareResult> =

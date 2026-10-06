@@ -1,0 +1,22 @@
+{"dry_run": true, "format": "jsonld", "file_sha": "3f5a0c9e1b7d2a4c6e8f0a1b3c5d7e9f1a2b3c4d5e6f708192a3b4c5d6e7f809", "warnings": [],
+ "counts": {"new": 2, "duplicate": 3, "failed": 1},
+ "items": [
+  {"key": "0:9f2c1a7e", "index": 0, "title": "Test Lentil Soup", "status": "new", "action": "add", "can_update": false,
+   "can_add_anyway": false, "match": null, "source": "Other · recipes.example.org", "ingredients": 9, "steps": 5, "ratings": 0,
+   "reasons": [], "ai_tidy": true, "recipe_id": null},
+  {"key": "1:0b1c2d3e", "index": 1, "title": "Test Oat Bars", "status": "new", "action": "add", "can_update": false,
+   "can_add_anyway": false, "match": null, "source": "Book · The Imaginary Larder", "ingredients": 6, "steps": 3, "ratings": 2,
+   "reasons": ["Left out an ISBN that isn't 10 or 13 digits"], "ai_tidy": false, "recipe_id": null},
+  {"key": "2:4e5f6a7b", "index": 2, "title": "Test Bean Chili", "status": "duplicate", "action": "skip", "can_update": false,
+   "can_add_anyway": false, "match": {"recipe_id": 17, "title": "Test Bean Chili", "by": "id"}, "source": "Other",
+   "ingredients": 12, "steps": 6, "ratings": 1, "reasons": [], "ai_tidy": false, "recipe_id": null},
+  {"key": "3:8c9d0e1f", "index": 3, "title": "Test Tomato Tart", "status": "duplicate", "action": "skip", "can_update": true,
+   "can_add_anyway": false, "match": {"recipe_id": 21, "title": "Test Tomato Tart", "by": "id"}, "source": "Other",
+   "ingredients": 7, "steps": 4, "ratings": 0, "reasons": [], "ai_tidy": false, "recipe_id": null},
+  {"key": "4:2a3b4c5d", "index": 4, "title": "Test Pancakes", "status": "duplicate", "action": "skip", "can_update": false,
+   "can_add_anyway": true, "match": {"recipe_id": 5, "title": "Test pancakes", "by": "title"}, "source": "Other · pancakes.example.net",
+   "ingredients": 5, "steps": 4, "ratings": 0, "reasons": [], "ai_tidy": true, "recipe_id": null},
+  {"key": "5:6e7f8a9b", "index": 5, "title": null, "status": "failed", "action": "skip", "can_update": false,
+   "can_add_anyway": false, "match": null, "source": null, "ingredients": 0, "steps": 0, "ratings": 0,
+   "reasons": ["No recipe name"], "ai_tidy": false, "recipe_id": null}
+ ]}

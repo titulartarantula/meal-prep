@@ -47,6 +47,23 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
             </intent-filter>
+            <!-- Recipe files (schema.org JSON-LD from Meal Prep or another recipe app, a saved web page) shared from
+                 another app, or opened with Meal Prep from Files / Drive. The server reads the content, not the type. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/ld+json" />
+                <data android:mimeType="text/html" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/ld+json" />
+                <data android:mimeType="text/html" />
+            </intent-filter>
         </activity>
         <!-- Lets the phone's camera app write a page photo into the app's pages folder (fallback when CameraX can't start). -->
         <provider

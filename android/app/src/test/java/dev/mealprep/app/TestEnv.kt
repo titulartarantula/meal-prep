@@ -55,8 +55,8 @@ class TestEnv : Closeable {
         server.start()
     }
 
-    fun on(method: String, path: String, code: Int = 200, body: String = "") {
-        routes["$method $path"] = { response(code, body) }
+    fun on(method: String, path: String, code: Int = 200, body: String = "", headers: Map<String, String> = emptyMap()) {
+        routes["$method $path"] = { response(code, body, headers) }
     }
 
     /** Successive calls get successive bodies; the last one repeats. */
@@ -96,8 +96,8 @@ class TestEnv : Closeable {
         bodies(method, path).last()
     }
 
-    private fun response(code: Int, body: String) = MockResponse.Builder().code(code)
-        .addHeader("Content-Type", "application/json").body(body).build()
+    private fun response(code: Int, body: String, headers: Map<String, String> = emptyMap()) = MockResponse.Builder().code(code)
+        .addHeader("Content-Type", "application/json").apply { headers.forEach { (k, v) -> addHeader(k, v) } }.body(body).build()
 
     override fun close() { gates.forEach { it.countDown() }; server.close(); db.close() }
 }

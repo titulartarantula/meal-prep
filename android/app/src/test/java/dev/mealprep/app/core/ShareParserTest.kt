@@ -51,4 +51,38 @@ class ShareParserTest {
         val i = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t as CharSequence)
         assertEquals(ShareInput.NytLink("https://cooking.nytimes.com/recipes/1015819-chili", t.toString()), ShareParser.parse(i))
     }
+
+    @Test fun `recipe files shared from another app`() {
+        val u = Uri.parse("content://com.example.files/doc/7")
+        listOf("application/json", "application/ld+json", "text/html", "application/json; charset=utf-8").forEach { t ->
+            val i = Intent(Intent.ACTION_SEND).setType(t).putExtra(Intent.EXTRA_STREAM, u)
+            assertEquals(ShareInput.RecipeFile(u, t), ShareParser.parse(i))
+        }
+        // A file manager that shares a .json as text/plain with only the stream.
+        val plain = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, u)
+        assertEquals(ShareInput.RecipeFile(u, "text/plain"), ShareParser.parse(plain))
+        // A text share that also carries a stream stays a text share.
+        val both = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, u)
+            .putExtra(Intent.EXTRA_TEXT, "https://cooking.nytimes.com/recipes/12-x")
+        assertEquals(ShareInput.NytLink("https://cooking.nytimes.com/recipes/12-x", "https://cooking.nytimes.com/recipes/12-x"), ShareParser.parse(both))
+    }
+
+    @Test fun `open with from Files is a recipe file`() {
+        val u = Uri.parse("content://com.example.files/doc/backup.json")
+        val view = Intent(Intent.ACTION_VIEW).setDataAndType(u, "application/json")
+        assertEquals(ShareInput.RecipeFile(u, "application/json"), ShareParser.parse(view))
+        assertNull(ShareParser.parse(Intent(Intent.ACTION_VIEW).setData(Uri.parse("https://example.org/x.json"))))
+    }
+
+    @Test fun `zip and other binaries are not recipe file types`() {
+        assertEquals(false, ShareParser.isRecipeFileType("application/zip"))
+        assertEquals(false, ShareParser.isRecipeFileType("application/octet-stream"))
+        assertEquals(false, ShareParser.isRecipeFileType(null))
+        assertEquals(true, ShareParser.isRecipeFileType("Application/LD+JSON"))
+    }
+
+    @Test fun `a shared web link is told apart from plain text`() {
+        assertEquals(true, ShareParser.hasLink("Soup https://recipes.example.org/soup"))
+        assertEquals(false, ShareParser.hasLink("make soup"))
+    }
 }

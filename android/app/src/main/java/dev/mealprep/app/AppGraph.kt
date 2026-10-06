@@ -49,6 +49,12 @@ class AppGraph(val context: Context) {
     val scalePage: suspend (File, File) -> Unit = { raw, out ->
         withContext(Dispatchers.IO) { ImageScaler.toJpeg(ImageDecoder.createSource(raw), out) }
     }
+    /** Recipe files being imported (copied in from the picker or a share) and exports made for Save / Send…. */
+    val importsDir get() = File(context.cacheDir, dev.mealprep.app.core.ImportFiles.DIR)
+    val exportsDir get() = File(context.cacheDir, dev.mealprep.app.core.ExportFiles.DIR)
+    /** Copies a picked or shared recipe file into [importsDir] while its read grant lasts. */
+    suspend fun copyImport(uri: Uri): dev.mealprep.app.core.CopyResult =
+        withContext(Dispatchers.IO) { dev.mealprep.app.core.ImportFiles.copyIn(context.contentResolver, uri, importsDir) }
     /** A share that arrived (MainActivity) and is waiting for the Share screen. */
     val pendingShare = MutableStateFlow<ShareInput?>(null)
     /** Import cards dismissed this run (This week and Recipes both show the cards). */

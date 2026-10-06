@@ -1,0 +1,21 @@
+{"id": 7, "status": "running", "progress": {"done": 1, "total": 3}, "error": null,
+ "counts": {"added": 1, "updated": 0, "duplicate": 1, "skipped": 0, "failed": 1, "pending": 2},
+ "dry_run": false, "format": "jsonld", "file_sha": "3f5a0c9e", "warnings": [], "existing": false,
+ "items": [
+  {"key": "0:9f2c1a7e", "index": 0, "title": "Test Lentil Soup", "status": "added", "action": "add", "recipe_id": 31, "ai_tidy": true,
+   "reasons": [], "match": null, "source": "Other · recipes.example.org", "ingredients": 9, "steps": 5, "ratings": 0,
+   "can_update": false, "can_add_anyway": false},
+  {"key": "1:0b1c2d3e", "index": 1, "title": "Test Oat Bars", "status": "pending", "action": "add", "recipe_id": null, "ai_tidy": false,
+   "reasons": [], "match": null, "source": "Book · The Imaginary Larder", "ingredients": 6, "steps": 3, "ratings": 2,
+   "can_update": false, "can_add_anyway": false},
+  {"key": "3:8c9d0e1f", "index": 3, "title": "Test Tomato Tart", "status": "pending", "action": "update", "recipe_id": null,
+   "ai_tidy": false, "reasons": [], "match": {"recipe_id": 21, "title": "Test Tomato Tart", "by": "id"}, "source": "Other",
+   "ingredients": 7, "steps": 4, "ratings": 0, "can_update": true, "can_add_anyway": false},
+  {"key": "2:4e5f6a7b", "index": 2, "title": "Test Bean Chili", "status": "duplicate", "action": "skip", "recipe_id": null,
+   "ai_tidy": false, "reasons": [], "match": {"recipe_id": 17, "title": "Test Bean Chili", "by": "id"}, "source": "Other",
+   "ingredients": 12, "steps": 6, "ratings": 1, "can_update": false, "can_add_anyway": false},
+  {"key": "5:6e7f8a9b", "index": 5, "title": null, "status": "failed", "action": "skip", "recipe_id": null, "ai_tidy": false,
+   "reasons": ["No recipe name"], "match": null, "source": null, "ingredients": 0, "steps": 0, "ratings": 0,
+   "can_update": false, "can_add_anyway": false}
+ ],
+ "created_at": "2026-10-07T15:00:00+00:00", "finished_at": null}

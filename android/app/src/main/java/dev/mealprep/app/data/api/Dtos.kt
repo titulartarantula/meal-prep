@@ -16,6 +16,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class RatingSummary(
     val timesCooked: Int = 0, val timesRated: Int = 0, val avgFamily: Double? = null, val lastFamily: Int? = null,
     val lastRatedAt: String? = null, val company: String? = null, val notes: List<RatingNote> = emptyList(),
+    /** How many of [timesRated] came from another library's export (since 0.9.0; they count like the household's own). */
+    val importedRatings: Int = 0,
 )
 @Serializable data class CookedEntry(
     val entryId: Int, val week: String, val day: Int? = null, val date: String? = null,
@@ -32,6 +34,12 @@ import kotlinx.serialization.Serializable
     val sourceKind: String? = null, val sourceTitle: String? = null, val sourceRef: String? = null,
     /** The book's author(s) and ISBN (since 0.4.3, from a book search pick; null = not known). */
     val sourceAuthor: String? = null, val sourceIsbn: String? = null,
+    /** Stable id (since 0.9.0): the schema.org identifier and the de-dup key across libraries. */
+    val uid: String? = null,
+    /** Optional fields an imported recipe may bring (since 0.9.0); [image] is a link kept as text, never fetched. */
+    val description: String? = null, val notes: String? = null,
+    val prepMinutes: Int? = null, val cookMinutes: Int? = null, val totalMinutes: Int? = null,
+    val yieldText: String? = null, val image: String? = null,
 ) {
     /** Indexes of lines like "Batter for 24 crêpes, page 191" whose page hasn't been attached yet. */
     val missingPages: List<Int> get() = ingredients.indices.filter { ingredients[it].refPage != null && !ingredients[it].expanded }
@@ -152,3 +160,28 @@ import kotlinx.serialization.Serializable
     val steps: List<CardStep> = emptyList(), val totalMinutes: Int = 0, val ratingNotes: List<String> = emptyList(),
     val prepPlanId: Int? = null, val generatedAt: String? = null, val stale: Boolean = false,
 )
+
+/** POST /recipes/import (the preview, and the 202 of an apply) and GET /imports/{id} (the apply job) share this shape.
+ *  [counts] keys: preview new / duplicate / failed; job added / updated / duplicate / skipped / failed / pending. */
+@Serializable data class ImportReport(
+    val dryRun: Boolean = true, val format: String? = null, val fileSha: String? = null,
+    val warnings: List<String> = emptyList(), val counts: Map<String, Int> = emptyMap(), val items: List<ImportItem> = emptyList(),
+    /** The job (apply only): running → done | failed ([error] set). */
+    val id: Int? = null, val status: String? = null, val progress: Progress = Progress(), val error: String? = null,
+    /** This same file and choices was already applied in the last few minutes (or still runs): that job, nothing new. */
+    val existing: Boolean = false, val createdAt: String? = null, val finishedAt: String? = null,
+) {
+    fun count(key: String): Int = counts[key] ?: 0
+}
+
+/** One recipe of the file. Preview [status]: new | duplicate | failed; job: pending → added | updated | duplicate |
+ *  failed, or skipped. [action]: add | skip | update. [title] is null when the file gave it no name. */
+@Serializable data class ImportItem(
+    val key: String, val index: Int = 0, val title: String? = null, val status: String, val action: String = "skip",
+    val canUpdate: Boolean = false, val canAddAnyway: Boolean = false, val match: ImportMatch? = null,
+    val source: String? = null, val ingredients: Int = 0, val steps: Int = 0, val ratings: Int = 0,
+    val reasons: List<String> = emptyList(), val aiTidy: Boolean = false, val recipeId: Int? = null,
+)
+
+/** The library recipe (or, [recipeId] null, an earlier recipe of the same file) an item matched, and how. */
+@Serializable data class ImportMatch(val recipeId: Int? = null, val title: String = "", val by: String = "")

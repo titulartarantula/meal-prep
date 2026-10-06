@@ -11,6 +11,9 @@ sealed interface ShareInput {
     /** Pages already copied into the app's own storage (in-app camera, or Photos after copying). */
     data class Pages(val dir: File) : ShareInput
     data class NotARecipe(val text: String) : ShareInput
+    /** A recipe file (schema.org JSON-LD, a saved web page) shared from another app or opened from Files: a
+     *  content URI readable only while the receiving activity lives, so it is copied in at once (ImportFiles). */
+    data class RecipeFile(val uri: Uri, val mime: String?) : ShareInput
 }
 
 object ShareParser {
@@ -19,6 +22,14 @@ object ShareParser {
 
     fun nytUrl(text: String?): String? =
         text?.let { NYT.find(it)?.value }?.replace("://www.", "://")?.replace("http://", "https://")
+
+    /** The types of the manifest's recipe-file filters (no zip: Paprika isn't imported). */
+    val RECIPE_FILE_TYPES = setOf("application/json", "application/ld+json", "text/html")
+    fun isRecipeFileType(type: String?) = type?.substringBefore(';')?.trim()?.lowercase() in RECIPE_FILE_TYPES
+
+    private val LINK = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
+    /** A shared text with a web link in it (not an NYT Cooking recipe): only a file can bring that recipe in. */
+    fun hasLink(text: String) = LINK.containsMatchIn(text)
 
     fun parse(intent: Intent): ShareInput? = when (intent.action) {
         Intent.ACTION_SEND ->
@@ -30,8 +41,16 @@ object ShareParser {
                     intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString(),
                     intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString(),
                 ).distinct().joinToString("\n")
-                nytUrl(text)?.let { ShareInput.NytLink(it, text) } ?: ShareInput.NotARecipe(text)
+                val stream = intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                when {
+                    // A file: a recipe type, or a text/plain share that carries only a file (some file managers).
+                    stream != null && (isRecipeFileType(intent.type) || intent.getCharSequenceExtra(Intent.EXTRA_TEXT) == null) ->
+                        ShareInput.RecipeFile(stream, intent.type)
+                    else -> nytUrl(text)?.let { ShareInput.NytLink(it, text) } ?: ShareInput.NotARecipe(text)
+                }
             }
+        // "Open with" from Files / Drive (the manifest's VIEW filter: content URIs of the recipe file types).
+        Intent.ACTION_VIEW -> intent.data?.takeIf { it.scheme == "content" }?.let { ShareInput.RecipeFile(it, intent.type) }
         Intent.ACTION_SEND_MULTIPLE ->
             intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
                 ?.takeIf { it.isNotEmpty() }?.let { ShareInput.Photos(it.toList()) }

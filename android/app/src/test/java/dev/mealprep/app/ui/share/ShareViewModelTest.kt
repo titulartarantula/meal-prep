@@ -91,11 +91,13 @@ class ShareViewModelTest {
     @Test fun `not a recipe shows the message and queues nothing`() {
         val vm = vm()
         vm.start(ShareInput.NotARecipe("https://www.nytimes.com/2026/10/01/dining/fall-soups.html"))
-        assertEquals(ShareViewModel.NOT_A_RECIPE, vm.state.value.message)
+        assertEquals(ShareViewModel.NOT_NYT_LINK, vm.state.value.message)      // a link: import it as a file instead
         assertFalse(vm.state.value.canConfirm)
         assertNull(vm.confirm())
         assertTrue(wm.getWorkInfosByTag(ImportQueue.TAG).get().isEmpty())
         assertTrue(env.requests.isEmpty())
+        vm.start(ShareInput.NotARecipe("make soup"))
+        assertEquals(ShareViewModel.NOT_A_RECIPE, vm.state.value.message)
     }
 
     @Test fun `offline the link is still queued, to be sent from home`() = runTest {

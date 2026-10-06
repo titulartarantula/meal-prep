@@ -28,6 +28,10 @@ object Http {
     private val LONG_CALL = Regex("""/recipes/(share|photo|\d+/pages)$""")
     fun isLongCall(path: String): Boolean = LONG_CALL.containsMatchIn(path)
 
+    // Files up and down (import / export): bigger bodies, a slower server read, but no AI wait.
+    private val TRANSFER = Regex("""/recipes/(import|export|\d+/export)$""")
+    fun isTransfer(path: String): Boolean = TRANSFER.containsMatchIn(path)
+
     private val HEALTH = Regex("""/health$""")
 
     fun client(
@@ -35,6 +39,7 @@ object Http {
         connectTimeoutSec: Long = 5,
         readTimeoutSec: Long = 30,
         longReadTimeoutSec: Long = 330,
+        transferTimeoutSec: Long = 120,
     ): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(connectTimeoutSec, TimeUnit.SECONDS)
         .readTimeout(readTimeoutSec, TimeUnit.SECONDS)
@@ -45,9 +50,13 @@ object Http {
             // Every call except GET /health carries the bearer token.
             val skipAuth = t.isBlank() || (orig.method == "GET" && HEALTH.containsMatchIn(orig.url.encodedPath))
             val req = if (skipAuth) orig else orig.newBuilder().header("Authorization", "Bearer $t").build()
-            val c = if (isLongCall(req.url.encodedPath))
-                chain.withReadTimeout(longReadTimeoutSec.toInt(), TimeUnit.SECONDS).withWriteTimeout(120, TimeUnit.SECONDS)
-                else chain
+            val path = req.url.encodedPath
+            val c = when {
+                isLongCall(path) -> chain.withReadTimeout(longReadTimeoutSec.toInt(), TimeUnit.SECONDS).withWriteTimeout(120, TimeUnit.SECONDS)
+                isTransfer(path) -> chain.withReadTimeout(transferTimeoutSec.toInt(), TimeUnit.SECONDS)
+                    .withWriteTimeout(transferTimeoutSec.toInt(), TimeUnit.SECONDS)
+                else -> chain
+            }
             c.proceed(req)
         }
         .build()
@@ -65,4 +74,8 @@ object Http {
     }
 
     fun textPart(v: String): RequestBody = v.toRequestBody("text/plain".toMediaType())
+
+    /** A recipe file for POST /recipes/import (the server reads the content, not the name or type). */
+    fun filePart(f: File, name: String): MultipartBody.Part =
+        MultipartBody.Part.createFormData("file", name, f.asRequestBody("application/octet-stream".toMediaType()))
 }
