@@ -14,7 +14,7 @@ from .importers.nyt import extract_nyt_url, fetch_nyt, parse_nyt_html
 from .importers.photo import import_photo, import_subrecipe
 from .importers.structure import structure_ingredients
 from .matcher import fill_cart
-from .models import ListItem, PlanEntry, Recipe, RecipeDetail, RecipeOut, Staple
+from .models import ListItem, PlanEntry, Recipe, RecipeDetail, RecipeOut, SourceKind, Staple
 from .pcx import Pcx
 from .shopping import build_list
 
@@ -22,6 +22,38 @@ from .shopping import build_list
 class ShareIn(BaseModel):
     text: str
     week: date | None = None
+
+
+def _text(v: str | None, limit: int, what: str) -> str | None:
+    """Collapse whitespace; blank → None; at most `limit` characters."""
+    if v is None:
+        return None
+    v = " ".join(v.split())
+    if len(v) > limit:
+        raise ValueError(f"{what} is longer than {limit} characters")
+    return v or None
+
+
+class RecipePatch(BaseModel):   # partial update: omitted fields are left unchanged; null clears source_title/source_ref
+    title: str | None = None
+    source_kind: SourceKind | None = None
+    source_title: str | None = None
+    source_ref: str | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _title(cls, v):
+        return _text(v, 200, "title")
+
+    @field_validator("source_title")
+    @classmethod
+    def _source_title(cls, v):
+        return _text(v, 200, "source_title")
+
+    @field_validator("source_ref")
+    @classmethod
+    def _source_ref(cls, v):
+        return _text(v, 50, "source_ref")
 
 
 class EntryIn(BaseModel):
@@ -189,10 +221,9 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             wk = db.week_start(week)
             eid = db.add_to_week(c, wk, r.id)
             entry = next(e for e in db.get_week(c, wk) if e.id == eid)
-        # Include the current rating summary so the app can show "you rated this 5/5" on re-share.
-        out = RecipeOut(**r.model_dump(), ratings=db.rating_summaries(c, today(), [r.id])[r.id],
-                        planned_weeks=db.planned_weeks(c, today(), [r.id]).get(r.id, []))
-        return {"recipe": out, "entry": entry, "existing": existing}
+        # As saved (source fields included), with the current rating summary so the app can show "you rated this
+        # 5/5" on re-share.
+        return {"recipe": _recipe_out(c, r.id), "entry": entry, "existing": existing}
 
     @app.post("/recipes/share", dependencies=A)
     def share(body: ShareIn, c=Depends(get_conn)):
@@ -212,17 +243,56 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.post("/recipes/photo", dependencies=A)
     def photo(files: list[UploadFile] = File(...), week: date | None = Form(None),
-              title: str | None = Form(None), c=Depends(get_conn)):
+              title: str | None = Form(None), source_kind: SourceKind = Form("book"),
+              source_title: str | None = Form(None), source_ref: str | None = Form(None), c=Depends(get_conn)):
         # sync def on purpose: FastAPI runs it in the threadpool, so the minutes-long Claude call
         # doesn't block the event loop
         if not 1 <= len(files) <= 10:
             raise HTTPException(422, "send 1–10 pages")
+        try:   # checked before the slow read
+            src = RecipePatch(source_kind=source_kind, source_title=source_title, source_ref=source_ref)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
         with tempfile.TemporaryDirectory(prefix="mealprep-") as d:
             try:
                 r = import_photo(ai, _save_pages(d, files), title_hint=title)
             except AIError as e:
                 raise HTTPException(502, f"couldn't read recipe: {e}")
+        r.source_kind, r.source_title, r.source_ref = src.source_kind, src.source_title, src.source_ref
         return _save_and_plan(c, r, week)
+
+    def _recipe_out(c, rid: int) -> RecipeOut:
+        r = db.get_recipe(c, rid)
+        return RecipeOut(**r.model_dump(), ratings=db.rating_summaries(c, today(), [rid])[rid],
+                         planned_weeks=db.planned_weeks(c, today(), [rid]).get(rid, []))
+
+    @app.patch("/recipes/{recipe_id}", dependencies=A)
+    def patch_recipe(recipe_id: int, body: RecipePatch, c=Depends(get_conn)) -> RecipeOut:
+        """Rename a recipe or set where it comes from. An NYT recipe has no book title or page."""
+        fields = body.model_dump(include=body.model_fields_set)   # only what the client sent
+        for f in ("title", "source_kind"):
+            if f in fields and fields[f] is None:
+                raise HTTPException(422, f"{f} can't be null" if f == "source_kind" else "title can't be blank")
+        with c.transaction():
+            r = db.get_recipe(c, recipe_id, for_update=True)
+            if r is None:
+                raise HTTPException(404, f"recipe {recipe_id}")
+            kind = fields.get("source_kind", r.source_kind)
+            title = fields.get("source_title", r.source_title)
+            ref = fields.get("source_ref", r.source_ref)
+            if kind == "nyt":
+                if fields.get("source_title") or fields.get("source_ref"):
+                    raise HTTPException(422, "an NYT Cooking recipe has no book title or page")
+                title = ref = None
+            db.update_source(c, recipe_id, kind, title, ref)
+            if "title" in fields:
+                db.update_recipe(c, recipe_id, r.model_copy(update={"title": fields["title"]}))
+        return _recipe_out(c, recipe_id)
+
+    @app.get("/recipes/sources", dependencies=A)
+    def recipe_sources(c=Depends(get_conn)):
+        """NYT Cooking, each cookbook and "Unknown book", with counts; `key` is the GET /recipes?source= value."""
+        return db.recipe_sources(c)
 
     @app.post("/recipes/{recipe_id}/pages", dependencies=A)
     def attach_pages(recipe_id: int, files: list[UploadFile] = File(...), for_line: int | None = Form(None),
@@ -251,15 +321,17 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                 raise HTTPException(404, f"recipe {recipe_id}")
             if line >= len(cur.ingredients) or cur.ingredients[line].raw != ref.raw or cur.ingredients[line].expanded:
                 raise HTTPException(409, "the recipe changed while the page was being read; try again")
+                # the page is part of the same recipe, so it keeps the recipe's source (book, page) as it is
             db.update_recipe(c, recipe_id, subrecipe.attach_subrecipe(cur, line, name, ings, steps))
-        out = db.get_recipe(c, recipe_id)
-        return RecipeOut(**out.model_dump(), ratings=db.rating_summaries(c, today(), [recipe_id])[recipe_id])
+        return _recipe_out(c, recipe_id)
 
     @app.get("/recipes", dependencies=A)
-    def recipes(sort: Literal["newest", "favourites"] = "newest", c=Depends(get_conn)) -> list[RecipeOut]:
+    def recipes(sort: Literal["newest", "favourites"] = "newest", source: str | None = None,
+                c=Depends(get_conn)) -> list[RecipeOut]:
+        """`source`: nyt, book (any book), other, book:<title> (any case), book: (book not known yet) or a book title."""
         summaries, planned = db.rating_summaries(c, today()), db.planned_weeks(c, today())
         out = [RecipeOut(**r.model_dump(), ratings=summaries.get(r.id, {}), planned_weeks=planned.get(r.id, []))
-               for r in db.list_recipes(c)]  # newest first
+               for r in db.list_recipes(c, source)]  # newest first
         if sort == "favourites":   # avg family desc (unrated last), then times cooked; stable → newest breaks ties
             out.sort(key=lambda r: (r.ratings.avg_family is None, -(r.ratings.avg_family or 0), -r.ratings.times_cooked))
         return out

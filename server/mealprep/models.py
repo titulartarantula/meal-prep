@@ -15,14 +15,28 @@ class Ingredient(BaseModel):
     expanded: bool = False         # a "…, page 191" line whose sub-recipe was attached: not bought itself
 
 
+SourceKind = Literal["nyt", "book", "other"]
+SOURCE_FIELDS = {"source_kind", "source_title", "source_ref"}   # stored in recipes columns, not in `data`
+
+
 class Recipe(BaseModel):
     id: int | None = None
     title: str
-    source: str                  # "nyt" | "photo"
+    source: str                  # how it was imported: "nyt" | "photo"
     source_url: str | None = None
     servings: int | None = None
     ingredients: list[Ingredient]
     steps: list[str]
+    # Where the recipe comes from (columns on recipes, editable with PATCH /recipes/{id}): NYT Cooking, a cookbook
+    # (source_title = the book, null = not known yet; source_ref = page(s), free text) or something else.
+    source_kind: SourceKind | None = None   # None only before saving: save_recipe derives it (default_kind)
+    source_title: str | None = None
+    source_ref: str | None = None
+
+    def default_kind(self) -> str:
+        if self.source_url and "nytimes.com" in self.source_url:
+            return "nyt"
+        return "book" if self.source == "photo" else "other"
 
 
 class ListItem(BaseModel):

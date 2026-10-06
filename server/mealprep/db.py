@@ -5,7 +5,7 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .models import PlanEntry, Rating, Recipe
+from .models import SOURCE_FIELDS, PlanEntry, Rating, Recipe
 
 SCHEMA = (Path(__file__).parent / "schema.sql").read_text()
 
@@ -16,30 +16,82 @@ def connect(dsn: str) -> psycopg.Connection:
     return conn
 
 
+def _data(r: Recipe) -> Jsonb:
+    return Jsonb(r.model_dump(mode="json", exclude={"id", *SOURCE_FIELDS}))
+
+
 def save_recipe(conn, r: Recipe, ai_provider: str | None = None) -> int:
+    """Insert the recipe (an NYT link already in the library returns that recipe's id, unchanged)."""
     if r.source_url:
         row = conn.execute("SELECT id FROM recipes WHERE source_url=%s", (r.source_url,)).fetchone()
         if row:
             return row[0]
+    kind = r.source_kind or r.default_kind()
+    title, ref = (None, None) if kind == "nyt" else (r.source_title, r.source_ref)
     return conn.execute(
-        "INSERT INTO recipes(source, source_url, title, servings, data, ai_provider) VALUES(%s,%s,%s,%s,%s,%s) RETURNING id",
-        (r.source, r.source_url, r.title, r.servings, Jsonb(r.model_dump(mode="json", exclude={"id"})), ai_provider),
+        "INSERT INTO recipes(source, source_url, title, servings, data, ai_provider, source_kind, source_title, source_ref) "
+        "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+        (r.source, r.source_url, r.title, r.servings, _data(r), ai_provider, kind, title, ref),
     ).fetchone()[0]
 
 
-def get_recipe(conn, rid: int, for_update: bool = False) -> Recipe | None:
-    row = conn.execute("SELECT id, data FROM recipes WHERE id=%s" + (" FOR UPDATE" if for_update else ""), (rid,)).fetchone()
-    return Recipe(**row[1], id=row[0]) if row else None
+_RECIPE_COLS = "id, data, source_kind, source_title, source_ref"
 
+
+def _recipe(row) -> Recipe:
+    i, d, kind, title, ref = row
+    return Recipe(**d, id=i, source_kind=kind, source_title=title, source_ref=ref)
+
+
+def get_recipe(conn, rid: int, for_update: bool = False) -> Recipe | None:
+    row = conn.execute(f"SELECT {_RECIPE_COLS} FROM recipes WHERE id=%s" + (" FOR UPDATE" if for_update else ""),
+                       (rid,)).fetchone()
+    return _recipe(row) if row else None
 
 
 def update_recipe(conn, rid: int, r: Recipe) -> None:
-    conn.execute("UPDATE recipes SET title=%s, servings=%s, data=%s WHERE id=%s",
-                 (r.title, r.servings, Jsonb(r.model_dump(mode="json", exclude={"id"})), rid))
+    """Title, servings, ingredients and steps (the source columns are changed only by update_source)."""
+    conn.execute("UPDATE recipes SET title=%s, servings=%s, data=%s WHERE id=%s", (r.title, r.servings, _data(r), rid))
 
 
-def list_recipes(conn) -> list[Recipe]:
-    return [Recipe(**d, id=i) for i, d in conn.execute("SELECT id, data FROM recipes ORDER BY id DESC")]
+def update_source(conn, rid: int, kind: str, title: str | None, ref: str | None) -> None:
+    conn.execute("UPDATE recipes SET source_kind=%s, source_title=%s, source_ref=%s WHERE id=%s", (kind, title, ref, rid))
+
+
+def source_filter(source: str | None) -> tuple[str, dict]:
+    """SQL condition for GET /recipes?source=: "nyt", "book" (every book), "other", "book:<title>" (case-insensitive),
+    "book:" (book not known yet); any other value is a book title."""
+    if not source:
+        return "", {}
+    s = source.strip()
+    if s in ("nyt", "book", "other"):
+        return " WHERE source_kind = %(kind)s", {"kind": s}
+    title = s[5:] if s.lower().startswith("book:") else s
+    title = " ".join(title.split())
+    if not title:
+        return " WHERE source_kind = 'book' AND source_title IS NULL", {}
+    return " WHERE source_kind = 'book' AND lower(source_title) = lower(%(title)s)", {"title": title}
+
+
+def list_recipes(conn, source: str | None = None) -> list[Recipe]:
+    where, args = source_filter(source)
+    return [_recipe(row) for row in conn.execute(f"SELECT {_RECIPE_COLS} FROM recipes{where} ORDER BY id DESC", args)]
+
+
+def recipe_sources(conn) -> list[dict]:
+    """Distinct sources with counts: NYT Cooking, each book (titles grouped case-insensitively, the newest
+    recipe's spelling shown), Unknown book, Other. `key` is the GET /recipes?source= value that lists them."""
+    rows = conn.execute(
+        "SELECT source_kind, (array_agg(source_title ORDER BY id DESC))[1], count(*) FROM recipes "
+        "GROUP BY source_kind, lower(source_title)").fetchall()
+    nyt = [{"key": "nyt", "kind": "nyt", "title": None, "label": "NYT Cooking", "count": n}
+           for k, _, n in rows if k == "nyt"]
+    books = sorted(({"key": f"book:{t}", "kind": "book", "title": t, "label": t, "count": n}
+                    for k, t, n in rows if k == "book" and t is not None), key=lambda b: b["title"].lower())
+    unknown = [{"key": "book:", "kind": "book", "title": None, "label": "Unknown book", "count": n}
+               for k, t, n in rows if k == "book" and t is None]
+    other = [{"key": "other", "kind": "other", "title": None, "label": "Other", "count": sum(n for k, _, n in rows if k == "other")}]
+    return nyt + books + unknown + [o for o in other if o["count"]]
 
 
 def get_pick(conn, key: str) -> str | None:

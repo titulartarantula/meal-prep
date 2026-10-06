@@ -207,3 +207,21 @@ DO $$ BEGIN
     INSERT INTO seeds(name) VALUES ('staples') ON CONFLICT DO NOTHING;
   END IF;
 END $$;
+
+-- Recipe sources (2026-10-05, 0.4.2): where a recipe comes from, editable in the app. source_kind nyt | book | other;
+-- source_title = the cookbook (null = not known yet: "Unknown book"); source_ref = page(s), free text. Backfill once
+-- (only rows still null): an NYT link → nyt, a photo import → book with no title (never guessed), anything else → other.
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS source_kind text;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS source_title text;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS source_ref text;
+UPDATE recipes SET source_kind = CASE WHEN source_url LIKE '%nytimes.com%' THEN 'nyt' WHEN source = 'photo' THEN 'book'
+                                      ELSE 'other' END
+  WHERE source_kind IS NULL;
+ALTER TABLE recipes ALTER COLUMN source_kind SET DEFAULT 'other';
+ALTER TABLE recipes ALTER COLUMN source_kind SET NOT NULL;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'recipes_source_kind_check') THEN
+    ALTER TABLE recipes ADD CONSTRAINT recipes_source_kind_check CHECK (source_kind IN ('nyt','book','other'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS recipes_source_idx ON recipes(source_kind, lower(source_title));
