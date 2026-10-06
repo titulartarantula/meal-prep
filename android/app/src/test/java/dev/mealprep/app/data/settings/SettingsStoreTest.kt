@@ -2,6 +2,9 @@ package dev.mealprep.app.data.settings
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.Preferences
 import java.io.IOException
 import java.time.LocalTime
@@ -45,6 +48,28 @@ class SettingsStoreTest {
         assertTrue(r.staples)
         assertEquals(java.time.DayOfWeek.FRIDAY, r.staplesDay)
         assertEquals(LocalTime.of(18, 15), r.staplesAt)
+    }
+
+    @Test fun `device trust is on for phones that had the 0_4_1 keys`() = runTest {
+        // 0.4.0/0.4.1 wrote both Loblaws switches with every settings change; their values no longer count.
+        val ds = PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "old.preferences_pb") }
+        ds.edit { p ->
+            p[booleanPreferencesKey("lob_signed_out")] = false; p[booleanPreferencesKey("lob_keep_trust")] = false
+            p[stringPreferencesKey("token")] = "abc"
+        }
+        val s = SettingsStore(ds).settings.first()
+        assertTrue(s.loblawsKeepDeviceTrust)
+        assertEquals("abc", s.token)
+    }
+
+    @Test fun `device trust turned off stays off and the old keys are dropped`() = runTest {
+        val ds = PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "off.preferences_pb") }
+        val store = SettingsStore(ds)
+        store.update { it.copy(loblawsKeepDeviceTrust = false) }
+        assertFalse(store.settings.first().loblawsKeepDeviceTrust)
+        val raw = ds.data.first()
+        assertEquals(null, raw[booleanPreferencesKey("lob_signed_out")])
+        assertEquals(null, raw[booleanPreferencesKey("lob_keep_trust")])
     }
 
     @Test fun `server url is normalized`() {

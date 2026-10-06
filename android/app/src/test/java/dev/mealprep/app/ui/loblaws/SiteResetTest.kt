@@ -8,11 +8,10 @@ import org.junit.Test
 class SiteResetTest {
     private val exp = "Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0"
 
-    @Test fun `mode follows the two switches`() {
-        assertEquals(StartClear.ALL, startClear(signedOutStart = true, keepDeviceTrust = false))        // the default
-        assertEquals(StartClear.SITE_ONLY, startClear(signedOutStart = true, keepDeviceTrust = true))
-        assertEquals(StartClear.NONE, startClear(signedOutStart = false, keepDeviceTrust = true))      // needs sign-out on
-        assertEquals(StartClear.NONE, startClear(signedOutStart = false, keepDeviceTrust = false))
+    @Test fun `always a signed-out start, the switch says how much is cleared`() {
+        assertEquals(StartClear.SITE_ONLY, startClear(keepDeviceTrust = true))      // the default
+        assertEquals(StartClear.ALL, startClear(keepDeviceTrust = false))
+        assertEquals(listOf(StartClear.SITE_ONLY, StartClear.ALL), StartClear.entries)   // no "as is" start any more
     }
 
     @Test fun `cookie names come from the CookieManager header`() {
@@ -40,8 +39,9 @@ class SiteResetTest {
 
     @Test fun `details say which start was used`() {
         val d = handoffDetails(HandoffStep.FAILED, HandoffStep.VERIFYING, "www.loblaws.ca", null, 3, StartClear.SITE_ONLY)
-        assertTrue(d, d.contains("\nStart: signed out, PC id device trust kept (experimental)\n"))
-        assertTrue(handoffDetails(HandoffStep.FAILED, null, null, null, 0, StartClear.ALL).contains("Start: signed out, everything cleared"))
+        assertTrue(d, d.contains("\nStart: signed out, PC id device trust kept\n"))
+        assertTrue(handoffDetails(HandoffStep.FAILED, null, null, null, 0, StartClear.ALL)
+            .contains("Start: signed out, everything cleared (device trust off)"))
         assertFalse(handoffDetails(HandoffStep.FAILED, null, null, null, 0).contains("Start:"))
     }
 }

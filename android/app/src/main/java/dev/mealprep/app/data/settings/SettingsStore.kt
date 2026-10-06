@@ -32,10 +32,10 @@ data class Settings(
     val serverUrl: String = DEFAULT_SERVER_URL,
     val token: String = "",
     val notif: NotifPrefs = NotifPrefs(),
-    val loblawsSignedOutStart: Boolean = true,
     val loblawsHideWebViewMarker: Boolean = false,
-    /** Experimental: a signed-out start that clears only loblaws.ca, so PC id may remember the device (no MFA). */
-    val loblawsKeepDeviceTrust: Boolean = false,
+    /** The Loblaws handoff always starts signed out (the only way the cart merges). On (default since 0.4.2): clear
+     *  only loblaws.ca, so PC id remembers this phone (no code). Off: clear everything. */
+    val loblawsKeepDeviceTrust: Boolean = true,
     val askedNotificationPermission: Boolean = false,
 ) {
     val configured: Boolean get() = token.isNotBlank() && serverUrl.isNotBlank()
@@ -62,8 +62,11 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
         val cartReady = booleanPreferencesKey("n_cart_ready")
         val staples = booleanPreferencesKey("n_staples"); val staplesDay = intPreferencesKey("n_staples_day")
         val staplesAt = intPreferencesKey("n_staples_at")
-        val signedOut = booleanPreferencesKey("lob_signed_out"); val hideWv = booleanPreferencesKey("lob_hide_wv")
-        val keepTrust = booleanPreferencesKey("lob_keep_trust")
+        val hideWv = booleanPreferencesKey("lob_hide_wv")
+        // A new key: 0.4.0/0.4.1 saved "lob_keep_trust" = false with every settings change, so an off there can't be
+        // told from "never touched". Both old Loblaws keys are ignored and removed.
+        val keepTrust = booleanPreferencesKey("lob_device_trust")
+        val legacy = listOf(booleanPreferencesKey("lob_signed_out"), booleanPreferencesKey("lob_keep_trust"))
         val asked = booleanPreferencesKey("asked_notif")
     }
 
@@ -83,7 +86,6 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
                 staplesDay = p[K.staplesDay]?.takeIf { it in 1..7 }?.let(DayOfWeek::of) ?: n.staplesDay,
                 staplesAt = t(p[K.staplesAt], n.staplesAt),
             ),
-            loblawsSignedOutStart = p[K.signedOut] ?: d.loblawsSignedOutStart,
             loblawsHideWebViewMarker = p[K.hideWv] ?: d.loblawsHideWebViewMarker,
             loblawsKeepDeviceTrust = p[K.keepTrust] ?: d.loblawsKeepDeviceTrust,
             askedNotificationPermission = p[K.asked] ?: false,
@@ -97,8 +99,9 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
         p[K.tonight] = s.notif.tonight; p[K.tonightAt] = m(s.notif.tonightAt)
         p[K.cartReady] = s.notif.cartReady
         p[K.staples] = s.notif.staples; p[K.staplesDay] = s.notif.staplesDay.value; p[K.staplesAt] = m(s.notif.staplesAt)
-        p[K.signedOut] = s.loblawsSignedOutStart; p[K.hideWv] = s.loblawsHideWebViewMarker
+        p[K.hideWv] = s.loblawsHideWebViewMarker
         p[K.keepTrust] = s.loblawsKeepDeviceTrust
+        K.legacy.forEach { p.remove(it) }
         p[K.asked] = s.askedNotificationPermission
     }
 

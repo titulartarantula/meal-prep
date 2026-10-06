@@ -2,21 +2,17 @@ package dev.mealprep.app.ui.loblaws
 
 import java.net.URI
 
-/** What the handoff clears before it loads the cart (Settings → Loblaws). */
+/** What the handoff clears before it loads the cart. It always starts signed out of loblaws.ca: a signed-in start
+ *  doesn't merge the cart (DESIGN, 2026-10-05). */
 enum class StartClear(val details: String) {
-    /** "Sign out before loading the cart" off: keep everything (a signed-in start doesn't merge, see DESIGN). */
-    NONE("as is (sign-out start off)"),
-    /** The default: every cookie and all site data in the WebView, so PC id asks to verify the device each time. */
-    ALL("signed out, everything cleared"),
-    /** Experimental: only loblaws.ca's cookies and storage; accounts.pcid.ca keeps its "remember this device". */
-    SITE_ONLY("signed out, PC id device trust kept (experimental)"),
+    /** The default (Settings → Keep PC id device trust): only loblaws.ca's cookies and storage; accounts.pcid.ca
+     *  keeps its "remember this device", so PC id doesn't ask for a code. */
+    SITE_ONLY("signed out, PC id device trust kept"),
+    /** Device trust off: every cookie and all site data in the WebView, so PC id asks to verify the device each time. */
+    ALL("signed out, everything cleared (device trust off)"),
 }
 
-fun startClear(signedOutStart: Boolean, keepDeviceTrust: Boolean): StartClear = when {
-    !signedOutStart -> StartClear.NONE
-    keepDeviceTrust -> StartClear.SITE_ONLY
-    else -> StartClear.ALL
-}
+fun startClear(keepDeviceTrust: Boolean): StartClear = if (keepDeviceTrust) StartClear.SITE_ONLY else StartClear.ALL
 
 /**
  * Signing loblaws.ca out without touching PC id: expire each cookie the WebView holds for the site and delete the

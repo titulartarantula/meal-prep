@@ -130,7 +130,7 @@ fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val machine = remember(cartId) { HandoffMachine(cartId) }
-    val clear = startClear(prefs.loblawsSignedOutStart, prefs.loblawsKeepDeviceTrust)
+    val clear = startClear(prefs.loblawsKeepDeviceTrust)
     var step by remember { mutableStateOf(machine.step) }
     var attempt by remember { mutableIntStateOf(0) }
     var web by remember { mutableStateOf<WebView?>(null) }
@@ -179,14 +179,13 @@ fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
         when (clear) {
             StartClear.ALL -> { WebStorage.getInstance().deleteAllData(); cm.removeAllCookies { load() } }
             StartClear.SITE_ONLY -> {
-                // Experimental: sign loblaws.ca out but keep accounts.pcid.ca's cookies ("remember this device").
+                // Sign loblaws.ca out but keep accounts.pcid.ca's cookies ("remember this device").
                 SiteReset.ORIGINS.forEach(WebStorage.getInstance()::deleteOrigin)
                 val expire = SiteReset.plan(cm::getCookie)
                 var left = expire.size
                 if (left == 0) load()
                 expire.forEach { (url, c) -> cm.setCookie(url, c) { if (--left == 0) { cm.flush(); load() } } }
             }
-            StartClear.NONE -> load()
         }
     }
 
@@ -253,21 +252,19 @@ fun LoblawsSettings(graph: AppGraph) {
     val s by graph.settings.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     LoblawsSettingsContent(s,
-        onSignedOut = { v -> scope.launch { graph.settingsStore.update { it.copy(loblawsSignedOutStart = v) } } },
         onHideMarker = { v -> scope.launch { graph.settingsStore.update { it.copy(loblawsHideWebViewMarker = v) } } },
         onKeepTrust = { v -> scope.launch { graph.settingsStore.update { it.copy(loblawsKeepDeviceTrust = v) } } })
 }
 
+const val KEEP_TRUST = "Keep PC id device trust"
+const val KEEP_TRUST_ON = "The cart page starts signed out of loblaws.ca only, so PC id remembers this phone and doesn't ask for a code."
+const val KEEP_TRUST_OFF = "The cart page starts with everything cleared, so PC id asks for a code each time."
+
 @Composable
-fun LoblawsSettingsContent(s: Settings, onSignedOut: (Boolean) -> Unit, onHideMarker: (Boolean) -> Unit, onKeepTrust: (Boolean) -> Unit = {}) {
+fun LoblawsSettingsContent(s: Settings, onHideMarker: (Boolean) -> Unit, onKeepTrust: (Boolean) -> Unit = {}) {
     Column {
         Text("Loblaws", style = MaterialTheme.typography.titleMedium)
-        SwitchRow("Sign out before loading the cart (recommended)", null, s.loblawsSignedOutStart, onSignedOut)
-        SwitchRow("Keep PC id device trust (experimental)",
-            if (s.loblawsSignedOutStart) "Signs out of loblaws.ca only, so PC id may remember this phone and skip the code. " +
-                "If the cart doesn't move into your account, turn this off."
-            else "Only used with “Sign out before loading the cart”.",
-            s.loblawsKeepDeviceTrust, onKeepTrust, enabled = s.loblawsSignedOutStart)
+        SwitchRow(KEEP_TRUST, if (s.loblawsKeepDeviceTrust) KEEP_TRUST_ON else KEEP_TRUST_OFF, s.loblawsKeepDeviceTrust, onKeepTrust)
         SwitchRow("Hide in-app browser marker (if Loblaws blocks the page)", null, s.loblawsHideWebViewMarker, onHideMarker)
     }
 }

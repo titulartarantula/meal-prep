@@ -84,26 +84,16 @@ class LoblawsScreenTest {
         assertEquals(1, done)
     }
 
-    @Test fun `settings switches`() {
-        var signedOut: Boolean? = null
-        compose.setContent { LoblawsSettingsContent(Settings(), onSignedOut = { signedOut = it }, onHideMarker = {}) }
-        compose.onNodeWithText("Sign out before loading the cart (recommended)").assertExists()
-        compose.onNodeWithText("Hide in-app browser marker (if Loblaws blocks the page)").assertExists()
-        assertEquals(true, Settings().loblawsSignedOutStart)   // signed-out start is the default (only confirmed merge path)
-        assertEquals(null, signedOut)
-    }
-
-    @Test fun `keep PC id device trust is off by default and needs the signed-out start`() {
-        assertEquals(false, Settings().loblawsKeepDeviceTrust)
+    @Test fun `device trust is the only start switch, on by default`() {
+        assertEquals(true, Settings().loblawsKeepDeviceTrust)
         var keep: Boolean? = null
         var prefs by mutableStateOf(Settings())
-        compose.setContent { LoblawsSettingsContent(prefs, onSignedOut = {}, onHideMarker = {}, onKeepTrust = { keep = it }) }
-        compose.onNodeWithText("Keep PC id device trust (experimental)").performClick()
-        assertEquals(true, keep)
-        prefs = Settings(loblawsSignedOutStart = false)
-        compose.onNodeWithText("Only used with “Sign out before loading the cart”.").assertExists()
-        keep = null
-        compose.onNodeWithText("Keep PC id device trust (experimental)").performClick()
-        assertEquals(null, keep)                                             // disabled
+        compose.setContent { LoblawsSettingsContent(prefs, onHideMarker = {}, onKeepTrust = { keep = it; prefs = prefs.copy(loblawsKeepDeviceTrust = it) }) }
+        compose.onNodeWithText("Sign out before loading the cart", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Hide in-app browser marker (if Loblaws blocks the page)").assertExists()
+        compose.onNodeWithText(KEEP_TRUST_ON).assertExists()
+        compose.onNodeWithText(KEEP_TRUST).performClick()
+        assertEquals(false, keep)
+        compose.onNodeWithText(KEEP_TRUST_OFF).assertExists()
     }
 }
