@@ -14,10 +14,11 @@ import androidx.navigation.NavDestination.Companion.hasRoute
 import dev.mealprep.app.R
 import dev.mealprep.app.ui.theme.GardenAccent
 
-/** The three main screens behind the bottom bar. The Shopping list is there whatever state the week's cart is in. */
+/** The three main screens behind the bottom bar. The Shopping list is there whatever state the week's cart is in; its
+ *  tab says "Shopping" so the label stays on one line at large text (the screen title still says "Shopping list"). */
 enum class Tab(val label: String, @param:DrawableRes val icon: Int, val route: Any) {
     WEEK("This week", R.drawable.ic_calendar, HomeRoute()),
-    LIST("Shopping list", R.drawable.ic_cart, ListRoute("")),
+    LIST("Shopping", R.drawable.ic_cart, ListRoute("")),
     RECIPES("Recipes", R.drawable.ic_book, LibraryRoute),
 }
 

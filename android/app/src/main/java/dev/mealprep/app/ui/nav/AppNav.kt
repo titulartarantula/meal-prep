@@ -53,14 +53,16 @@ fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
 
 @Composable
 private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (Any) -> Unit) {
+    // The top bar's Back on every screen that isn't a tab (and the screens' own "leave" after saving).
+    val up: () -> Unit = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) }
     NavHost(nav, startDestination = start) {
         composable<SetupRoute> {
             SetupScreen(graph, onDone = { nav.navigate(HomeRoute()) { popUpTo<SetupRoute> { inclusive = true } } })
         }
         composable<SettingsRoute> {
-            SettingsScreen(graph, onDone = { nav.popBackStack() }) { NotifSettings(graph); LoblawsSettings(graph) }
+            SettingsScreen(graph, onDone = up) { NotifSettings(graph); LoblawsSettings(graph) }
         }
-        composable<StaplesRoute> { StaplesScreen(onDone = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) }) }
+        composable<StaplesRoute> { StaplesScreen(onBack = up) }
         composable<HomeRoute> { back ->
             HomeScreen(graph, back.toRoute<HomeRoute>().week?.let(LocalDate::parse),
                 onAction = { a ->
@@ -89,12 +91,13 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
             val r = back.toRoute<RecipeRoute>()
             RecipeScreen(r.id, addToWeek = r.addToWeek, onOpen = open,
                 onWeek = { w -> nav.navigate(HomeRoute(w.toString())) { popUpTo<HomeRoute> { inclusive = true } } },
-                onClose = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) })
+                onBack = up)
         }
         composable<DraftRoute> { back ->
             DraftScreen(back.toRoute<DraftRoute>().id,
                 onLoblaws = { cart -> nav.navigate(LoblawsRoute(cart)) },
-                onRebuild = { weeks -> nav.navigate(ListRoute(weeks.joinToString(","))) { popUpTo<DraftRoute> { inclusive = true } } })
+                onRebuild = { weeks -> nav.navigate(ListRoute(weeks.joinToString(","))) { popUpTo<DraftRoute> { inclusive = true } } },
+                onBack = up)
         }
         composable<LoblawsRoute> { back ->
             val prefs by graph.settings.collectAsStateWithLifecycle()
@@ -102,14 +105,14 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
                 onDone = { nav.navigate(HomeRoute()) { popUpTo<HomeRoute> { inclusive = true } } })
         }
         composable<PrepRoute> { back ->
-            PrepScreen(LocalDate.parse(back.toRoute<PrepRoute>().week), onCard = { nav.navigate(CardRoute(it)) })
+            PrepScreen(LocalDate.parse(back.toRoute<PrepRoute>().week), onCard = { nav.navigate(CardRoute(it)) }, onBack = up)
         }
-        composable<CardRoute> { back -> CardScreen(back.toRoute<CardRoute>().entryId, onOpen = open) }
+        composable<CardRoute> { back -> CardScreen(back.toRoute<CardRoute>().entryId, onOpen = open, onBack = up) }
         composable<RatingRoute> { back ->
             val r = back.toRoute<RatingRoute>()
             RatingScreen(r.entryId, LocalDate.parse(r.week),
                 afterChange = { graph.notifier.rated(r.entryId); SyncWorker.now(graph.workManager) },
-                onDone = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) })
+                onDone = up)
         }
         composable<CameraRoute> { back ->
             val r = back.toRoute<CameraRoute>()
@@ -125,13 +128,13 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
                         nav.navigate(ShareRoute) { popUpTo<CameraRoute> { inclusive = true } }
                     }
                 },
-                onCancel = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) })
+                onBack = up)
         }
         composable<ShareRoute> {
             ShareScreen(graph,
                 // Saved recipes land in Recipes, where the import card shows its progress.
                 onQueued = { nav.popBackStack(); nav.openTab(Tab.RECIPES) },
-                onCancel = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) },
+                onBack = up,
                 onSetup = { nav.navigate(SetupRoute) })
         }
     }
@@ -157,7 +160,7 @@ fun contextRoute(a: ContextAction): Any? = when (a) {
 
 const val LATER = "That arrives in a later update."
 
-/** The ⋮ menu on the main screens (label to route); the bottom bar has This week, Shopping list and Recipes, and
+/** The ⋮ menu on the main screens (label to route); the bottom bar has This week, Shopping and Recipes, and
  *  adding recipes lives on Recipes (Add recipe). */
 fun mainMenu(): List<Pair<String, Any>> = listOf("Staples" to StaplesRoute, "Settings" to SettingsRoute)
 

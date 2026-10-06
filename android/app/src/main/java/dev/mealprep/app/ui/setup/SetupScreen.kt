@@ -42,6 +42,7 @@ import java.time.LocalDate
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
+import dev.mealprep.app.ui.common.BackTopBar
 import dev.mealprep.app.ui.common.graphViewModel
 
 @Composable
@@ -92,7 +93,7 @@ fun SettingsScreen(graph: AppGraph, onDone: () -> Unit, extra: @Composable Colum
     // The same check as Save & test's second step: the token works too, not just the address.
     val status by produceState("Checking…") { value = serverStatus(graph.repo.weeks(LocalDate.now(), 1).error) }
     var serverOpen by rememberSaveable { mutableStateOf(false) }
-    SettingsContent(onDone, extra = extra, server = {
+    SettingsContent(onBack = onDone, extra = extra, server = {
         ServerSection(s.serverUrl, s.configured, status, serverOpen || !s.configured, onOpen = { serverOpen = true }) {
             SetupScreen(graph, onDone = onDone, scrollable = false, showContinue = false, showTitle = false)
         }
@@ -100,15 +101,13 @@ fun SettingsScreen(graph: AppGraph, onDone: () -> Unit, extra: @Composable Colum
 }
 
 @Composable
-fun SettingsContent(onDone: () -> Unit, extra: @Composable ColumnScope.() -> Unit, server: @Composable () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Text("Settings", style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp).semantics { heading() })
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+fun SettingsContent(onBack: () -> Unit, extra: @Composable ColumnScope.() -> Unit, server: @Composable () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        BackTopBar("Settings", onBack)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             extra()
             server()
         }
-        TextButton(onClick = onDone, modifier = Modifier.padding(16.dp)) { Text("Done") }
     }
 }
 

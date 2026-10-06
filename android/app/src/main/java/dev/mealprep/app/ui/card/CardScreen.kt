@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.CardStep
 import dev.mealprep.app.data.api.CookCard
+import dev.mealprep.app.ui.common.BackTopBar
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.graphViewModel
@@ -59,40 +60,42 @@ class CardUiActions(
     val onReload: () -> Unit = {},
     /** "How was it?" — the night's rating screen (shown from the night itself on). */
     val onRate: (CookCard) -> Unit = {},
+    val onBack: () -> Unit = {},
 )
 
 @Composable
 fun CardContent(s: CardState, done: Set<Int>, a: CardUiActions, today: LocalDate = LocalDate.now()) {
     val card = s.card
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        item {
-            OfflineBanner(s.offlineSince); MessageText(s.message)
-            if (s.loading && card == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-        }
-        if (card == null) {
-            if (!s.loading) item { TextButton(a.onReload) { Text("Refresh") } }
-            return@LazyColumn
-        }
-        item {
-            Text(card.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
-            Text(CardActions.subtitle(card), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (card.stale) Text("This card was written before the recipe moved or changed size — write a new prep plan to refresh it.",
-                color = MaterialTheme.colorScheme.error)
-        }
-        cardSections(card).forEach { (title, lines) ->
-            item(key = title) {
-                Column {
-                    Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
-                    lines.forEach { Text("• $it") }
+    Column(Modifier.fillMaxSize()) {
+        BackTopBar(card?.title ?: "Cook card", a.onBack, subtitle = card?.let(CardActions::subtitle))
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            item {
+                OfflineBanner(s.offlineSince); MessageText(s.message)
+                if (s.loading && card == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            if (card == null) {
+                if (!s.loading) item { TextButton(a.onReload) { Text("Refresh") } }
+                return@LazyColumn
+            }
+            if (card.stale) item {
+                Text("This card was written before the recipe moved or changed size — write a new prep plan to refresh it.",
+                    color = MaterialTheme.colorScheme.error)
+            }
+            cardSections(card).forEach { (title, lines) ->
+                item(key = title) {
+                    Column {
+                        Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
+                        lines.forEach { Text("• $it") }
+                    }
                 }
             }
-        }
-        item { Text("Steps", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() }) }
-        itemsIndexed(card.steps) { i, step -> StepRow(i, step, i in done, onStep = { a.onStep(i) }, onTimer = { m -> a.onTimer(card, step, m) }) }
-        item {
-            OutlinedButton({ a.onPrint(card) }, Modifier.fillMaxWidth().padding(vertical = 8.dp)) { Text("Print this card") }
-            if (canRate(card, today)) OutlinedButton({ a.onRate(card) }, Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                Text("How was it? Rate this dinner")
+            item { Text("Steps", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() }) }
+            itemsIndexed(card.steps) { i, step -> StepRow(i, step, i in done, onStep = { a.onStep(i) }, onTimer = { m -> a.onTimer(card, step, m) }) }
+            item {
+                OutlinedButton({ a.onPrint(card) }, Modifier.fillMaxWidth().padding(vertical = 8.dp)) { Text("Print this card") }
+                if (canRate(card, today)) OutlinedButton({ a.onRate(card) }, Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Text("How was it? Rate this dinner")
+                }
             }
         }
     }
@@ -127,7 +130,7 @@ fun canRate(c: CookCard, today: LocalDate): Boolean =
     c.date?.let { d -> runCatching { !LocalDate.parse(d).isAfter(today) }.getOrDefault(true) } ?: true
 
 @Composable
-fun CardScreen(entryId: Int, onOpen: (Any) -> Unit = {}) {
+fun CardScreen(entryId: Int, onOpen: (Any) -> Unit = {}, onBack: () -> Unit = {}) {
     val vm = graphViewModel(key = "card-$entryId") { g -> CardViewModel(g.repo, entryId) }
     val s by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
@@ -153,5 +156,6 @@ fun CardScreen(entryId: Int, onOpen: (Any) -> Unit = {}) {
             val week = card.date?.let { runCatching { Weeks.weekStart(LocalDate.parse(it)) }.getOrNull() } ?: Weeks.weekStart(LocalDate.now())
             onOpen(RatingRoute(card.entryId, week.toString()))
         },
+        onBack = onBack,
     ))
 }

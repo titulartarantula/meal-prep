@@ -55,6 +55,8 @@ import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.ui.camera.refPrompt
 import dev.mealprep.app.ui.camera.refPromptText
 import dev.mealprep.app.ui.cart.withSelected
+import dev.mealprep.app.ui.common.BackTopBar
+import dev.mealprep.app.ui.common.BottomAction
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.WeekOption
@@ -65,11 +67,11 @@ import dev.mealprep.app.work.SyncWorker
 import java.time.LocalDate
 
 @Composable
-fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, onClose: () -> Unit, addToWeek: Boolean = false) {
+fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, onBack: () -> Unit, addToWeek: Boolean = false) {
     val vm = graphViewModel(key = "recipe-$id") { g -> RecipeViewModel(g.repo, id, afterChange = { SyncWorker.now(g.workManager) }) }
     val state by vm.state.collectAsStateWithLifecycle()
     RecipeContent(state, onAdd = vm::addToWeek, onWeek = onWeek, onOpen = onOpen, onDismissAdded = vm::dismissAdded,
-        onRetry = vm::load, onClose = onClose, startPicking = addToWeek, onEditSource = vm::editSource, onStartEdit = vm::loadBooks,
+        onRetry = vm::load, onBack = onBack, startPicking = addToWeek, onEditSource = vm::editSource, onStartEdit = vm::loadBooks,
         onBookTyped = vm::bookTyped, onEditOther = vm::editOther)
 }
 
@@ -85,7 +87,7 @@ fun RecipeContent(
     onOpen: (Any) -> Unit,
     onDismissAdded: () -> Unit,
     onRetry: () -> Unit = {},
-    onClose: () -> Unit = {},
+    onBack: () -> Unit = {},
     today: LocalDate = LocalDate.now(),
     /** Opened from "Add to a week…" on an import card or notification: show the week picker at once. */
     startPicking: Boolean = false,
@@ -100,17 +102,18 @@ fun RecipeContent(
     var picking by rememberSaveable { mutableStateOf(startPicking) }
     var editing by rememberSaveable { mutableStateOf(false) }
     val r = state.recipe
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(r?.title ?: "Recipe", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-            TextButton(onClose) { Text("Close") }
+    Column(Modifier.fillMaxSize()) {
+        BackTopBar(r?.title ?: "Recipe", onBack)
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            OfflineBanner(state.offlineSince)
+            MessageText(state.error)
+            if (state.loading || state.adding) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (r == null) {
+                if (!state.loading) TextButton(onRetry) { Text("Try again") }
+            } else RecipeBody(r, state, today, onWeek, onOpen, onDismissAdded, onEditSource = { editing = true; onStartEdit() })
         }
-        OfflineBanner(state.offlineSince)
-        MessageText(state.error)
-        if (state.loading || state.adding) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (r == null) {
-            if (!state.loading) TextButton(onRetry) { Text("Try again") }
-        } else RecipeBody(r, state, today, onWeek, onOpen, onDismissAdded, onPick = { picking = true }, onEditSource = { editing = true; onStartEdit() })
+        // The main action, in thumb reach.
+        if (r != null) BottomAction("Add to a week", { picking = true }, enabled = !state.adding)
     }
     if (editing && r != null) EditSourceDialog(r, state.books, state.found, state.savingSource, state.sourceError,
         onSave = { b, p -> onEditSource(b, p) { ok -> if (ok) editing = false } }, onDismiss = { editing = false },
@@ -123,7 +126,7 @@ fun RecipeContent(
 @Composable
 private fun ColumnScope.RecipeBody(
     r: Recipe, state: RecipeState, today: LocalDate, onWeek: (LocalDate) -> Unit, onOpen: (Any) -> Unit,
-    onDismissAdded: () -> Unit, onPick: () -> Unit, onEditSource: () -> Unit,
+    onDismissAdded: () -> Unit, onEditSource: () -> Unit,
 ) {
     state.added?.let { a ->
         Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -136,7 +139,6 @@ private fun ColumnScope.RecipeBody(
             }
         }
     }
-    Button(onPick, enabled = !state.adding, modifier = Modifier.fillMaxWidth()) { Text("Add to a week") }
     LazyColumn(Modifier.weight(1f)) {
         item {
             val small = MaterialTheme.typography.bodySmall

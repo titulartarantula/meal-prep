@@ -56,6 +56,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
 import dev.mealprep.app.data.settings.Settings
+import dev.mealprep.app.ui.common.BackTopBar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -69,7 +70,7 @@ fun bannerText(step: HandoffStep): String = when (step) {
     HandoffStep.UNREACHABLE -> "Couldn't open loblaws.ca. Check the phone's connection, then try again."
 }
 
-/** The line beside Close: what closing leaves behind. */
+/** The line under the top bar's title: what going back leaves behind. */
 fun closeHint(step: HandoffStep): String? = when (step) {
     HandoffStep.READY -> "Your cart stays in Loblaws."
     HandoffStep.BLOCKED, HandoffStep.FAILED, HandoffStep.UNREACHABLE -> "You can open the cart again from the week."
@@ -88,14 +89,9 @@ fun HandoffBanner(
     onRetry: () -> Unit,
     onCopy: () -> Unit,
     onCopyDetails: () -> Unit,
-    onClose: () -> Unit,
 ) {
     var showDetails by rememberSaveable { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClose) { Text("Close") }
-            closeHint(step)?.let { Text(it, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall) }
-        }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp)) {
         Text(bannerText(step), style = MaterialTheme.typography.bodyMedium)
         if (step.working) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (step in STOPPED) {
@@ -113,6 +109,10 @@ fun HandoffBanner(
     }
 }
 
+/** Back (the arrow, or the system Back once the page has nothing to go back to) leaves; [closeHint] says what stays. */
+@Composable
+fun LoblawsTopBar(step: HandoffStep, onBack: () -> Unit) = BackTopBar("Loblaws", onBack, subtitle = closeHint(step))
+
 @Composable
 fun CloseConfirmDialog(onClose: () -> Unit, onStay: () -> Unit) {
     AlertDialog(
@@ -127,9 +127,9 @@ fun CloseConfirmDialog(onClose: () -> Unit, onStay: () -> Unit) {
 @Composable
 fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
     if (!LoblawsHandoff.isCartId(cartId)) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {
-            Text("That isn't a Loblaws cart. Open the cart again from the week and tap Open in Loblaws.")
-            TextButton(onDone) { Text("Close") }
+        Column(Modifier.fillMaxSize()) {
+            BackTopBar("Loblaws", onDone)
+            Text("That isn't a Loblaws cart. Open the cart again from the week and tap Open in Loblaws.", Modifier.padding(16.dp))
         }
         return
     }
@@ -212,10 +212,10 @@ fun LoblawsScreen(cartId: String, prefs: Settings, onDone: () -> Unit) {
 
     // safeDrawing: the page and the bar above it stay clear of the status bar, camera cutout and navigation bar.
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
+        LoblawsTopBar(step, requestClose)
         HandoffBanner(step, details, onRetry = { web?.let(::start) },
             onCopy = { copy("PC Express cart", cartId, "Cart ID copied") },
-            onCopyDetails = { details?.let { copy("Loblaws handoff details", it, "Details copied") } },
-            onClose = requestClose)
+            onCopyDetails = { details?.let { copy("Loblaws handoff details", it, "Details copied") } })
         AndroidView(modifier = Modifier.weight(1f).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)), factory = { c ->
             WebView(c).apply {
                 // Compose already keeps this view clear of the system bars; without this the WebView also applies the

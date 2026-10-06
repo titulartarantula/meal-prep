@@ -35,6 +35,7 @@ import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.PrepPlan
 import dev.mealprep.app.data.api.PrepTask
 import dev.mealprep.app.ui.common.AdviceText
+import dev.mealprep.app.ui.common.BackTopBar
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.announced
 import dev.mealprep.app.ui.common.OfflineBanner
@@ -60,6 +61,7 @@ class PrepActions(
     val onToggle: (PrepTask) -> Unit = {},
     val onCard: (Int) -> Unit = {},
     val onReload: () -> Unit = {},
+    val onBack: () -> Unit = {},
 )
 
 @Composable
@@ -69,79 +71,77 @@ fun PrepContent(s: PrepState, week: LocalDate, today: LocalDate, a: PrepActions)
     val writeNew = { if (s.hasTicks) confirmNew = true else a.onStart() }
     val plan = s.shown
     val newest = s.plan
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            Text("Sunday prep", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
-            Text(Weeks.weekChoiceLabel(week, today), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OfflineBanner(s.offlineSince); MessageText(s.error)
-        }
-        when {
-            s.loading && newest == null -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            // Couldn't ask the server and nothing saved: unknown, not "no plan" (writing one could make a second).
-            s.unknown -> item { Button(a.onReload) { Text("Try again") } }
-            newest == null -> item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(NO_PLAN, style = MaterialTheme.typography.bodyLarge)
-                        Button(a.onStart, enabled = !s.starting, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (s.starting) "Starting…" else "Write my prep plan")
+    Column(Modifier.fillMaxSize()) {
+        BackTopBar("Sunday prep", a.onBack, subtitle = Weeks.weekChoiceLabel(week, today))
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { OfflineBanner(s.offlineSince); MessageText(s.error) }
+            when {
+                s.loading && newest == null -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                // Couldn't ask the server and nothing saved: unknown, not "no plan" (writing one could make a second).
+                s.unknown -> item { Button(a.onReload) { Text("Try again") } }
+                newest == null -> item {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(NO_PLAN, style = MaterialTheme.typography.bodyLarge)
+                            Button(a.onStart, enabled = !s.starting, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (s.starting) "Starting…" else "Write my prep plan")
+                            }
+                        }
+                    }
+                }
+                newest.status == "building" -> item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(WRITING)
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text(buildingText(newest), style = MaterialTheme.typography.bodySmall, modifier = Modifier.announced())
+                        if (s.previous != null) Text("Below: the last plan, until the new one is ready.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                newest.status == "failed" -> item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("The prep plan couldn't be written: ${newest.error ?: "unknown error"}", Modifier.announced(),
+                            color = MaterialTheme.colorScheme.error)
+                        if (s.previous != null) Text("Below: the last plan that worked.", style = MaterialTheme.typography.bodySmall)
+                        Button(a.onStart, enabled = !s.starting) { Text("Try again") }
+                    }
+                }
+            }
+            if (plan != null) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val c = plan.checklist
+                        Text(checklistText(plan), style = MaterialTheme.typography.titleMedium)
+                        LinearProgressIndicator({ if (c.total == 0) 0f else c.done.toFloat() / c.total }, Modifier.fillMaxWidth())
+                        // Only the newest ready plan can be out of date; a building/failed newer one already says so above.
+                        // The button goes under the note: side by side, large text squeezed the note to a word a line.
+                        if (plan.stale && plan.id == newest?.id) {
+                            Text("The week changed since this plan was written.")
+                            TextButton(writeNew, enabled = !s.starting) { Text("Write a new plan") }
+                        }
+                        plan.warnings.forEach { AdviceText("⚠ $it") }
+                    }
+                }
+                plan.sections.filter { it.tasks.isNotEmpty() }.forEach { sec ->
+                    item(key = "sec-${sec.key}") {
+                        Text(sec.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
+                    }
+                    items(sec.tasks, key = { "task-${it.id}" }) { t -> TaskRow(t, a.onToggle) }
+                }
+                item(key = "cards") {
+                    Column {
+                        Text("Cook cards", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
+                        plan.entries.filter { it.hasCard }.forEach { e ->
+                            TextButton({ a.onCard(e.entryId) }, Modifier.fillMaxWidth()) { Text("${e.night}: ${e.title}", Modifier.fillMaxWidth()) }
+                        }
+                        plan.entries.filter { !it.hasCard }.forEach { e ->
+                            Text("${e.title}: no cook card (${if (e.date == null) "not on a night" else "not written"})",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             }
-            newest.status == "building" -> item {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(WRITING)
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text(buildingText(newest), style = MaterialTheme.typography.bodySmall, modifier = Modifier.announced())
-                    if (s.previous != null) Text("Below: the last plan, until the new one is ready.", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            newest.status == "failed" -> item {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("The prep plan couldn't be written: ${newest.error ?: "unknown error"}", Modifier.announced(),
-                        color = MaterialTheme.colorScheme.error)
-                    if (s.previous != null) Text("Below: the last plan that worked.", style = MaterialTheme.typography.bodySmall)
-                    Button(a.onStart, enabled = !s.starting) { Text("Try again") }
-                }
-            }
+            if ((newest == null && !s.loading && !s.unknown) || s.offlineSince != null) item { TextButton(a.onReload) { Text("Refresh") } }
         }
-        if (plan != null) {
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    val c = plan.checklist
-                    Text(checklistText(plan), style = MaterialTheme.typography.titleMedium)
-                    LinearProgressIndicator({ if (c.total == 0) 0f else c.done.toFloat() / c.total }, Modifier.fillMaxWidth())
-                    // Only the newest ready plan can be out of date; a building/failed newer one already says so above.
-                    // The button goes under the note: side by side, large text squeezed the note to a word a line.
-                    if (plan.stale && plan.id == newest?.id) {
-                        Text("The week changed since this plan was written.")
-                        TextButton(writeNew, enabled = !s.starting) { Text("Write a new plan") }
-                    }
-                    plan.warnings.forEach { AdviceText("⚠ $it") }
-                }
-            }
-            plan.sections.filter { it.tasks.isNotEmpty() }.forEach { sec ->
-                item(key = "sec-${sec.key}") {
-                    Text(sec.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
-                }
-                items(sec.tasks, key = { "task-${it.id}" }) { t -> TaskRow(t, a.onToggle) }
-            }
-            item(key = "cards") {
-                Column {
-                    Text("Cook cards", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
-                    plan.entries.filter { it.hasCard }.forEach { e ->
-                        TextButton({ a.onCard(e.entryId) }, Modifier.fillMaxWidth()) { Text("${e.night}: ${e.title}", Modifier.fillMaxWidth()) }
-                    }
-                    plan.entries.filter { !it.hasCard }.forEach { e ->
-                        Text("${e.title}: no cook card (${if (e.date == null) "not on a night" else "not written"})",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-        if ((newest == null && !s.loading && !s.unknown) || s.offlineSince != null) item { TextButton(a.onReload) { Text("Refresh") } }
     }
     if (confirmNew) AlertDialog(
         onDismissRequest = { confirmNew = false },
@@ -178,7 +178,7 @@ const val NO_PLAN = "No prep plan for this week yet. It's written from the recip
 const val WRITING = "Writing your prep plan… usually about 4 minutes. You can leave — you'll get a notification."
 
 @Composable
-fun PrepScreen(week: LocalDate, onCard: (Int) -> Unit) {
+fun PrepScreen(week: LocalDate, onCard: (Int) -> Unit, onBack: () -> Unit) {
     val vm = graphViewModel(key = "prep-$week") { g -> PrepViewModel(g.repo, g.jobs, week) }
     val s by vm.state.collectAsStateWithLifecycle()
     var today by remember { mutableStateOf(LocalDate.now()) }
@@ -189,5 +189,5 @@ fun PrepScreen(week: LocalDate, onCard: (Int) -> Unit) {
         if (resumed) vm.reload() else resumed = true
         onPauseOrDispose { }
     }
-    PrepContent(s, week, today, PrepActions(onStart = vm::start, onToggle = vm::toggle, onCard = onCard, onReload = vm::reload))
+    PrepContent(s, week, today, PrepActions(onStart = vm::start, onToggle = vm::toggle, onCard = onCard, onReload = vm::reload, onBack = onBack))
 }

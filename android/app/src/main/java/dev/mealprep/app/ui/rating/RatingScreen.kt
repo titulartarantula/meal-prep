@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.core.RatingText
 import dev.mealprep.app.core.Weeks
+import dev.mealprep.app.ui.common.BackTopBar
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.graphViewModel
@@ -48,7 +49,7 @@ internal val COMPANY = listOf("yes" to "Yes", "maybe" to "Maybe", "no" to "No")
 @Composable
 fun RatingContent(
     s: RatingState, onFamily: (Int) -> Unit, onCompany: (String) -> Unit, onNote: (String) -> Unit,
-    onSave: () -> Unit, onClear: () -> Unit, onClose: () -> Unit = {},
+    onSave: () -> Unit, onClear: () -> Unit, onBack: () -> Unit = {},
 ) {
     var confirmRemove by rememberSaveable { mutableStateOf(false) }
     if (confirmRemove) AlertDialog(
@@ -58,12 +59,18 @@ fun RatingContent(
         confirmButton = { TextButton({ confirmRemove = false; onClear() }) { Text("Remove") } },
         dismissButton = { TextButton({ confirmRemove = false }) { Text("Keep it") } },
     )
+    Column(Modifier.fillMaxSize()) {
+        BackTopBar(if (s.title.isEmpty()) "Rate this dinner" else ratingQuestion(s.title, s.night), onBack)
+        RatingBody(s, onFamily, onCompany, onNote, onSave, onRemove = { confirmRemove = true })
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RatingBody(
+    s: RatingState, onFamily: (Int) -> Unit, onCompany: (String) -> Unit, onNote: (String) -> Unit, onSave: () -> Unit, onRemove: () -> Unit,
+) {
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (s.title.isEmpty()) "Rate this dinner" else ratingQuestion(s.title, s.night),
-                style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-            TextButton(onClose) { Text("Close") }
-        }
         OfflineBanner(s.offlineSince)
         if (s.loading || s.saving) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (s.title.isEmpty()) { MessageText(s.error); return@Column }
@@ -95,7 +102,7 @@ fun RatingContent(
                 Text(if (s.existing) "Update rating" else "Save rating")
             }
             // Asks first: the screen closes once it's gone, and the note goes with it.
-            if (s.existing) TextButton({ confirmRemove = true }, enabled = !s.saving) { Text("Remove rating") }
+            if (s.existing) TextButton(onRemove, enabled = !s.saving) { Text("Remove rating") }
             s.summary?.notes?.takeIf { it.isNotEmpty() }?.let { notes ->
                 Column {
                     Text("Earlier notes", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
@@ -113,5 +120,5 @@ fun RatingScreen(entryId: Int, week: LocalDate, afterChange: () -> Unit, onDone:
     val vm = graphViewModel(key = "rating-$entryId") { g -> RatingViewModel(g.repo, entryId, week, afterChange) }
     val s by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(s.saved) { if (s.saved) onDone() }
-    RatingContent(s, vm::setFamily, vm::setCompany, vm::setNote, vm::save, vm::clear, onClose = onDone)
+    RatingContent(s, vm::setFamily, vm::setCompany, vm::setNote, vm::save, vm::clear, onBack = onDone)
 }

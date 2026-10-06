@@ -41,15 +41,17 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.R
 import dev.mealprep.app.data.api.Staple
+import dev.mealprep.app.ui.common.BackTopBar
+import dev.mealprep.app.ui.common.BottomAction
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.graphViewModel
 
 @Composable
-fun StaplesScreen(onDone: () -> Unit) {
+fun StaplesScreen(onBack: () -> Unit) {
     val vm = graphViewModel { g -> StaplesViewModel(g.repo) }
     val state by vm.state.collectAsStateWithLifecycle()
-    StaplesContent(state, onSave = vm::save, onDelete = vm::delete, onMove = vm::move, onDone = onDone, onMessageSeen = vm::clearMessage)
+    StaplesContent(state, onSave = vm::save, onDelete = vm::delete, onMove = vm::move, onBack = onBack, onMessageSeen = vm::clearMessage)
 }
 
 @Composable
@@ -58,29 +60,28 @@ fun StaplesContent(
     onSave: (StapleForm) -> Boolean,
     onDelete: (Int) -> Unit,
     onMove: (Int, Int) -> Unit,
-    onDone: () -> Unit,
+    onBack: () -> Unit,
     onMessageSeen: () -> Unit = {},
 ) {
     var form by remember { mutableStateOf<StapleForm?>(null) }
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Staples", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-            TextButton(onDone) { Text("Done") }
-        }
-        Text("Staples are at the top of the shopping list. “Every week” ones start ticked; untick what you don't need.",
-            style = MaterialTheme.typography.bodySmall)
-        OfflineBanner(state.offlineSince)
-        MessageText(state.error)
-        if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (!state.loading && state.staples.isEmpty() && state.error == null) Text("No staples yet.", Modifier.padding(vertical = 8.dp))
-        LazyColumn(Modifier.weight(1f)) {
-            itemsIndexed(state.staples, key = { _, s -> s.id }) { i, s ->
-                StapleRow(s, first = i == 0, last = i == state.staples.lastIndex, enabled = !state.busy,
-                    onEdit = { form = StapleForm.of(s) }, onMove = { by -> onMove(s.id, by) })
-                HorizontalDivider()
+    Column(Modifier.fillMaxSize()) {
+        BackTopBar("Staples", onBack)
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text("Staples are at the top of the shopping list. “Every week” ones start ticked; untick what you don't need.",
+                style = MaterialTheme.typography.bodySmall)
+            OfflineBanner(state.offlineSince)
+            MessageText(state.error)
+            if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (!state.loading && state.staples.isEmpty() && state.error == null) Text("No staples yet.", Modifier.padding(vertical = 8.dp))
+            LazyColumn(Modifier.weight(1f)) {
+                itemsIndexed(state.staples, key = { _, s -> s.id }) { i, s ->
+                    StapleRow(s, first = i == 0, last = i == state.staples.lastIndex, enabled = !state.busy,
+                        onEdit = { form = StapleForm.of(s) }, onMove = { by -> onMove(s.id, by) })
+                    HorizontalDivider()
+                }
             }
         }
-        Button(onClick = { form = StapleForm() }, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) { Text("Add a staple") }
+        BottomAction("Add a staple", { form = StapleForm() })
     }
     form?.let { f ->
         StapleDialog(f, state.message, onChange = { form = it; onMessageSeen() },
