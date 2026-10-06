@@ -149,7 +149,7 @@ private fun RecipeRow(r: Recipe, today: LocalDate, onClick: () -> Unit) {
     }
 }
 
-/** One line, "From: All sources ▾" (like the shopping list's week line): NYT Cooking, each book, Unknown book. */
+/** One line, "From: All sources ▾" (like the shopping list's week line): NYT Cooking, each book and named other source, Unknown book, Other. */
 @Composable
 private fun SourceFilter(options: List<Sources.Option>, selected: String, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }

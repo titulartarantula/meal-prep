@@ -3,6 +3,8 @@ package dev.mealprep.app.ui.library
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -33,6 +35,7 @@ import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.core.BookChoice
 import dev.mealprep.app.core.BookSuggestion
 import dev.mealprep.app.core.Books
+import dev.mealprep.app.core.Sources
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performTextClearance
@@ -65,6 +68,15 @@ class LibraryTest {
         assertEquals(listOf(12), filterRecipes(lib, "soup lentil", LibrarySort.NEWEST).map { it.id })
         assertEquals(listOf(10, 11, 12), filterRecipes(lib, " ", LibrarySort.AZ).map { it.id })
         assertEquals(listOf(12, 11, 10), filterRecipes(lib, "", LibrarySort.NEWEST).map { it.id })
+    }
+
+    @Test fun `the source filter narrows the list to one named other source`() {
+        val mixed = lib.map { if (it.id == 10) it.copy(sourceKind = "other", sourceTitle = "Mum's recipes", sourceUrl = null, source = "manual") else it } +
+            lib.single { it.id == 11 }.copy(id = 13, sourceKind = "other", sourceTitle = null)
+        assertEquals(listOf(10), filterRecipes(mixed, "", LibrarySort.NEWEST, "other:mum's recipes").map { it.id })
+        assertEquals(listOf(13), filterRecipes(mixed, "", LibrarySort.NEWEST, "other:").map { it.id })
+        val labels = Sources.options(mixed).map { it.label }
+        assertEquals(listOf("All sources", "Invented Pantry Book", "Mum's recipes", "Unknown book", "Other"), labels)
     }
 
     @Test fun `the source filter narrows the list, unknown books included`() {
@@ -130,7 +142,7 @@ class LibraryTest {
         }
         compose.onNodeWithText("Add book").performClick()
         compose.onNodeWithText("Your books").assertExists()
-        compose.onNodeWithText("Book").performTextInput("Imag")
+        compose.onNode(hasText("Book") and hasSetTextAction()).performTextInput("Imag")
         assertEquals("Imag", typed.last())
         state = state.copy(found = Books.found(Http.json.decodeFromString(ListSerializer(BookHit.serializer()), fixture("books_search.json"))))
         compose.onNodeWithText("Book search").assertExists()
@@ -325,5 +337,79 @@ class LibraryTest {
         compose.onNodeWithText(NO_COMPANY).assertExists()
         compose.onNodeWithText("Good for company").performClick()
         assertEquals(false, on)
+    }
+
+    // --- other sources (0.7.1) ---
+
+    @Test fun `edit source can switch to Other, offers the household's names and needs a name`() {
+        val r = Http.json.decodeFromString(Recipe.serializer(), fixture("recipe_11.json"))
+        var other: Pair<String, String>? = null
+        var book: BookChoice? = null
+        val typed = mutableListOf<String>()
+        compose.setContent {
+            RecipeContent(RecipeState(r, loading = false, books = listOf(BookSuggestion("Invented Bakes", mine = true)),
+                others = listOf("Allotment Club", "Mum's recipes")), onAdd = { _, _ -> }, onWeek = {}, onOpen = {}, onDismissAdded = {},
+                today = today, onEditSource = { b, _, done -> book = b; done(true) }, onBookTyped = { typed += it },
+                onEditOther = { n, note, done -> other = n to note; done(true) })
+        }
+        compose.onNodeWithText("Add book").performClick()                      // the Unknown book backfill still starts on Book
+        compose.onNodeWithText("Your books").assertExists()
+        compose.onNodeWithText("Other").performClick()
+        compose.onNodeWithText("Your books").assertDoesNotExist()
+        compose.onNodeWithText("Used before").assertExists()
+        compose.onNodeWithText("Save").assertIsNotEnabled()                    // a name is needed
+        compose.onNode(hasText("Name") and hasSetTextAction()).performTextInput("mum")
+        compose.onNodeWithText("Allotment Club").assertDoesNotExist()          // chips narrow to what is typed
+        compose.onNodeWithText("Mum's recipes").performClick()
+        compose.onNodeWithText("Note (optional)").performTextInput("blue binder")
+        compose.onNodeWithText("Save").assertIsEnabled().performClick()
+        assertEquals("Mum's recipes" to "blue binder", other)
+        assertNull(book)
+        assertEquals(emptyList<String>(), typed)                                // no book search for Other
+        compose.onNodeWithText("Where is it from?").assertDoesNotExist()
+    }
+
+    @Test fun `an other source shows its name and opens on Other, and Book keeps the book fields apart`() {
+        val mums = fixture("recipe_11.json").replace("\"source_kind\": \"book\", \"source_title\": null, \"source_ref\": null",
+            "\"source_kind\": \"other\", \"source_title\": \"Mum's recipes\", \"source_ref\": \"blue binder\"")
+        val r = Http.json.decodeFromString(Recipe.serializer(), mums)
+        var book: Pair<BookChoice, String>? = null
+        compose.setContent {
+            RecipeContent(RecipeState(r, loading = false), onAdd = { _, _ -> }, onWeek = {}, onOpen = {}, onDismissAdded = {},
+                today = today, onEditSource = { b, p, done -> book = b to p; done(true) })
+        }
+        compose.onNodeWithText("From: Mum's recipes, blue binder").assertExists()
+        compose.onNodeWithText("Edit source").performClick()
+        compose.onNode(hasText("Mum's recipes") and hasSetTextAction()).assertExists()
+        compose.onNode(hasText("blue binder") and hasSetTextAction()).assertExists()
+        compose.onNodeWithText("Book").performClick()                         // the chip: the book fields start empty
+        compose.onNodeWithText("Page (optional)").performTextInput("12")
+        compose.onNodeWithText("Save").performClick()
+        assertEquals(BookChoice("") to "12", book)                             // empty = Unknown book
+    }
+
+    @Test fun `edit other sends the name in the household's spelling, no author or ISBN, and no book search`() = runTest {
+        val mums = fixture("recipe_11.json").replace("\"source_kind\": \"book\", \"source_title\": null",
+            "\"source_kind\": \"other\", \"source_title\": \"Mum's recipes\"")
+        env.on("GET", "/recipes/sources", body = """[{"key":"book:Invented Bakes","kind":"book","title":"Invented Bakes",
+            "label":"Invented Bakes","count":1,"author":"Ada Pepper"},{"key":"other:Mum's recipes","kind":"other","title":"Mum's recipes",
+            "label":"Mum's recipes","count":2}]""")
+        env.on("PATCH", "/recipes/11", body = mums)
+        val vm = recipeVm()
+        vm.state.await { it.recipe != null }
+        vm.loadBooks()
+        assertEquals(listOf("Mum's recipes"), vm.state.await { it.others.isNotEmpty() }.others)
+        env.on("GET", "/recipes/11", body = mums)
+        var saved: Boolean? = null
+        vm.editOther(" MUM'S  recipes ", " blue binder ", { saved = it })
+        val s = vm.state.await { it.recipe?.sourceKind == "other" && !it.savingSource }
+        assertEquals(true, saved)
+        assertEquals("Mum's recipes", s.recipe?.sourceTitle)
+        assertEquals("""{"source_kind":"other","source_title":"Mum's recipes","source_ref":"blue binder","source_author":null,"source_isbn":null}""",
+            env.bodies("PATCH", "/recipes/11").single())
+        assertEquals(0, env.count("GET", "/books/search"))
+        env.offline = true
+        vm.editOther("Gran", "")
+        assertEquals("Changing the source needs the home network (or WireGuard).", vm.state.await { it.sourceError != null }.sourceError)
     }
 }

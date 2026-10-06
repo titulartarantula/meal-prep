@@ -58,6 +58,26 @@ class RepositoryTest {
         assertFalse(noBook.contains("source_title") || noBook.contains("source_author") || noBook.contains("source_isbn"))
     }
 
+    @Test fun `photo import into an other source sends its kind, name and note, never an author or ISBN`() = runTest {
+        env.on("POST", "/recipes/photo", body = fixture("share_result_library.json"))
+        val page = java.io.File.createTempFile("page", ".jpg").apply { writeBytes(byteArrayOf(1)); deleteOnExit() }
+        env.repo.importPhotos(listOf(page), null, null, " Mum's  recipes ", "card 3", "Ada Pepper", "9780000000017", kind = "other")
+        val body = env.bodies("POST", "/recipes/photo").last()
+        assertTrue(body.contains("name=\"source_kind\"") && body.contains("\r\n\r\nother\r\n"))
+        assertTrue(body.contains("name=\"source_title\"") && body.contains("\r\n\r\nMum's recipes\r\n"))
+        assertTrue(body.contains("name=\"source_ref\"") && body.contains("\r\n\r\ncard 3\r\n"))
+        assertFalse(body.contains("source_author") || body.contains("source_isbn"))
+        env.repo.importPhotos(listOf(page), null, null, "Invented Bakes", null)   // a book: no kind sent (the server's default)
+        assertFalse(env.bodies("POST", "/recipes/photo").last().contains("source_kind"))
+    }
+
+    @Test fun `edit source as other drops the author and ISBN`() = runTest {
+        env.on("PATCH", "/recipes/11", body = fixture("recipe_11.json"))
+        env.repo.editSource(11, " Mum's  recipes ", " ", "Ada Pepper", "9780000000017", kind = "other")
+        assertEquals("""{"source_kind":"other","source_title":"Mum's recipes","source_ref":null,"source_author":null,"source_isbn":null}""",
+            env.bodies("PATCH", "/recipes/11").single())
+    }
+
     @Test fun `404 on an optional read is cached as none`() = runTest {
         val p = env.repo.weekPrepPlan(wk)         // no route → 404
         assertNull(p.value); assertNull(p.error)

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dev.mealprep.app.core.BookChoice
 import dev.mealprep.app.core.BookSuggestion
 import dev.mealprep.app.core.Books
+import dev.mealprep.app.core.Sources
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.ApiError
@@ -37,6 +38,8 @@ data class RecipeState(
     /** The household's books to suggest in Edit source, and the server's book search for what is typed there. */
     val books: List<BookSuggestion> = emptyList(),
     val found: List<BookSuggestion> = emptyList(),
+    /** The household's named other sources ("Mum's recipes"), offered as chips in Edit source. */
+    val others: List<String> = emptyList(),
     val savingSource: Boolean = false,
     /** Why Edit source didn't save (null = fine). */
     val sourceError: String? = null,
@@ -79,10 +82,14 @@ class RecipeViewModel(
         viewModelScope.launch { _state.update { it.copy(options = weekOptions(today(), repo.weeks(today(), Weeks.HORIZON).value)) } }
     }
 
-    /** The household's books for Edit source's suggestions (asked when the dialog opens; the saved copy will do offline). */
+    /** The household's books and other sources for Edit source's suggestions (asked when the dialog opens; the saved
+     *  copy will do offline). */
     fun loadBooks() {
         lookup.typed("")   // no search rows left over from the last time
-        viewModelScope.launch { _state.update { it.copy(books = Books.yours(repo.sources().value.orEmpty())) } }
+        viewModelScope.launch {
+            val sources = repo.sources().value.orEmpty()
+            _state.update { it.copy(books = Books.yours(sources), others = Sources.otherNames(sources)) }
+        }
     }
 
     /** Edit source's book field changed: ask the book search (debounced). */
@@ -91,11 +98,22 @@ class RecipeViewModel(
     /** Sets the book (with its author/ISBN when known) and page (blank = unknown book / no page). True once saved;
      *  the recipe is re-read. */
     fun editSource(book: BookChoice, page: String, done: (Boolean) -> Unit = {}) {
-        if (_state.value.savingSource) return
         val b = Books.resolve(book, _state.value.books)
+        saveSource(done) { repo.editSource(id, b.title, page, b.author, b.isbn) }
+    }
+
+    /** Sets another source: [name] (a household name typed in another case takes its spelling) and an optional
+     *  [note]; never a book search, and no author/ISBN. True once saved. */
+    fun editOther(name: String, note: String, done: (Boolean) -> Unit = {}) {
+        val n = Sources.resolveName(name, _state.value.others)
+        saveSource(done) { repo.editSource(id, n, note, kind = Sources.OTHER) }
+    }
+
+    private fun saveSource(done: (Boolean) -> Unit, patch: suspend () -> ApiResult<Recipe>) {
+        if (_state.value.savingSource) return
         _state.update { it.copy(savingSource = true, sourceError = null) }
         viewModelScope.launch {
-            when (val r = repo.editSource(id, b.title, page, b.author, b.isbn)) {
+            when (val r = patch()) {
                 is ApiResult.Ok -> {
                     val fresh = repo.recipe(id).value ?: _state.value.recipe?.let { old ->
                         old.copy(sourceKind = r.value.sourceKind, sourceTitle = r.value.sourceTitle, sourceRef = r.value.sourceRef,

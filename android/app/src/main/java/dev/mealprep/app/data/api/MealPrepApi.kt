@@ -22,7 +22,9 @@ interface MealPrepApi {
     @Multipart @POST("recipes/photo")
     suspend fun photo(@Part files: List<MultipartBody.Part>, @Part("week") week: RequestBody?, @Part("title") title: RequestBody?,
                       @Part("source_title") sourceTitle: RequestBody? = null, @Part("source_ref") sourceRef: RequestBody? = null,
-                      @Part("source_author") sourceAuthor: RequestBody? = null, @Part("source_isbn") sourceIsbn: RequestBody? = null): ShareResult
+                      @Part("source_author") sourceAuthor: RequestBody? = null, @Part("source_isbn") sourceIsbn: RequestBody? = null,
+                      /** null = the server's default, a book */
+                      @Part("source_kind") sourceKind: RequestBody? = null): ShareResult
     @Multipart @POST("recipes/{id}/pages")
     suspend fun pages(@Path("id") id: Int, @Part files: List<MultipartBody.Part>, @Part("for_line") forLine: RequestBody?): Recipe
     @GET("recipes") suspend fun recipes(@Query("sort") sort: String): List<Recipe>

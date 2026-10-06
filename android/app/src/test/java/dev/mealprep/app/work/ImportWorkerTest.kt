@@ -186,6 +186,17 @@ class ImportWorkerTest {
         assertTrue(body.contains("\r\n\r\nInvented Bakes\r\n") && body.contains("\r\n\r\npp. 12-13\r\n"))
     }
 
+    @Test fun `an other source's name, note and kind go with the photos and survive Try again`() = runTest {
+        env.on("POST", "/recipes/photo", code = 502, body = """{"detail":"couldn't read recipe: AIError: no ingredients"}""")
+        val dir = batch("batcho", "o")
+        val input = ImportQueue.photoInput(dir, null, "Mum's recipes", "card 3", sourceKind = "other")
+        val r = worker(input).doWork() as Result.Failure
+        assertEquals("other", r.outputData.getString(ImportWorker.SOURCE_KIND))   // "Try again" re-sends it as other
+        val body = env.bodies("POST", "/recipes/photo").single()
+        assertTrue(body.contains("name=\"source_kind\"") && body.contains("\r\n\r\nother\r\n"))
+        assertTrue(body.contains("\r\n\r\nMum's recipes\r\n") && body.contains("\r\n\r\ncard 3\r\n"))
+    }
+
     @Test fun `unreadable photo keeps the pages for Try again`() = runTest {
         env.on("POST", "/recipes/photo", code = 502, body = """{"detail":"couldn't read recipe: AIError: no ingredients"}""")
         val dir = batch("batch2", "x")

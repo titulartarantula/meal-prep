@@ -8,6 +8,7 @@ import dev.mealprep.app.core.BookSuggestion
 import dev.mealprep.app.core.BookSuggestions
 import dev.mealprep.app.core.Books
 import dev.mealprep.app.core.ShareInput
+import dev.mealprep.app.core.Sources
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.ui.camera.PageStore
 import dev.mealprep.app.ui.camera.PagesState
@@ -37,6 +38,12 @@ data class ShareState(
     val page: String = "",
     val books: List<BookSuggestion> = emptyList(),
     val found: List<BookSuggestion> = emptyList(),
+    /** Book (default) or Other: a family recipe card and the like, with [otherName] (needed) and an optional [note];
+     *  [others] = the household's names already used. */
+    val kind: String = Sources.BOOK,
+    val otherName: String = "",
+    val note: String = "",
+    val others: List<String> = emptyList(),
     /** Shared photos are still being copied in (and shrunk). */
     val copying: Boolean = false,
 ) {
@@ -45,7 +52,8 @@ data class ShareState(
     val isPhotos: Boolean get() = input is ShareInput.Photos || input is ShareInput.Pages
     val canConfirm: Boolean get() = configured && !queued && when {
         input is ShareInput.NytLink -> true
-        isPhotos -> !copying && dir != null && pages.pages.isNotEmpty() && !pages.tooMany
+        isPhotos -> !copying && dir != null && pages.pages.isNotEmpty() && !pages.tooMany &&
+            (kind != Sources.OTHER || otherName.isNotBlank())
         else -> false
     }
 }
@@ -101,8 +109,8 @@ class ShareViewModel(
             val previous = booksJob
             booksJob = viewModelScope.launch {   // the saved copy will do offline
                 previous?.join()                 // one after the other: the newest list wins
-                val books = Books.yours(repo.sources().value.orEmpty())
-                _state.update { it.copy(books = books) }
+                val sources = repo.sources().value.orEmpty()
+                _state.update { it.copy(books = Books.yours(sources), others = Sources.otherNames(sources)) }
             }
         }
     }
@@ -140,6 +148,9 @@ class ShareViewModel(
     fun setBook(b: String) { _state.update { it.copy(choice = it.choice.typed(b)) }; lookup.typed(b) }
     fun pickBook(b: BookSuggestion) = _state.update { it.copy(choice = b.choice) }
     fun setPage(p: String) = _state.update { it.copy(page = p) }
+    fun setKind(k: String) = _state.update { it.copy(kind = k) }
+    fun setOtherName(n: String) = _state.update { it.copy(otherName = n) }
+    fun setNote(n: String) = _state.update { it.copy(note = n) }
     fun movePage(i: Int, by: Int) = _state.update { it.copy(pages = it.pages.move(i, by)) }
     fun removePage(i: Int) { _state.update { it.copy(pages = it.pages.remove(i)) }; checkCount() }
 
@@ -156,11 +167,16 @@ class ShareViewModel(
                     _state.update { it.copy(message = SAVE_FAILED) }
                     return null
                 }
-                val book = Books.resolve(s.choice, s.books)
-                val title = book.title.ifBlank { null }
-                title?.let(rememberBook)   // the next scan's default; skipping it keeps the last one
-                imports.enqueuePhotos(dir, s.title.trim().ifBlank { null }, title, s.page.trim().ifBlank { null },
-                    book.author, book.isbn)
+                if (s.kind == Sources.OTHER) {   // no book search, no author/ISBN; the remembered book stays
+                    imports.enqueuePhotos(dir, s.title.trim().ifBlank { null }, Sources.resolveName(s.otherName, s.others),
+                        s.note.trim().ifBlank { null }, sourceKind = Sources.OTHER)
+                } else {
+                    val book = Books.resolve(s.choice, s.books)
+                    val title = book.title.ifBlank { null }
+                    title?.let(rememberBook)   // the next scan's default; skipping it keeps the last one
+                    imports.enqueuePhotos(dir, s.title.trim().ifBlank { null }, title, s.page.trim().ifBlank { null },
+                        book.author, book.isbn)
+                }
             }
         }
         _state.update { it.copy(queued = true) }

@@ -41,6 +41,8 @@ import dev.mealprep.app.core.Books
 import dev.mealprep.app.core.RatingText
 import dev.mealprep.app.core.Sources
 import dev.mealprep.app.ui.common.BookFields
+import dev.mealprep.app.ui.common.OtherFields
+import dev.mealprep.app.ui.common.SourceKindChips
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.ui.camera.refPrompt
@@ -62,7 +64,7 @@ fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, on
     val state by vm.state.collectAsStateWithLifecycle()
     RecipeContent(state, onAdd = vm::addToWeek, onWeek = onWeek, onOpen = onOpen, onDismissAdded = vm::dismissAdded,
         onRetry = vm::load, onClose = onClose, startPicking = addToWeek, onEditSource = vm::editSource, onStartEdit = vm::loadBooks,
-        onBookTyped = vm::bookTyped)
+        onBookTyped = vm::bookTyped, onEditOther = vm::editOther)
 }
 
 @Composable
@@ -86,6 +88,8 @@ fun RecipeContent(
     onStartEdit: () -> Unit = {},
     /** Edit source's book field changed (the book search). */
     onBookTyped: (String) -> Unit = {},
+    /** Another source's name and note, then done(saved). */
+    onEditOther: (String, String, (Boolean) -> Unit) -> Unit = { _, _, _ -> },
 ) {
     var picking by rememberSaveable { mutableStateOf(startPicking) }
     var editing by rememberSaveable { mutableStateOf(false) }
@@ -104,7 +108,8 @@ fun RecipeContent(
     }
     if (editing && r != null) EditSourceDialog(r, state.books, state.found, state.savingSource, state.sourceError,
         onSave = { b, p -> onEditSource(b, p) { ok -> if (ok) editing = false } }, onDismiss = { editing = false },
-        onBookTyped = onBookTyped)
+        onBookTyped = onBookTyped, others = state.others,
+        onSaveOther = { n, note -> onEditOther(n, note) { ok -> if (ok) editing = false } })
     if (picking) AddToWeekDialog(state.options, r?.plannedWeeks.orEmpty(), today,
         onAdd = { w, d -> picking = false; onAdd(w, d) }, onDismiss = { picking = false })
 }
@@ -212,38 +217,56 @@ fun AddToWeekDialog(
     )
 }
 
-/** "From: Salt Fat Acid Heat, p. 123" (or Unknown book) with Edit source; an NYT recipe just says so. */
+/** "From: Salt Fat Acid Heat, p. 123" (or Unknown book, or "Mum's recipes") with Edit source; an NYT recipe just
+ *  says so. */
 @Composable
 private fun SourceLine(r: Recipe, onEdit: () -> Unit) {
+    val kind = Sources.kind(r)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("From: " + Sources.label(r), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        if (Sources.kind(r) != Sources.NYT) TextButton(onEdit) { Text(if (r.sourceTitle == null) "Add book" else "Edit source") }
+        if (kind != Sources.NYT) TextButton(onEdit) { Text(if (kind == Sources.BOOK && r.sourceTitle == null) "Add book" else "Edit source") }
     }
 }
 
+/**
+ * Book (title with the book search, page; empty = Unknown book) or Other (a name like "Mum's recipes", required, with
+ * the household's names as chips, and a note). Each kind keeps its own fields while switching; only the shown kind
+ * is saved, so a book's author/ISBN never go with an other source.
+ */
 @Composable
 fun EditSourceDialog(r: Recipe, books: List<BookSuggestion>, found: List<BookSuggestion>, saving: Boolean, error: String?,
-                     onSave: (BookChoice, String) -> Unit, onDismiss: () -> Unit, onBookTyped: (String) -> Unit = {}) {
+                     onSave: (BookChoice, String) -> Unit, onDismiss: () -> Unit, onBookTyped: (String) -> Unit = {},
+                     others: List<String> = emptyList(), onSaveOther: (String, String) -> Unit = { _, _ -> }) {
+    val wasOther = Sources.kind(r) == Sources.OTHER
+    var kind by rememberSaveable { mutableStateOf(if (wasOther) Sources.OTHER else Sources.BOOK) }
     // kept across rotation: the field's text, and the author/ISBN that came with a picked (or the saved) book
-    var title by rememberSaveable { mutableStateOf(r.sourceTitle.orEmpty()) }
-    var author by rememberSaveable { mutableStateOf(r.sourceAuthor) }
-    var isbn by rememberSaveable { mutableStateOf(r.sourceIsbn) }
-    var picked by rememberSaveable { mutableStateOf(BookChoice.saved(r.sourceTitle, r.sourceAuthor, r.sourceIsbn).picked) }
-    var page by rememberSaveable { mutableStateOf(r.sourceRef.orEmpty()) }
+    var title by rememberSaveable { mutableStateOf(if (wasOther) "" else r.sourceTitle.orEmpty()) }
+    var author by rememberSaveable { mutableStateOf(if (wasOther) null else r.sourceAuthor) }
+    var isbn by rememberSaveable { mutableStateOf(if (wasOther) null else r.sourceIsbn) }
+    var picked by rememberSaveable { mutableStateOf(!wasOther && BookChoice.saved(r.sourceTitle, r.sourceAuthor, r.sourceIsbn).picked) }
+    var page by rememberSaveable { mutableStateOf(if (wasOther) "" else r.sourceRef.orEmpty()) }
+    var name by rememberSaveable { mutableStateOf(if (wasOther) r.sourceTitle.orEmpty() else "") }
+    var note by rememberSaveable { mutableStateOf(if (wasOther) r.sourceRef.orEmpty() else "") }
     val choice = BookChoice(title, author, isbn, picked)
     fun set(c: BookChoice) { title = c.title; author = c.author; isbn = c.isbn; picked = c.picked }
+    val other = kind == Sources.OTHER
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Where is it from?") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                BookFields(title, { t -> set(choice.typed(t)); onBookTyped(t) }, page, { page = it },
+                SourceKindChips(kind, { kind = it })
+                if (other) OtherFields(name, { name = it }, note, { note = it }, others)
+                else BookFields(title, { t -> set(choice.typed(t)); onBookTyped(t) }, page, { page = it },
                     Books.suggest(books, found, choice), onPick = { set(it.choice) })
                 if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton({ onSave(choice, page) }, enabled = !saving) { Text("Save") } },
+        confirmButton = {
+            TextButton({ if (other) onSaveOther(name, note) else onSave(choice, page) },
+                enabled = !saving && (!other || name.isNotBlank())) { Text("Save") }
+        },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }

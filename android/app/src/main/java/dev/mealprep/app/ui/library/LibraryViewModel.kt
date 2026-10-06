@@ -36,7 +36,7 @@ data class LibraryState(
     val all: List<Recipe> = emptyList(),
     val query: String = "",
     val sort: LibrarySort = LibrarySort.NEWEST,
-    /** Sources.ALL or a source key (Sources.key): NYT, one book, Unknown book, Other. */
+    /** Sources.ALL or a source key (Sources.key): NYT, one book or named other source, Unknown book, Other. */
     val source: String = Sources.ALL,
     /** Only recipes whose latest company verdict is "yes" (rated good for guests). */
     val company: Boolean = false,

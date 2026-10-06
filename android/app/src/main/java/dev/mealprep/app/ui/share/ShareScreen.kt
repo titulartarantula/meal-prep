@@ -24,10 +24,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
 import dev.mealprep.app.core.BookSuggestion
 import dev.mealprep.app.core.ShareInput
+import dev.mealprep.app.core.Sources
 import dev.mealprep.app.ui.camera.PageStrip
 import dev.mealprep.app.ui.common.BookFields
 import dev.mealprep.app.ui.common.MessageText
-import dev.mealprep.app.ui.common.WhichBookTitle
+import dev.mealprep.app.ui.common.OtherFields
+import dev.mealprep.app.ui.common.SourceKindChips
+import dev.mealprep.app.ui.common.WhereFromTitle
 import kotlinx.coroutines.launch
 import dev.mealprep.app.ui.common.graphViewModel
 
@@ -36,9 +39,10 @@ fun ShareContent(
     state: ShareState, onConfirm: () -> Unit, onCancel: () -> Unit, onSetup: () -> Unit,
     onTitle: (String) -> Unit = {}, onMove: (Int, Int) -> Unit = { _, _ -> }, onRemove: (Int) -> Unit = {},
     onBook: (String) -> Unit = {}, onPage: (String) -> Unit = {}, onPickBook: (BookSuggestion) -> Unit = {},
+    onKind: (String) -> Unit = {}, onOtherName: (String) -> Unit = {}, onNote: (String) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(if (state.isPhotos) "Save a cookbook recipe" else "Save a recipe", style = MaterialTheme.typography.titleLarge,
+        Text(if (state.isPhotos && state.kind == Sources.BOOK) "Save a cookbook recipe" else "Save a recipe", style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.semantics { heading() })
         (state.input as? ShareInput.NytLink)?.let { Text("NYT Cooking · ${it.url.substringAfterLast('/')}") }
         if (!state.configured) {
@@ -56,8 +60,10 @@ fun ShareContent(
                 PageStrip(state.pages, retakeEnabled = false, onRetake = null, onRemove = onRemove, onMove = onMove)
                 OutlinedTextField(state.title, onTitle, label = { Text("Title (optional)") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth())
-                WhichBookTitle()
-                BookFields(state.book, onBook, state.page, onPage, state.suggestions, onPickBook)
+                WhereFromTitle()
+                SourceKindChips(state.kind, onKind)
+                if (state.kind == Sources.OTHER) OtherFields(state.otherName, onOtherName, state.note, onNote, state.others)
+                else BookFields(state.book, onBook, state.page, onPage, state.suggestions, onPickBook)
             }
         }
         MessageText(state.message)
@@ -85,5 +91,5 @@ fun ShareScreen(graph: AppGraph, onQueued: () -> Unit, onCancel: () -> Unit, onS
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.queued) { if (state.queued) onQueued() }
     ShareContent(state, { vm.confirm() }, onCancel, onSetup, vm::setTitle, vm::movePage, vm::removePage, vm::setBook, vm::setPage,
-        vm::pickBook)
+        vm::pickBook, vm::setKind, vm::setOtherName, vm::setNote)
 }

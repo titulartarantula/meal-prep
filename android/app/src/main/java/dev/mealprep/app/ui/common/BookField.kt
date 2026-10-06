@@ -67,6 +67,6 @@ private fun SuggestionRow(s: BookSuggestion, onPick: (BookSuggestion) -> Unit) {
     }
 }
 
-/** The section title above [BookFields] on the scan confirm screen. */
+/** The section title above the Book / Other choice on the scan confirm screen. */
 @Composable
-fun WhichBookTitle() = Text("Which book?", style = MaterialTheme.typography.titleMedium)
+fun WhereFromTitle() = Text("Where is it from?", style = MaterialTheme.typography.titleMedium)

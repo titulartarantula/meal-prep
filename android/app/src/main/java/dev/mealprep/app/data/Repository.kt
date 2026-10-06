@@ -1,5 +1,6 @@
 package dev.mealprep.app.data
 
+import dev.mealprep.app.core.Sources
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.ApiError
 import dev.mealprep.app.data.api.ApiResult
@@ -147,9 +148,14 @@ class Repository(
         call { it.list(ListIn(weeks.map(::wk), staples = staples)) }
 
     // --- writes ---
-    /** Sets the recipe's book, page, author and ISBN (blank = not known / none). */
-    suspend fun editSource(id: Int, title: String?, ref: String?, author: String? = null, isbn: String? = null): ApiResult<Recipe> =
-        call { it.patchRecipe(id, Bodies.sourcePatch(title.clean(), ref.clean(), author.clean(), isbn.clean())) }
+    /** Sets the recipe's book, page, author and ISBN (blank = not known / none), or with [kind] "other" its source's
+     *  name and note (blank = just "Other"; no author/ISBN). */
+    suspend fun editSource(id: Int, title: String?, ref: String?, author: String? = null, isbn: String? = null,
+                           kind: String = Sources.BOOK): ApiResult<Recipe> {
+        val book = kind == Sources.BOOK
+        return call { it.patchRecipe(id, Bodies.sourcePatch(title.clean(), ref.clean(), author.takeIf { book }.clean(),
+            isbn.takeIf { book }.clean(), kind)) }
+    }
     suspend fun addToWeek(week: LocalDate, recipeId: Int): ApiResult<PlanEntry> = call { it.addEntry(wk(week), EntryIn(recipeId)) }
     suspend fun placeEntry(entryId: Int, day: Int?): ApiResult<Unit> =
         call { it.patchEntry(entryId, Bodies.entryPatch(day = day, unplace = day == null)) }
@@ -188,11 +194,13 @@ class Repository(
     override suspend fun shareLink(text: String, week: LocalDate?): ApiResult<ShareResult> =
         call { it.share(ShareIn(text, week?.toString())) }
     override suspend fun importPhotos(pages: List<File>, week: LocalDate?, title: String?, book: String?, page: String?,
-                                      author: String?, isbn: String?): ApiResult<ShareResult> {
+                                      author: String?, isbn: String?, kind: String?): ApiResult<ShareResult> {
+        val other = kind == Sources.OTHER   // [book] = the other source's name, [page] = its note
         val b = book.clean()   // an author/ISBN only comes with a book
         return call { it.photo(Http.pageParts(pages), week?.let { w -> Http.textPart(w.toString()) },
             title?.takeIf(String::isNotBlank)?.let(Http::textPart), b?.let(Http::textPart), page.clean()?.let(Http::textPart),
-            b?.let { author.clean() }?.let(Http::textPart), b?.let { isbn.clean() }?.let(Http::textPart)) }
+            b?.takeUnless { other }?.let { author.clean() }?.let(Http::textPart), b?.takeUnless { other }?.let { isbn.clean() }?.let(Http::textPart),
+            if (other) Http.textPart(Sources.OTHER) else null) }
     }
     override suspend fun attachPages(recipeId: Int, pages: List<File>, forLine: Int): ApiResult<Recipe> =
         call { it.pages(recipeId, Http.pageParts(pages), Http.textPart(forLine.toString())) }

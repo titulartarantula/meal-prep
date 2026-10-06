@@ -21,9 +21,10 @@ object Bodies {
         if (position != null) put("position", position)
     }
 
-    /** A recipe's book, page, author and ISBN; null clears them (all sent explicitly). */
-    fun sourcePatch(title: String?, ref: String?, author: String? = null, isbn: String? = null): JsonObject = buildJsonObject {
-        put("source_kind", "book")
+    /** A recipe's book, page, author and ISBN, or ([kind] "other") its source's name and note; null clears them (all
+     *  sent explicitly). */
+    fun sourcePatch(title: String?, ref: String?, author: String? = null, isbn: String? = null, kind: String = "book"): JsonObject = buildJsonObject {
+        put("source_kind", kind)
         mapOf("source_title" to title, "source_ref" to ref, "source_author" to author, "source_isbn" to isbn)
             .forEach { (k, v) -> if (v != null) put(k, v) else put(k, JsonNull) }
     }

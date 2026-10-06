@@ -1,6 +1,7 @@
 package dev.mealprep.app.core
 
 import dev.mealprep.app.data.api.Recipe
+import dev.mealprep.app.data.api.RecipeSource
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -40,5 +41,39 @@ class SourcesTest {
         assertEquals("Invented Bakes · Ada Pepper et al.",
             Sources.label(withAuthor.copy(sourceRef = null, sourceAuthor = "Ada Pepper, Basil Thyme, Rosemary Quill")))
         assertEquals("Unknown book, p. 3", Sources.label(r(9, "book", ref = "3").copy(sourceAuthor = "Ada Pepper")))
+    }
+
+    @Test fun `a named other source reads as its name and note`() {
+        assertEquals("Mum's recipes", Sources.label(r(10, "other", "Mum's recipes")))
+        assertEquals("Mum's recipes, the blue binder", Sources.label(r(11, "other", "Mum's recipes", " the blue binder ")))
+        assertEquals("Mum's recipes, 12", Sources.label(r(12, "other", "Mum's recipes", "12")))   // a note, not a page
+        assertEquals("Other", Sources.label(r(13, "other", ref = " ")))
+        assertEquals("other:mum's recipes", Sources.key(r(14, "other", "  Mum's   Recipes ")))
+        assertEquals("other:", Sources.key(r(15, "other")))
+    }
+
+    @Test fun `each named other source gets its own filter entry, A-Z with the books`() {
+        val all = listOf(r(1, "book", "Invented Bakes"), r(2, "other", "Mum's recipes"), r(3, "other", "mum's  RECIPES"),
+            r(4, "other", "Allotment Club"), r(5, "other"), r(6, "book"), r(7, "other", "Invented Bakes"), r(8, "nyt", source = "nyt"))
+        assertEquals(listOf(
+            Sources.Option(Sources.ALL, "All sources", 8), Sources.Option("nyt", "NYT Cooking", 1),
+            Sources.Option("other:allotment club", "Allotment Club", 1), Sources.Option("book:invented bakes", "Invented Bakes", 1),
+            Sources.Option("other:invented bakes", "Invented Bakes", 1), Sources.Option("other:mum's recipes", "Mum's recipes", 2),
+            Sources.Option("book:", "Unknown book", 1), Sources.Option("other:", "Other", 1)), Sources.options(all))
+    }
+
+    @Test fun `the household's other names are suggested and keep their spelling`() {
+        val sources = listOf(RecipeSource("book:Invented Bakes", "book", "Invented Bakes", "Invented Bakes", 2),
+            RecipeSource("other:Mum's recipes", "other", "Mum's recipes", "Mum's recipes", 2),
+            RecipeSource("other:allotment club", "other", "allotment  club", "allotment  club", 1),
+            RecipeSource("other:", "other", label = "Other", count = 1))
+        val names = Sources.otherNames(sources)
+        assertEquals(listOf("allotment club", "Mum's recipes"), names)             // never a book, never the unnamed one
+        assertEquals(names, Sources.suggestNames(names, ""))
+        assertEquals(listOf("Mum's recipes"), Sources.suggestNames(names, "MUM"))
+        assertEquals(emptyList<String>(), Sources.suggestNames(names, "mum's recipes"))   // already typed
+        assertEquals("Mum's recipes", Sources.resolveName("  mum's   RECIPES ", names))
+        assertEquals("Gran's cards", Sources.resolveName(" Gran's  cards", names))
+        assertEquals(null, Sources.resolveName("  ", names))
     }
 }

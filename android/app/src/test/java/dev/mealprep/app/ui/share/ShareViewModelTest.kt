@@ -13,6 +13,7 @@ import dev.mealprep.app.MainDispatcherRule
 import dev.mealprep.app.TestEnv
 import dev.mealprep.app.await
 import dev.mealprep.app.core.ShareInput
+import dev.mealprep.app.core.Sources
 import dev.mealprep.app.fixture
 import dev.mealprep.app.notify.Notifier
 import dev.mealprep.app.work.ImportQueue
@@ -206,6 +207,49 @@ class ShareViewModelTest {
         val body = env.bodies("POST", "/recipes/photo").single()
         assertFalse(body.contains("source_title") || body.contains("source_ref"))
         assertEquals("Invented Bakes", lastBook)
+    }
+
+    @Test fun `scanned pages can go to an other source with a name and note, no book search`() = runTest {
+        env.on("GET", "/recipes/sources", body = """[{"key":"book:Invented Bakes","kind":"book","title":"Invented Bakes",
+            "label":"Invented Bakes","count":1,"author":"Ada Pepper","isbn":"9780000000017"},
+            {"key":"other:Mum's recipes","kind":"other","title":"Mum's recipes","label":"Mum's recipes","count":2}]""")
+        env.on("POST", "/recipes/photo", body = fixture("share_result_library.json"))
+        lastBook = "Invented Bakes"
+        val vm = vm()
+        vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/1"))))
+        val s = vm.state.await { !it.copying && it.books.isNotEmpty() }
+        assertEquals(listOf("Mum's recipes"), s.others)
+        assertEquals(Sources.BOOK, s.kind)                             // a book by default, as before
+        vm.setKind(Sources.OTHER)
+        assertFalse(vm.state.value.canConfirm)                         // a name is needed
+        assertNull(vm.confirm())
+        vm.setOtherName(" mum's RECIPES "); vm.setNote(" card 3 ")
+        assertTrue(vm.state.value.canConfirm)
+        val id = vm.confirm()!!
+        WorkManagerTestInitHelper.getTestDriver(env.context)!!.setAllConstraintsMet(id)
+        assertEquals(WorkInfo.State.SUCCEEDED, awaitWork(id).state)
+        val body = env.bodies("POST", "/recipes/photo").single()
+        assertTrue(body.contains("name=\"source_kind\"") && body.contains("\r\n\r\nother\r\n"))
+        assertTrue(body.contains("name=\"source_title\"") && body.contains("\r\n\r\nMum's recipes\r\n"))
+        assertTrue(body.contains("name=\"source_ref\"") && body.contains("\r\n\r\ncard 3\r\n"))
+        assertFalse(body.contains("source_author") || body.contains("source_isbn"))
+        assertEquals(0, env.count("GET", "/books/search"))
+        assertEquals("Invented Bakes", lastBook)                       // the next scan still defaults to the book
+    }
+
+    @Test fun `switching back to Book sends the book as before`() = runTest {
+        env.on("POST", "/recipes/photo", body = fixture("share_result_library.json"))
+        val vm = vm()
+        vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/1"))))
+        vm.state.await { !it.copying && it.pages.pages.isNotEmpty() }
+        vm.setKind(Sources.OTHER); vm.setOtherName("Mum's recipes")
+        vm.setKind(Sources.BOOK); vm.setBook("Invented Bakes")
+        val id = vm.confirm()!!
+        WorkManagerTestInitHelper.getTestDriver(env.context)!!.setAllConstraintsMet(id)
+        assertEquals(WorkInfo.State.SUCCEEDED, awaitWork(id).state)
+        val body = env.bodies("POST", "/recipes/photo").single()
+        assertTrue(body.contains("\r\n\r\nInvented Bakes\r\n"))
+        assertFalse(body.contains("source_kind") || body.contains("Mum's recipes"))
     }
 
     @Test fun `an NYT link asks nothing about books`() {
