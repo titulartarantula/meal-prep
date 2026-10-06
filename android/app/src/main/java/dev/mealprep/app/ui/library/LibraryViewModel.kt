@@ -2,6 +2,7 @@ package dev.mealprep.app.ui.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.mealprep.app.core.Sources
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.Recipe
@@ -35,19 +36,24 @@ data class LibraryState(
     val all: List<Recipe> = emptyList(),
     val query: String = "",
     val sort: LibrarySort = LibrarySort.NEWEST,
+    /** Sources.ALL or a source key (Sources.key): NYT, one book, Unknown book, Other. */
+    val source: String = Sources.ALL,
     val loading: Boolean = true,
     val offlineSince: Instant? = null,
     val error: String? = null,
 ) {
-    val shown: List<Recipe> get() = filterRecipes(all, query, sort)
+    val shown: List<Recipe> get() = filterRecipes(all, query, sort, source)
+    /** The source filter's choices, from the recipes themselves (works offline too). */
+    val sources: List<Sources.Option> get() = Sources.options(all)
 }
 
 private fun fold(s: String) = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
 
-/** Every word typed must appear in the title (any case, accents optional: "crepe" finds "Crêpes"). */
-fun filterRecipes(all: List<Recipe>, query: String, sort: LibrarySort): List<Recipe> {
+/** Every word typed must appear in the title (any case, accents optional: "crepe" finds "Crêpes"); [source] narrows to
+ *  one source (Sources.key). */
+fun filterRecipes(all: List<Recipe>, query: String, sort: LibrarySort, source: String = Sources.ALL): List<Recipe> {
     val words = fold(query).split(Regex("\\s+")).filter { it.isNotEmpty() }
-    val hits = all.filter { r -> fold(r.title).let { t -> words.all { it in t } } }
+    val hits = all.filter { r -> (source == Sources.ALL || Sources.key(r) == source) && fold(r.title).let { t -> words.all { it in t } } }
     return if (sort == LibrarySort.AZ) hits.sortedBy { fold(it.title) } else hits
 }
 
@@ -95,6 +101,7 @@ class LibraryViewModel(
     fun onResume() { if (resumed) load() else resumed = true }
 
     fun search(q: String) = _state.update { it.copy(query = q) }
+    fun source(key: String) = _state.update { it.copy(source = key) }
 
     fun sort(s: LibrarySort) {
         val before = _state.value.sort

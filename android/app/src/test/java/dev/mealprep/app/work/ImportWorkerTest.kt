@@ -178,6 +178,14 @@ class ImportWorkerTest {
         assertFalse(dir.exists())
     }
 
+    @Test fun `the book and page go with the photos`() = runTest {
+        env.on("POST", "/recipes/photo", body = fixture("share_result_library.json"))
+        val dir = batch("batchb", "p")
+        assertTrue(worker(ImportQueue.photoInput(dir, null, "Invented Bakes", "pp. 12-13")).doWork() is Result.Success)
+        val body = env.bodies("POST", "/recipes/photo").single()
+        assertTrue(body.contains("\r\n\r\nInvented Bakes\r\n") && body.contains("\r\n\r\npp. 12-13\r\n"))
+    }
+
     @Test fun `unreadable photo keeps the pages for Try again`() = runTest {
         env.on("POST", "/recipes/photo", code = 502, body = """{"detail":"couldn't read recipe: AIError: no ingredients"}""")
         val dir = batch("batch2", "x")

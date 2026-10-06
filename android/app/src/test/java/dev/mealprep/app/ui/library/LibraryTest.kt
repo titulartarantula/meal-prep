@@ -10,6 +10,9 @@ import androidx.compose.ui.test.performClick
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.work.WorkInfo
 import androidx.work.workDataOf
 import dev.mealprep.app.MainDispatcherRule
@@ -55,6 +58,57 @@ class LibraryTest {
         assertEquals(listOf(12), filterRecipes(lib, "soup lentil", LibrarySort.NEWEST).map { it.id })
         assertEquals(listOf(10, 11, 12), filterRecipes(lib, " ", LibrarySort.AZ).map { it.id })
         assertEquals(listOf(12, 11, 10), filterRecipes(lib, "", LibrarySort.NEWEST).map { it.id })
+    }
+
+    @Test fun `the source filter narrows the list, unknown books included`() {
+        assertEquals(listOf(10), filterRecipes(lib, "", LibrarySort.NEWEST, "nyt").map { it.id })
+        assertEquals(listOf(11), filterRecipes(lib, "", LibrarySort.NEWEST, "book:").map { it.id })
+        assertEquals(listOf(12), filterRecipes(lib, "soup", LibrarySort.NEWEST, "book:invented pantry book").map { it.id })
+        assertEquals(emptyList<Int>(), filterRecipes(lib, "crepe", LibrarySort.NEWEST, "nyt").map { it.id })
+    }
+
+    @Test fun `rows say where each recipe is from and the filter picks Unknown book`() {
+        var state by mutableStateOf(LibraryState(lib, loading = false))
+        compose.setContent {
+            LibraryContent(state, {}, {}, onRecipe = {}, onRetry = {}, today = today, onSource = { state = state.copy(source = it) })
+        }
+        compose.onNodeWithText("Invented Pantry Book, p. 88").assertExists()
+        compose.onNodeWithText("NYT Cooking").assertExists()
+        compose.onNodeWithText("All sources").performClick()
+        compose.onNodeWithText("Unknown book (1)").performClick()
+        compose.onNodeWithText("Crêpes with Lemon").assertExists()
+        compose.onNodeWithText("Apple Crumble").assertDoesNotExist()
+    }
+
+    @Test fun `edit source sends the book and page, offline says it needs the home network`() = runTest {
+        env.on("PATCH", "/recipes/11", body = fixture("recipe_11.json").replace("\"source_title\": null", "\"source_title\": \"Invented Bakes\""))
+        val vm = recipeVm()
+        vm.state.await { it.recipe != null }
+        env.on("GET", "/recipes/11", body = fixture("recipe_11.json").replace("\"source_title\": null", "\"source_title\": \"Invented Bakes\""))
+        var saved: Boolean? = null
+        vm.editSource(" Invented Bakes ", "", { saved = it })
+        vm.state.await { it.recipe?.sourceTitle == "Invented Bakes" && !it.savingSource }
+        assertEquals(true, saved)
+        assertEquals("""{"source_kind":"book","source_title":"Invented Bakes","source_ref":null}""", env.bodies("PATCH", "/recipes/11").single())
+        env.offline = true
+        vm.editSource("X", "1")
+        assertEquals("Changing the source needs the home network (or WireGuard).", vm.state.await { it.sourceError != null }.sourceError)
+    }
+
+    @Test fun `the detail shows the source with Add book for an unknown one`() {
+        val r = Http.json.decodeFromString(Recipe.serializer(), fixture("recipe_11.json"))
+        var edited: Pair<String, String>? = null
+        compose.setContent {
+            RecipeContent(RecipeState(r, loading = false, books = listOf("Invented Bakes")), onAdd = { _, _ -> }, onWeek = {}, onOpen = {},
+                onDismissAdded = {}, today = today, onEditSource = { b, p, done -> edited = b to p; done(true) })
+        }
+        compose.onNodeWithText("From: Unknown book").assertExists()
+        compose.onNodeWithText("Add book").performClick()
+        compose.onNodeWithText("Invented Bakes").performClick()                   // the suggestion fills the field
+        compose.onNodeWithText("Page (optional)").performTextInput("191")
+        compose.onNodeWithText("Save").performClick()
+        assertEquals("Invented Bakes" to "191", edited)
+        compose.onNodeWithText("Where is it from?").assertDoesNotExist()
     }
 
     @Test fun `planned weeks read like the week screen`() {
@@ -176,8 +230,11 @@ class LibraryTest {
         jobs.value = listOf(ImportJob(id, WorkInfo.State.SUCCEEDED, workDataOf(ImportWorker.OUT_RECIPE_ID to 12, ImportWorker.OUT_TITLE to "Soup")))
         vm.imports.await { it.size == 1 }
         withContext(Dispatchers.Default) { withTimeout(5_000) { while (env.count("GET", "/recipes") < 2) delay(10) } }
+        vm.state.await { !it.loading }
         vm.dismissImport(id)
         vm.imports.await { it.isEmpty() }
+        // the dismissal is saved in the background: let it finish before the test closes the database
+        withContext(Dispatchers.Default) { withTimeout(5_000) { while (!env.repo.isMarked("hide-import:$id")) delay(10) } }
     }
 
     @Test fun `an empty library says how to add a recipe`() {
@@ -191,11 +248,12 @@ class LibraryTest {
         compose.setContent {
             LibraryContent(LibraryState(withRef, loading = false), {}, {}, onRecipe = { opened = it }, onRetry = {}, today = today)
         }
-        compose.onNodeWithText("Family 5/5 · Company: yes · “more cinnamon”").assertExists()
-        compose.onNodeWithText("On the plan: next week, week of Oct 25").assertExists()
-        compose.onNodeWithText("Uses page 191: add a photo of it so its ingredients are on the list.").assertExists()
+        val list = compose.onNode(hasScrollAction())
+        list.performScrollToNode(hasText("Uses page 191: add a photo of it so its ingredients are on the list."))
+        list.performScrollToNode(hasText("Family 5/5 · Company: yes · “more cinnamon”"))
+        list.performScrollToNode(hasText("On the plan: next week, week of Oct 25"))
         compose.onNodeWithText("Apple Crumble").performClick()
         assertEquals(10, opened)
-        compose.onNodeWithText("Not rated yet").assertExists()
+        list.performScrollToNode(hasText("Not rated yet"))
     }
 }

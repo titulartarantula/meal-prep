@@ -23,6 +23,7 @@ import dev.mealprep.app.data.api.PrepTask
 import dev.mealprep.app.data.api.Product
 import dev.mealprep.app.data.api.RatingIn
 import dev.mealprep.app.data.api.Recipe
+import dev.mealprep.app.data.api.RecipeSource
 import dev.mealprep.app.data.api.SearchIn
 import dev.mealprep.app.data.api.Staple
 import dev.mealprep.app.data.api.StapleIn
@@ -110,6 +111,7 @@ class Repository(
     suspend fun recipes(sort: String = "newest"): Loaded<List<Recipe>> =
         load("recipes:$sort", ListSerializer(Recipe.serializer())) { it.recipes(sort) }
     suspend fun recipe(id: Int): Loaded<Recipe> = load("recipe:$id", Recipe.serializer()) { it.recipe(id) }
+    suspend fun sources(): Loaded<List<RecipeSource>> = load("sources", ListSerializer(RecipeSource.serializer())) { it.sources() }
     suspend fun weekPrepPlan(week: LocalDate): Loaded<PrepPlan?> =
         loadOptional("prep:${wk(week)}", PrepPlan.serializer()) { it.weekPrepPlan(wk(week)) }
     suspend fun card(entryId: Int): Loaded<CookCard?> = loadOptional("card:$entryId", CookCard.serializer()) { it.card(entryId) }
@@ -128,6 +130,9 @@ class Repository(
         call { it.list(ListIn(weeks.map(::wk), staples = staples)) }
 
     // --- writes ---
+    /** Sets the recipe's book and page (blank = not known / none). */
+    suspend fun editSource(id: Int, title: String?, ref: String?): ApiResult<Recipe> =
+        call { it.patchRecipe(id, Bodies.sourcePatch(title.clean(), ref.clean())) }
     suspend fun addToWeek(week: LocalDate, recipeId: Int): ApiResult<PlanEntry> = call { it.addEntry(wk(week), EntryIn(recipeId)) }
     suspend fun placeEntry(entryId: Int, day: Int?): ApiResult<Unit> =
         call { it.patchEntry(entryId, Bodies.entryPatch(day = day, unplace = day == null)) }
@@ -165,15 +170,17 @@ class Repository(
     // --- Importer ---
     override suspend fun shareLink(text: String, week: LocalDate?): ApiResult<ShareResult> =
         call { it.share(ShareIn(text, week?.toString())) }
-    override suspend fun importPhotos(pages: List<File>, week: LocalDate?, title: String?): ApiResult<ShareResult> =
+    override suspend fun importPhotos(pages: List<File>, week: LocalDate?, title: String?, book: String?, page: String?): ApiResult<ShareResult> =
         call { it.photo(Http.pageParts(pages), week?.let { w -> Http.textPart(w.toString()) },
-            title?.takeIf(String::isNotBlank)?.let(Http::textPart)) }
+            title?.takeIf(String::isNotBlank)?.let(Http::textPart), book.clean()?.let(Http::textPart), page.clean()?.let(Http::textPart)) }
     override suspend fun attachPages(recipeId: Int, pages: List<File>, forLine: Int): ApiResult<Recipe> =
         call { it.pages(recipeId, Http.pageParts(pages), Http.textPart(forLine.toString())) }
 
     override suspend fun fetchRecipe(id: Int): ApiResult<Recipe> = call { it.recipe(id) }
     override suspend fun markSending(workId: UUID): Boolean = markOnce("import-sent:$workId")
     override suspend fun clearSending(workId: UUID) = cache.delete("once:import-sent:$workId")
+
+    private fun String?.clean() = this?.trim()?.replace(Regex("""\s+"""), " ")?.ifEmpty { null }
 
     // --- bookkeeping ---
     /** True the first time a key is seen (notification de-duplication across workers and phones' restarts). */

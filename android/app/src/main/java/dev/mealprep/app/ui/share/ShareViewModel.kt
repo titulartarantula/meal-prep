@@ -26,6 +26,10 @@ data class ShareState(
     val dir: File? = null,
     val pages: PagesState = PagesState(),
     val title: String = "",
+    /** Cookbook photos: the book (default: the last one used; empty = unknown) and page; [books] to suggest. */
+    val book: String = "",
+    val page: String = "",
+    val books: List<String> = emptyList(),
     /** Shared photos are still being copied in (and shrunk). */
     val copying: Boolean = false,
 ) {
@@ -49,6 +53,8 @@ class ShareViewModel(
     private val pageStore: PageStore,
     private val copy: suspend (Uri, File) -> Unit,
     private val configured: () -> Boolean,
+    private val lastBook: () -> String? = { null },
+    private val rememberBook: (String) -> Unit = {},
 ) : ViewModel() {
     companion object {
         const val NOT_A_RECIPE = "That isn't an NYT Cooking recipe link. Share a recipe from the NYT Cooking app or " +
@@ -72,6 +78,13 @@ class ShareViewModel(
             is ShareInput.Photos -> copyIn(input.uris)
             is ShareInput.Pages -> { _state.update { it.copy(dir = input.dir, pages = PagesState(PageStore.pagesIn(input.dir))) }; checkCount() }
             else -> {}
+        }
+        if (_state.value.isPhotos) {
+            _state.update { it.copy(book = lastBook().orEmpty()) }
+            viewModelScope.launch {   // the saved copy will do offline
+                val books = repo.sources().value.orEmpty().mapNotNull { it.title }
+                _state.update { it.copy(books = books) }
+            }
         }
     }
 
@@ -105,6 +118,8 @@ class ShareViewModel(
     }
 
     fun setTitle(t: String) = _state.update { it.copy(title = t) }
+    fun setBook(b: String) = _state.update { it.copy(book = b) }
+    fun setPage(p: String) = _state.update { it.copy(page = p) }
     fun movePage(i: Int, by: Int) = _state.update { it.copy(pages = it.pages.move(i, by)) }
     fun removePage(i: Int) { _state.update { it.copy(pages = it.pages.remove(i)) }; checkCount() }
 
@@ -121,7 +136,9 @@ class ShareViewModel(
                     _state.update { it.copy(message = SAVE_FAILED) }
                     return null
                 }
-                imports.enqueuePhotos(dir, s.title.trim().ifBlank { null })
+                val book = s.book.trim().ifBlank { null }
+                book?.let(rememberBook)   // the next scan's default; skipping it keeps the last one
+                imports.enqueuePhotos(dir, s.title.trim().ifBlank { null }, book, s.page.trim().ifBlank { null })
             }
         }
         _state.update { it.copy(queued = true) }

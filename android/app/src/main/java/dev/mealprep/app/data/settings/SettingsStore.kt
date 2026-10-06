@@ -37,6 +37,8 @@ data class Settings(
      *  only loblaws.ca, so PC id remembers this phone (no code). Off: clear everything. */
     val loblawsKeepDeviceTrust: Boolean = true,
     val askedNotificationPermission: Boolean = false,
+    /** The cookbook the last scanned recipe came from: the next scan's default "Which book?". */
+    val lastBook: String? = null,
 ) {
     val configured: Boolean get() = token.isNotBlank() && serverUrl.isNotBlank()
     companion object { const val DEFAULT_SERVER_URL = "http://192.168.1.101:8790" }
@@ -68,6 +70,7 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
         val keepTrust = booleanPreferencesKey("lob_device_trust")
         val legacy = listOf(booleanPreferencesKey("lob_signed_out"), booleanPreferencesKey("lob_keep_trust"))
         val asked = booleanPreferencesKey("asked_notif")
+        val lastBook = stringPreferencesKey("last_book")
     }
 
     private fun t(min: Int?, d: LocalTime) = min?.let { LocalTime.of(it / 60, it % 60) } ?: d
@@ -89,6 +92,7 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
             loblawsHideWebViewMarker = p[K.hideWv] ?: d.loblawsHideWebViewMarker,
             loblawsKeepDeviceTrust = p[K.keepTrust] ?: d.loblawsKeepDeviceTrust,
             askedNotificationPermission = p[K.asked] ?: false,
+            lastBook = p[K.lastBook],
         )
     }
 
@@ -103,6 +107,7 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
         p[K.keepTrust] = s.loblawsKeepDeviceTrust
         K.legacy.forEach { p.remove(it) }
         p[K.asked] = s.askedNotificationPermission
+        s.lastBook?.let { p[K.lastBook] = it } ?: p.remove(K.lastBook)
     }
 
     companion object {

@@ -21,6 +21,13 @@ object Bodies {
         if (position != null) put("position", position)
     }
 
+    /** A recipe's book and page; null clears them (sent explicitly). */
+    fun sourcePatch(title: String?, ref: String?): JsonObject = buildJsonObject {
+        put("source_kind", "book")
+        if (title != null) put("source_title", title) else put("source_title", JsonNull)
+        if (ref != null) put("source_ref", ref) else put("source_ref", JsonNull)
+    }
+
     fun linePatch(productCode: String? = null, quantity: Int? = null, removed: Boolean? = null): JsonObject = buildJsonObject {
         if (productCode != null) put("product_code", productCode)
         if (quantity != null) put("quantity", quantity)

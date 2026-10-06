@@ -11,7 +11,8 @@ import java.util.UUID
 interface Importer {
     /** [week] null = save to the library only (jobs queued by 0.4.1 and earlier still carry a week). */
     suspend fun shareLink(text: String, week: LocalDate?): ApiResult<ShareResult>
-    suspend fun importPhotos(pages: List<File>, week: LocalDate?, title: String?): ApiResult<ShareResult>
+    /** [book] / [page]: where the pages come from (null = unknown book / no page). */
+    suspend fun importPhotos(pages: List<File>, week: LocalDate?, title: String?, book: String? = null, page: String? = null): ApiResult<ShareResult>
     suspend fun attachPages(recipeId: Int, pages: List<File>, forLine: Int): ApiResult<Recipe>
     /** The recipe as the server has it now (no saved copy). */
     suspend fun fetchRecipe(id: Int): ApiResult<Recipe>

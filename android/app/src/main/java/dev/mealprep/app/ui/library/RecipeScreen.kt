@@ -36,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.core.RatingText
+import dev.mealprep.app.core.Sources
+import dev.mealprep.app.ui.common.BookFields
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.ui.camera.refPrompt
@@ -54,7 +56,7 @@ fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, on
     val vm = graphViewModel(key = "recipe-$id") { g -> RecipeViewModel(g.repo, id) }
     val state by vm.state.collectAsStateWithLifecycle()
     RecipeContent(state, onAdd = vm::addToWeek, onWeek = onWeek, onOpen = onOpen, onDismissAdded = vm::dismissAdded,
-        onRetry = vm::load, onClose = onClose, startPicking = addToWeek)
+        onRetry = vm::load, onClose = onClose, startPicking = addToWeek, onEditSource = vm::editSource, onStartEdit = vm::loadBooks)
 }
 
 @Composable
@@ -73,8 +75,12 @@ fun RecipeContent(
     today: LocalDate = LocalDate.now(),
     /** Opened from "Add to a week…" on an import card or notification: show the week picker at once. */
     startPicking: Boolean = false,
+    /** Book, page, then done(saved). */
+    onEditSource: (String, String, (Boolean) -> Unit) -> Unit = { _, _, _ -> },
+    onStartEdit: () -> Unit = {},
 ) {
     var picking by rememberSaveable { mutableStateOf(startPicking) }
+    var editing by rememberSaveable { mutableStateOf(false) }
     val r = state.recipe
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -86,8 +92,10 @@ fun RecipeContent(
         if (state.loading || state.adding) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (r == null) {
             if (!state.loading) TextButton(onRetry) { Text("Try again") }
-        } else RecipeBody(r, state, today, onWeek, onOpen, onDismissAdded, onPick = { picking = true })
+        } else RecipeBody(r, state, today, onWeek, onOpen, onDismissAdded, onPick = { picking = true }, onEditSource = { editing = true; onStartEdit() })
     }
+    if (editing && r != null) EditSourceDialog(r, state.books, state.savingSource, state.sourceError,
+        onSave = { b, p -> onEditSource(b, p) { ok -> if (ok) editing = false } }, onDismiss = { editing = false })
     if (picking) AddToWeekDialog(state.options, r?.plannedWeeks.orEmpty(), today,
         onAdd = { w, d -> picking = false; onAdd(w, d) }, onDismiss = { picking = false })
 }
@@ -95,7 +103,7 @@ fun RecipeContent(
 @Composable
 private fun ColumnScope.RecipeBody(
     r: Recipe, state: RecipeState, today: LocalDate, onWeek: (LocalDate) -> Unit, onOpen: (Any) -> Unit,
-    onDismissAdded: () -> Unit, onPick: () -> Unit,
+    onDismissAdded: () -> Unit, onPick: () -> Unit, onEditSource: () -> Unit,
 ) {
     state.added?.let { a ->
         Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -114,6 +122,7 @@ private fun ColumnScope.RecipeBody(
             val small = MaterialTheme.typography.bodySmall
             RatingText.summary(r.ratings)?.let { Text(it) } ?: Text("Not rated yet", style = small)
             plannedText(r.plannedWeeks, today)?.let { Text(it, style = small) }
+            SourceLine(r, onEditSource)
             r.sourceUrl?.let { url ->
                 val uri = LocalUriHandler.current
                 TextButton({ runCatching { uri.openUri(url) } }) { Text("Open on NYT Cooking") }
@@ -190,6 +199,34 @@ fun AddToWeekDialog(
             }
         },
         confirmButton = { TextButton({ onAdd(week, night) }, enabled = !already) { Text("Add") } },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** "From: Salt Fat Acid Heat, p. 123" (or Unknown book) with Edit source; an NYT recipe just says so. */
+@Composable
+private fun SourceLine(r: Recipe, onEdit: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("From: " + Sources.label(r), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        if (Sources.kind(r) != Sources.NYT) TextButton(onEdit) { Text(if (r.sourceTitle == null) "Add book" else "Edit source") }
+    }
+}
+
+@Composable
+fun EditSourceDialog(r: Recipe, books: List<String>, saving: Boolean, error: String?, onSave: (String, String) -> Unit, onDismiss: () -> Unit) {
+    var book by rememberSaveable { mutableStateOf(r.sourceTitle.orEmpty()) }
+    var page by rememberSaveable { mutableStateOf(r.sourceRef.orEmpty()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Where is it from?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                BookFields(book, { book = it }, page, { page = it }, books)
+                if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = { TextButton({ onSave(book, page) }, enabled = !saving) { Text("Save") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }

@@ -28,10 +28,15 @@ import kotlinx.serialization.Serializable
     val ratings: RatingSummary = RatingSummary(), val history: List<CookedEntry> = emptyList(),
     /** ISO Sundays from this week on that have this recipe (absent from older servers). */
     val plannedWeeks: List<String> = emptyList(),
+    /** Where it comes from (since 0.4.2; see core.Sources): nyt | book | other, the book, its page(s). */
+    val sourceKind: String? = null, val sourceTitle: String? = null, val sourceRef: String? = null,
 ) {
     /** Indexes of lines like "Batter for 24 crêpes, page 191" whose page hasn't been attached yet. */
     val missingPages: List<Int> get() = ingredients.indices.filter { ingredients[it].refPage != null && !ingredients[it].expanded }
 }
+
+/** GET /recipes/sources: [key] is the ?source= filter value; [title] the book (null for NYT / unknown book). */
+@Serializable data class RecipeSource(val key: String, val kind: String, val title: String? = null, val label: String, val count: Int = 0)
 
 @Serializable data class PlanEntry(
     val id: Int, val week: String, val recipeId: Int, val day: Int? = null, val multiplier: Double = 1.0,

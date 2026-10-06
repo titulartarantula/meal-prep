@@ -53,10 +53,11 @@ class ShareViewModelTest {
     }
     @After fun tearDown() = env.close()
 
+    private var lastBook: String? = null
     private fun vm() = ShareViewModel(
         env.repo, ImportQueue(wm), PageStore(tmp.root),
         copy = { uri, out -> if (uri.toString().contains("bad")) error("gone") else out.writeText("img-${uri.lastPathSegment}") },
-        configured = { true })
+        configured = { true }, lastBook = { lastBook }, rememberBook = { lastBook = it })
     private suspend fun awaitWork(id: java.util.UUID): WorkInfo = withContext(Dispatchers.Default) {
         withTimeout(5_000) { while (!wm.getWorkInfoById(id).get()!!.state.isFinished) delay(20) }
         wm.getWorkInfoById(id).get()!!
@@ -114,6 +115,49 @@ class ShareViewModelTest {
         assertFalse(body.contains("name=\"week\""))                // library only
         assertTrue(body.contains("\r\n\r\nLemon Bars\r\n"))       // trimmed title hint
         assertTrue(tmp.root.listFiles()!!.isEmpty())               // pages deleted once the server has the recipe
+    }
+
+    @Test fun `scanned pages ask which book, default to the last one, and send book and page`() = runTest {
+        env.on("GET", "/recipes/sources", body = """[{"key":"nyt","kind":"nyt","label":"NYT Cooking","count":2},
+            {"key":"book:Invented Bakes","kind":"book","title":"Invented Bakes","label":"Invented Bakes","count":1},
+            {"key":"book:","kind":"book","label":"Unknown book","count":1}]""")
+        env.on("POST", "/recipes/photo", body = fixture("share_result_library.json"))
+        lastBook = "A Made-Up Garden"
+        val vm = vm()
+        vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/1"))))
+        val s = vm.state.await { !it.copying && it.books.isNotEmpty() }
+        assertEquals("A Made-Up Garden", s.book)
+        assertEquals(listOf("Invented Bakes"), s.books)
+        vm.setBook("Invented Bakes"); vm.setPage(" 42 ")
+        val id = vm.confirm()!!
+        WorkManagerTestInitHelper.getTestDriver(env.context)!!.setAllConstraintsMet(id)
+        assertEquals(WorkInfo.State.SUCCEEDED, awaitWork(id).state)
+        val body = env.bodies("POST", "/recipes/photo").single()
+        assertTrue(body.contains("name=\"source_title\"") && body.contains("\r\n\r\nInvented Bakes\r\n"))
+        assertTrue(body.contains("name=\"source_ref\"") && body.contains("\r\n\r\n42\r\n"))
+        assertEquals("Invented Bakes", lastBook)                      // the next scan's default
+    }
+
+    @Test fun `a skipped book is sent as unknown and keeps the remembered one`() = runTest {
+        env.on("POST", "/recipes/photo", body = fixture("share_result_library.json"))
+        lastBook = "Invented Bakes"
+        val vm = vm()
+        vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/1"))))
+        vm.state.await { !it.copying && it.pages.pages.isNotEmpty() }
+        vm.setBook("  ")
+        val id = vm.confirm()!!
+        WorkManagerTestInitHelper.getTestDriver(env.context)!!.setAllConstraintsMet(id)
+        assertEquals(WorkInfo.State.SUCCEEDED, awaitWork(id).state)
+        val body = env.bodies("POST", "/recipes/photo").single()
+        assertFalse(body.contains("source_title") || body.contains("source_ref"))
+        assertEquals("Invented Bakes", lastBook)
+    }
+
+    @Test fun `an NYT link asks nothing about books`() {
+        val vm = vm()
+        vm.start(nyt)
+        assertEquals("", vm.state.value.book)
+        assertEquals(0, env.count("GET", "/recipes/sources"))
     }
 
     @Test fun `more than ten pages must be trimmed first`() = runTest {

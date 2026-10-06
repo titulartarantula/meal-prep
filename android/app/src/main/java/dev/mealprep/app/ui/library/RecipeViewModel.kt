@@ -30,6 +30,11 @@ data class RecipeState(
     val options: List<WeekOption> = emptyList(),
     val adding: Boolean = false,
     val added: Added? = null,
+    /** Book titles to suggest in Edit source. */
+    val books: List<String> = emptyList(),
+    val savingSource: Boolean = false,
+    /** Why Edit source didn't save (null = fine). */
+    val sourceError: String? = null,
 )
 
 /** "the week of Oct 18" / "this week" for sentences. */
@@ -47,6 +52,11 @@ internal fun addMessage(e: ApiError): String = when (e) {
     else -> e.userMessage()
 }
 
+internal fun sourceMessage(e: ApiError): String = when (e) {
+    ApiError.Unreachable, ApiError.NotConfigured -> "Changing the source needs the home network (or WireGuard)."
+    else -> e.userMessage()
+}
+
 class RecipeViewModel(
     private val repo: Repository,
     private val id: Int,
@@ -58,6 +68,31 @@ class RecipeViewModel(
     init {
         load()
         viewModelScope.launch { _state.update { it.copy(options = weekOptions(today(), repo.weeks(today(), 8).value)) } }
+    }
+
+    /** Book titles for Edit source's suggestions (asked when the dialog opens; the saved copy will do offline). */
+    fun loadBooks() {
+        viewModelScope.launch { _state.update { it.copy(books = repo.sources().value.orEmpty().mapNotNull { s -> s.title }) } }
+    }
+
+    /** Sets the book and page (blank = unknown book / no page). True once saved; the recipe is re-read. */
+    fun editSource(book: String, page: String, done: (Boolean) -> Unit = {}) {
+        if (_state.value.savingSource) return
+        _state.update { it.copy(savingSource = true, sourceError = null) }
+        viewModelScope.launch {
+            when (val r = repo.editSource(id, book, page)) {
+                is ApiResult.Ok -> {
+                    val fresh = repo.recipe(id).value ?: _state.value.recipe?.let { old ->
+                        old.copy(sourceKind = r.value.sourceKind, sourceTitle = r.value.sourceTitle, sourceRef = r.value.sourceRef) }
+                    done(true)
+                    _state.update { it.copy(savingSource = false, recipe = fresh) }
+                }
+                is ApiResult.Err -> {
+                    _state.update { it.copy(savingSource = false, sourceError = sourceMessage(r.error)) }
+                    done(false)
+                }
+            }
+        }
     }
 
     fun load() {
