@@ -163,10 +163,11 @@ class Repository(
         call { it.tickTask(planId, taskId, TaskDone(done)) }
 
     // --- Importer ---
-    override suspend fun shareLink(text: String, week: LocalDate): ApiResult<ShareResult> =
-        call { it.share(ShareIn(text, week.toString())) }
-    override suspend fun importPhotos(pages: List<File>, week: LocalDate, title: String?): ApiResult<ShareResult> =
-        call { it.photo(Http.pageParts(pages), Http.textPart(week.toString()), title?.takeIf(String::isNotBlank)?.let(Http::textPart)) }
+    override suspend fun shareLink(text: String, week: LocalDate?): ApiResult<ShareResult> =
+        call { it.share(ShareIn(text, week?.toString())) }
+    override suspend fun importPhotos(pages: List<File>, week: LocalDate?, title: String?): ApiResult<ShareResult> =
+        call { it.photo(Http.pageParts(pages), week?.let { w -> Http.textPart(w.toString()) },
+            title?.takeIf(String::isNotBlank)?.let(Http::textPart)) }
     override suspend fun attachPages(recipeId: Int, pages: List<File>, forLine: Int): ApiResult<Recipe> =
         call { it.pages(recipeId, Http.pageParts(pages), Http.textPart(forLine.toString())) }
 

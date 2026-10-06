@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,11 +50,11 @@ import dev.mealprep.app.ui.home.refRoute
 import java.time.LocalDate
 
 @Composable
-fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, onClose: () -> Unit) {
+fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, onClose: () -> Unit, addToWeek: Boolean = false) {
     val vm = graphViewModel(key = "recipe-$id") { g -> RecipeViewModel(g.repo, id) }
     val state by vm.state.collectAsStateWithLifecycle()
     RecipeContent(state, onAdd = vm::addToWeek, onWeek = onWeek, onOpen = onOpen, onDismissAdded = vm::dismissAdded,
-        onRetry = vm::load, onClose = onClose)
+        onRetry = vm::load, onClose = onClose, startPicking = addToWeek)
 }
 
 @Composable
@@ -70,8 +71,10 @@ fun RecipeContent(
     onRetry: () -> Unit = {},
     onClose: () -> Unit = {},
     today: LocalDate = LocalDate.now(),
+    /** Opened from "Add to a week…" on an import card or notification: show the week picker at once. */
+    startPicking: Boolean = false,
 ) {
-    var picking by remember { mutableStateOf(false) }
+    var picking by rememberSaveable { mutableStateOf(startPicking) }
     val r = state.recipe
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

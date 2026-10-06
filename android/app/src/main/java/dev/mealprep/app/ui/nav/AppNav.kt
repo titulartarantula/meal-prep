@@ -58,11 +58,11 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
         }
         composable<StaplesRoute> { StaplesScreen(onDone = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) }) }
         composable<HomeRoute> { back ->
-            val ctx = LocalContext.current
             HomeScreen(graph, back.toRoute<HomeRoute>().week?.let(LocalDate::parse),
                 onAction = { a ->
                     when (val route = contextRoute(a)) {
-                        null -> contextToast(a)?.let { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show() }
+                        null -> {}
+                        LibraryRoute -> nav.openTab(Tab.RECIPES)   // the Recipes tab, not a second copy on top
                         else -> open(route)
                     }
                 },
@@ -76,9 +76,14 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
                 onOpenDraft = { id -> nav.navigate(DraftRoute(id)) }, onEditStaples = { nav.navigate(StaplesRoute) },
                 menu = mainMenu(), onOpen = open)
         }
-        composable<LibraryRoute> { LibraryScreen(mainMenu(), open, onRecipe = { id -> nav.navigate(RecipeRoute(id)) }) }
+        composable<LibraryRoute> {
+            LibraryScreen(mainMenu(), open, onRecipe = { id -> nav.navigate(RecipeRoute(id)) },
+                onPhotos = { uris -> graph.pendingShare.value = ShareInput.Photos(uris); nav.navigate(ShareRoute) },
+                onLink = { url -> graph.imports.enqueueLink(url) })
+        }
         composable<RecipeRoute> { back ->
-            RecipeScreen(back.toRoute<RecipeRoute>().id, onOpen = open,
+            val r = back.toRoute<RecipeRoute>()
+            RecipeScreen(r.id, addToWeek = r.addToWeek, onOpen = open,
                 onWeek = { w -> nav.navigate(HomeRoute(w.toString())) { popUpTo<HomeRoute> { inclusive = true } } },
                 onClose = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) })
         }
@@ -110,7 +115,8 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
         }
         composable<ShareRoute> {
             ShareScreen(graph,
-                onQueued = { week -> nav.navigate(HomeRoute(week.toString())) { popUpTo<ShareRoute> { inclusive = true } } },
+                // Saved recipes land in Recipes, where the import card shows its progress.
+                onQueued = { nav.popBackStack(); nav.openTab(Tab.RECIPES) },
                 onCancel = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) },
                 onSetup = { nav.navigate(SetupRoute) })
         }
@@ -123,27 +129,23 @@ fun cameraTitle(r: CameraRoute): String = when {
     else -> "Photograph the page this recipe refers to"
 }
 
-/** Where the home screen's context button goes (null = nothing to open). */
+/** Where the home screen's context button goes (null = nothing to open). An empty week opens the Recipes tab:
+ *  weeks are planned from the library. */
 fun contextRoute(a: ContextAction): Any? = when (a) {
+    ContextAction.AddRecipes -> LibraryRoute
     is ContextAction.BuildCart -> ListRoute(a.week.toString())
     is ContextAction.ReviewCart -> DraftRoute(a.draftId)
     is ContextAction.StartPrep -> PrepRoute(a.week.toString())
     is ContextAction.ContinuePrep -> PrepRoute(a.week.toString())
     is ContextAction.Tonight -> CardRoute(a.entryId)
-    ContextAction.AddRecipes, ContextAction.AllSet -> null
-}
-
-/** What tapping a context button with no screen to open says (null = it opens [contextRoute], or does nothing). */
-fun contextToast(a: ContextAction): String? = when (a) {
-    ContextAction.AddRecipes -> "Share a recipe from NYT Cooking or a photo of a cookbook page, or use Menu → Snap a cookbook recipe."
-    else -> null
+    ContextAction.AllSet -> null
 }
 
 const val LATER = "That arrives in a later update."
 
-/** The ⋮ menu on the main screens (label to route); the bottom bar has This week, Shopping list and Recipes. */
-fun mainMenu(): List<Pair<String, Any>> =
-    listOf("Snap a cookbook recipe" to CameraRoute(), "Staples" to StaplesRoute, "Settings" to SettingsRoute)
+/** The ⋮ menu on the main screens (label to route); the bottom bar has This week, Shopping list and Recipes, and
+ *  adding recipes lives on Recipes (Add recipe). */
+fun mainMenu(): List<Pair<String, Any>> = listOf("Staples" to StaplesRoute, "Settings" to SettingsRoute)
 
 /** A link from a notification: a tab opens as that tab (no second copy); anything else goes on top. */
 fun NavController.openLink(route: Any) {

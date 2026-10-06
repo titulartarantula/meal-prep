@@ -17,23 +17,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
 import dev.mealprep.app.core.ShareInput
 import dev.mealprep.app.ui.camera.PageStrip
 import dev.mealprep.app.ui.common.MessageText
-import dev.mealprep.app.ui.common.WeekPicker
 import dev.mealprep.app.ui.common.graphViewModel
-import java.time.LocalDate
 
 @Composable
 fun ShareContent(
-    state: ShareState, onSelect: (LocalDate) -> Unit, onConfirm: () -> Unit, onCancel: () -> Unit, onSetup: () -> Unit,
+    state: ShareState, onConfirm: () -> Unit, onCancel: () -> Unit, onSetup: () -> Unit,
     onTitle: (String) -> Unit = {}, onMove: (Int, Int) -> Unit = { _, _ -> }, onRemove: (Int) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(if (state.isPhotos) "Add a cookbook recipe" else "Add a recipe", style = MaterialTheme.typography.titleLarge)
+        Text(if (state.isPhotos) "Save a cookbook recipe" else "Save a recipe", style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.semantics { heading() })
         (state.input as? ShareInput.NytLink)?.let { Text("NYT Cooking · ${it.url.substringAfterLast('/')}") }
         if (!state.configured) {
             Text("Connect to the meal-prep server first.")
@@ -54,9 +55,8 @@ fun ShareContent(
         }
         MessageText(state.message)
         if (state.input is ShareInput.NytLink || (state.isPhotos && state.pages.pages.isNotEmpty())) {
-            Text("Which week is it for?", style = MaterialTheme.typography.titleMedium)
-            WeekPicker(state.options, state.selected, onSelect)
-            Button(onClick = onConfirm, enabled = state.canConfirm) { Text(if (state.isPhotos) "Read recipe" else "Add to week") }
+            Text("It goes into Recipes. Add it to a week from there when you plan.", style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = onConfirm, enabled = state.canConfirm, modifier = Modifier.fillMaxWidth()) { Text(SAVE) }
             if (state.isPhotos) Text("Reading pages takes about a minute. You can leave the app; it will let you know.",
                 style = MaterialTheme.typography.bodySmall)
         }
@@ -64,12 +64,14 @@ fun ShareContent(
     }
 }
 
+const val SAVE = "Save to Recipes"
+
 @Composable
-fun ShareScreen(graph: AppGraph, onQueued: (LocalDate) -> Unit, onCancel: () -> Unit, onSetup: () -> Unit) {
+fun ShareScreen(graph: AppGraph, onQueued: () -> Unit, onCancel: () -> Unit, onSetup: () -> Unit) {
     val vm = graphViewModel { g -> ShareViewModel(g.repo, g.imports, g.pages, g.copyPage, { g.settings.value.configured }) }
     val pending by graph.pendingShare.collectAsStateWithLifecycle()
     LaunchedEffect(pending) { pending?.let { vm.start(it); graph.pendingShare.value = null } }
     val state by vm.state.collectAsStateWithLifecycle()
-    LaunchedEffect(state.queued) { if (state.queued) onQueued(state.selected!!) }
-    ShareContent(state, vm::select, { vm.confirm() }, onCancel, onSetup, vm::setTitle, vm::movePage, vm::removePage)
+    LaunchedEffect(state.queued) { if (state.queued) onQueued() }
+    ShareContent(state, { vm.confirm() }, onCancel, onSetup, vm::setTitle, vm::movePage, vm::removePage)
 }

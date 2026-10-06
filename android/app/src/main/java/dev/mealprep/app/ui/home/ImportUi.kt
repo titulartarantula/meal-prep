@@ -20,9 +20,10 @@ sealed interface ImportUi {
     data class Waiting(override val id: UUID) : ImportUi
     /** [retrySafe] false = the request may have reached the server (timed out), so "Try again" is not offered. */
     data class Failed(override val id: UUID, val message: String, val retrySafe: Boolean = false, val kind: String = ImportWorker.LINK) : ImportUi
+    /** Saved to Recipes. [week] is set only for jobs queued by 0.4.1 and earlier, which also added it to a week. */
     data class Done(
         override val id: UUID, val recipeId: Int, val title: String, val existing: Boolean, val ratingLine: String?,
-        val missingLine: Int, val missingPage: Int, val week: LocalDate, val missingText: String? = null,
+        val missingLine: Int, val missingPage: Int, val week: LocalDate? = null, val missingText: String? = null,
     ) : ImportUi {
         /** "Add a photo of p.191?" — the line whose page isn't attached, or null. */
         val ref: RefPrompt? get() = if (missingLine >= 0) RefPrompt(recipeId, missingLine, missingText ?: "page $missingPage", missingPage) else null
@@ -44,10 +45,11 @@ fun importUi(jobs: List<ImportJob>, hidden: Set<UUID>): List<ImportUi> = jobs.fi
             val page = o.getInt(ImportWorker.OUT_MISSING_PAGE, 0)
             ImportUi.PageAdded(j.id, id, o.getString(ImportWorker.OUT_TITLE) ?: "the recipe",
                 if (line >= 0) RefPrompt(id, line, o.getString(ImportWorker.OUT_MISSING_TEXT) ?: "page $page", page) else null)
-        } else o.getString(ImportWorker.OUT_WEEK)?.let { week ->
-            ImportUi.Done(j.id, o.getInt(ImportWorker.OUT_RECIPE_ID, 0), o.getString(ImportWorker.OUT_TITLE) ?: "Recipe",
+        } else o.getInt(ImportWorker.OUT_RECIPE_ID, 0).takeIf { it > 0 }?.let { recipeId ->
+            ImportUi.Done(j.id, recipeId, o.getString(ImportWorker.OUT_TITLE) ?: "Recipe",
                 o.getBoolean(ImportWorker.OUT_EXISTING, false), o.getString(ImportWorker.OUT_RATING),
-                o.getInt(ImportWorker.OUT_MISSING_LINE, -1), o.getInt(ImportWorker.OUT_MISSING_PAGE, 0), LocalDate.parse(week),
+                o.getInt(ImportWorker.OUT_MISSING_LINE, -1), o.getInt(ImportWorker.OUT_MISSING_PAGE, 0),
+                o.getString(ImportWorker.OUT_WEEK)?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
                 o.getString(ImportWorker.OUT_MISSING_TEXT))
         }
         WorkInfo.State.CANCELLED -> null
@@ -60,6 +62,9 @@ fun readingText(kind: String): String = when (kind) {
     ImportWorker.PAGES -> "Reading the referenced page…"
     else -> "Reading recipe…"
 }
+
+/** "Added Chili to Recipes" / "Already in your Recipes: Chili" (card and notification). */
+fun doneTitle(title: String, existing: Boolean) = if (existing) "Already in your Recipes: $title" else "Added $title to Recipes"
 
 /** Where "Add photo of p.N" opens the camera. */
 fun refRoute(p: RefPrompt) = dev.mealprep.app.ui.nav.CameraRoute("ref", p.recipeId, p.line, p.page)

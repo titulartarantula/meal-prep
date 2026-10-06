@@ -19,10 +19,12 @@ class NavTest {
         assertEquals(DraftRoute(7), Nav.parse(Nav.draft(7)))
         assertEquals(PrepRoute("2026-10-11"), Nav.parse(Nav.prep(wk)))
         assertEquals(ListRoute(""), Nav.parse(Nav.list()))
+        assertEquals(RecipeRoute(4), Nav.parse(Nav.recipe(4)))
+        assertEquals(RecipeRoute(4, addToWeek = true), Nav.parse(Nav.recipe(4, addToWeek = true)))
     }
 
     @Test fun `the overflow menu keeps the extras, the bottom bar the main screens`() {
-        assertEquals(listOf("Snap a cookbook recipe" to CameraRoute(), "Staples" to StaplesRoute, "Settings" to SettingsRoute), mainMenu())
+        assertEquals(listOf("Staples" to StaplesRoute, "Settings" to SettingsRoute), mainMenu())   // adding recipes is on Recipes
         assertEquals(listOf("This week", "Shopping list", "Recipes"), Tab.entries.map { it.label })
         assertEquals(listOf(HomeRoute(), ListRoute(""), LibraryRoute), Tab.entries.map { it.route })
     }
@@ -31,14 +33,12 @@ class NavTest {
         assertNull(Nav.parse(null)); assertNull(Nav.parse("card/x")); assertNull(Nav.parse("nope/1"))
     }
 
-    @Test fun `context buttons without a screen yet say so`() {
+    @Test fun `context buttons open their screen, an empty week the Recipes tab`() {
         val wk = LocalDate.parse("2026-10-11")
         assertEquals(ListRoute("2026-10-11"), contextRoute(ContextAction.BuildCart(wk)))
-        assertNull(contextToast(ContextAction.BuildCart(wk)))
-        assertEquals("Share a recipe from NYT Cooking or a photo of a cookbook page, or use Menu → Snap a cookbook recipe.",
-            contextToast(ContextAction.AddRecipes))
-        assertNull(contextToast(ContextAction.AllSet))
-        assertNull(contextToast(ContextAction.StartPrep(wk)))   // has a route: navigating handles it
+        assertEquals(LibraryRoute, contextRoute(ContextAction.AddRecipes))
+        assertEquals("Add recipes from Recipes", ContextAction.AddRecipes.label)
+        assertNull(contextRoute(ContextAction.AllSet))
     }
 
     @Test fun `camera titles say what to photograph`() {

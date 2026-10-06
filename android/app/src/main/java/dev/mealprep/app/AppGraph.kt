@@ -50,6 +50,8 @@ class AppGraph(val context: Context) {
     }
     /** A share that arrived (MainActivity) and is waiting for the Share screen. */
     val pendingShare = MutableStateFlow<ShareInput?>(null)
+    /** Import cards dismissed this run (This week and Recipes both show the cards). */
+    val hiddenImports = MutableStateFlow<Set<java.util.UUID>>(emptySet())
 
     fun workerFactory(): WorkerFactory = MealPrepWorkerFactory(this)
 }

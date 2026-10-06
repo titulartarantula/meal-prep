@@ -78,10 +78,17 @@ class AppLaunchTest {
             compose.onNodeWithText("Shopping for:").assertExists()
             compose.onNode(hasText("Recipes") and isSelectable()).performClick()
             compose.onNode(hasText("Recipes") and isSelectable()).assertIsSelected()
+            compose.onNodeWithText("Add recipe").performClick()
+            compose.onNodeWithText("Scan with camera").assertExists()
+            compose.onNodeWithText("Choose photos").assertExists()
+            compose.onNodeWithText("Paste an NYT link").performClick()
+            compose.onNodeWithText("NYT Cooking link").assertExists()
+            compose.onNodeWithText("Cancel").performClick()
             compose.onNode(hasText("This week") and isSelectable()).performClick()
             compose.onNodeWithText("Shopping for:").assertDoesNotExist()
             compose.onNodeWithContentDescription("More options").performClick()
             compose.onNodeWithText("Staples").assertExists()
+            compose.onNodeWithText("Snap a cookbook recipe").assertDoesNotExist()      // adding lives on Recipes
             compose.onNodeWithText("Shopping list", useUnmergedTree = true).assertExists()   // the tab, not a menu item
         }
     }
@@ -98,8 +105,10 @@ class AppLaunchTest {
     @Test fun `a shared NYT link reaches the Share screen`() {
         configure()
         ActivityScenario.launch<MainActivity>(shareIntent()).use {
-            compose.onNodeWithText("Add a recipe").assertExists()
+            compose.onNodeWithText("Save a recipe").assertExists()
             compose.onNodeWithText("NYT Cooking · 1015819-chili").assertExists()
+            compose.onNodeWithText("Save to Recipes").assertExists()
+            compose.onNodeWithText("Which week is it for?").assertDoesNotExist()
         }
     }
 }

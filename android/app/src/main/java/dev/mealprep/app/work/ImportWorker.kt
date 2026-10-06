@@ -81,18 +81,19 @@ class ImportWorker(
         } catch (e: IllegalStateException) {
             // Refused (e.g. ForegroundServiceStartNotAllowedException is an IllegalStateException): carry on unannounced.
         }
-        val week = runCatching { LocalDate.parse(inputData.getString(WEEK)) }.getOrNull()
+        // Only jobs queued by 0.4.1 and earlier carry a week; since 0.4.2 imports go to the library only.
+        val week = inputData.getString(WEEK)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         return when (kind) {
             LINK -> {
                 val text = inputData.getString(TEXT)
-                if (text == null || week == null) fail("The shared link was incomplete.", retrySafe = false)
+                if (text == null) fail("The shared link was incomplete.", retrySafe = false)
                 else send { importer.shareLink(text, week) }
             }
             PHOTO -> {
                 val dir = inputData.getString(DIR)?.let(::File)
                 val pages = dir?.let(PageStore::pagesIn).orEmpty()
                 when {
-                    dir == null || week == null -> fail("The photo import was incomplete.", retrySafe = false)
+                    dir == null -> fail("The photo import was incomplete.", retrySafe = false)
                     pages.isEmpty() -> fail(PAGES_GONE, retrySafe = false)
                     // The pages stay on the phone until the server has the recipe, so "Try again" can resend them.
                     else -> send(cleanup = dir) { importer.importPhotos(pages, week, inputData.getString(TITLE)) }
@@ -129,7 +130,7 @@ class ImportWorker(
         }
 
     /** Sends at most once per job: if WorkManager stopped an earlier run mid-request and runs the job again, the
-     *  server may already have added the recipe to the week, so this run reports that instead of sending again. */
+     *  server may already have saved the recipe, so this run reports that instead of sending again. */
     private suspend fun send(cleanup: File? = null, call: suspend () -> ApiResult<ShareResult>): Result =
         sendOnce(cleanup, call) { s -> notifier.imported(s); shareOutput(s) }
 
@@ -147,7 +148,7 @@ class ImportWorker(
     }
 
     /** Only "couldn't connect" is retried: that request never reached the server. A timeout may have succeeded,
-     *  and sending it again would add the recipe (or the week entry) twice. */
+     *  and sending it again would add the recipe twice. */
     private fun retryOrFail(e: ApiError): Result =
         if (e == ApiError.Unreachable && runAttemptCount < MAX_ATTEMPTS - 1) Result.retry()
         else fail(importMessage(e, kind), retrySafe = e != ApiError.TimedOut && e !is ApiError.Other && !alreadyAttached(e, kind))
@@ -160,8 +161,8 @@ class ImportWorker(
     private fun shareOutput(s: ShareResult): Data {
         val missing = s.recipe.firstMissingRef()
         return workDataOf(
-            OUT_RECIPE_ID to s.recipe.id, OUT_ENTRY_ID to s.entry.id, OUT_TITLE to s.recipe.title,
-            OUT_EXISTING to s.existing, OUT_WEEK to s.entry.week, OUT_RATING to RatingText.summary(s.recipe.ratings),
+            OUT_RECIPE_ID to s.recipe.id, OUT_ENTRY_ID to (s.entry?.id ?: -1), OUT_TITLE to s.recipe.title,
+            OUT_EXISTING to s.existing, OUT_WEEK to s.entry?.week, OUT_RATING to RatingText.summary(s.recipe.ratings),
             OUT_MISSING_LINE to (missing?.first ?: -1), OUT_MISSING_PAGE to (missing?.second ?: 0),
             OUT_MISSING_TEXT to missing?.let { s.recipe.ingredients[it.first].raw },
         )

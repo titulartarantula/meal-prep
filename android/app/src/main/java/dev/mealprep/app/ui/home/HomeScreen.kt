@@ -81,6 +81,7 @@ import dev.mealprep.app.ui.common.OverflowMenu
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.nav.CardRoute
 import dev.mealprep.app.ui.nav.RatingRoute
+import dev.mealprep.app.ui.nav.RecipeRoute
 import dev.mealprep.app.ui.camera.RefPrompt
 import dev.mealprep.app.ui.camera.refPromptText
 import dev.mealprep.app.work.ImportWorker
@@ -92,7 +93,7 @@ private const val BACK = 4   // weeks reachable before this one
 
 @Composable
 fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction) -> Unit, onOpen: (Any) -> Unit, menu: List<Pair<String, Any>>) {
-    val vm = graphViewModel { g -> HomeViewModel(g.repo, g.imports) }
+    val vm = graphViewModel { g -> HomeViewModel(g.repo, g.imports, hidden = g.hiddenImports) }
     var today by remember { mutableStateOf(LocalDate.now()) }
     val current = Weeks.weekStart(today)
     val initial = BACK + (startWeek?.let { Weeks.weeksBetween(today, it) } ?: 0).coerceIn(-BACK, PAGES - BACK - 1)
@@ -145,6 +146,7 @@ private fun AskForNotificationsOnce(graph: AppGraph) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ImportCards(
     imports: List<ImportUi>, onRetry: (java.util.UUID) -> Unit, onDismiss: (java.util.UUID) -> Unit, onOpen: (Any) -> Unit,
@@ -163,18 +165,20 @@ fun ImportCards(
                         Text(if (i.kind == ImportWorker.PAGES) "Couldn't add the page" else "Couldn't add the recipe", fontWeight = FontWeight.Bold)
                         Text(i.message)
                         if (!i.retrySafe) Text(if (i.kind == ImportWorker.PAGES) "Check the shopping list for its ingredients before adding it again."
-                            else "This may have been added already — check the week before trying again.")
+                            else "It may have been saved already — check Recipes before trying again.")
                         Row {
                             if (i.retrySafe) TextButton({ onRetry(i.id) }) { Text("Try again") }
                             TextButton({ onDismiss(i.id) }) { Text("Dismiss") }
                         }
                     }
                     is ImportUi.Done -> {
-                        Text(if (i.existing) "Already in your library: ${i.title}" else "Added ${i.title}", fontWeight = FontWeight.Bold)
+                        Text(doneTitle(i.title, i.existing), fontWeight = FontWeight.Bold)
                         i.ratingLine?.let { Text(it) }
-                        Text("Week of ${Weeks.shortDate(i.week)} — it's in the tray until you put it on a night.")
+                        // Imports queued by 0.4.1 and earlier also went into a week.
+                        i.week?.let { Text("Also in the week of ${Weeks.shortDate(it)}, in the tray until you put it on a night.") }
                         i.ref?.let { RefLine(it) }
-                        Row {
+                        FlowRow {
+                            if (i.week == null) TextButton({ onOpen(RecipeRoute(i.recipeId, addToWeek = true)) }) { Text("Add to a week…") }
                             i.ref?.let { r -> TextButton({ onOpen(refRoute(r)) }) { Text("Add photo of p.${r.page}") } }
                             TextButton({ onDismiss(i.id) }) { Text(if (i.ref != null) "Not now" else "OK") }
                         }
@@ -183,7 +187,7 @@ fun ImportCards(
                         Text("Added the page to ${i.title}", fontWeight = FontWeight.Bold)
                         val next = i.next
                         if (next == null) Text("Its ingredients are on the shopping list now.") else RefLine(next)
-                        Row {
+                        FlowRow {
                             next?.let { r -> TextButton({ onOpen(refRoute(r)) }) { Text("Add photo of p.${r.page}") } }
                             TextButton({ onDismiss(i.id) }) { Text(if (next != null) "Not now" else "OK") }
                         }
@@ -221,14 +225,19 @@ fun WeekContent(
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { OfflineBanner(ui.offlineSince); MessageText(ui.error) }
         item { StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } }) }
-        item { Button(onClick = { onAction(ui.action) }, modifier = Modifier.fillMaxWidth()) { Text(ui.action.label) } }
+        when {
+            ui.loading && ui.view == null -> {}   // the first load: no button until we know what the week needs
+            ui.action == ContextAction.AddRecipes -> item { EmptyWeek { onAction(ui.action) } }
+            else -> item { Button(onClick = { onAction(ui.action) }, modifier = Modifier.fillMaxWidth()) { Text(ui.action.label) } }
+        }
         val view = ui.view
         if (view != null) {
             item {
                 Column(Modifier.fillMaxWidth().dropZone(drag, Slot.TRAY, drop).padding(4.dp)) {
                     Text("Not on a night yet", style = MaterialTheme.typography.titleSmall)
                     DropHint(drag, Slot.TRAY, "Drop here to take it off its night")
-                    if (view.unplaced.isEmpty()) Text("Shared recipes land here.", style = MaterialTheme.typography.bodySmall)
+                    if (view.unplaced.isEmpty()) Text("Recipes you add to this week wait here until you put them on a night.",
+                        style = MaterialTheme.typography.bodySmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { view.unplaced.forEach { EntryChip(it) { sheetFor = it } } }
                 }
             }
@@ -261,6 +270,19 @@ fun WeekContent(
             onOpen = { r -> sheetFor = null; onOpen(r) })
     }
 }
+
+/** Nothing planned: weekly planning picks recipes from the library (Recipes tab). */
+@Composable
+private fun EmptyWeek(onRecipes: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(EMPTY_WEEK, style = MaterialTheme.typography.bodyLarge)
+            Button(onClick = onRecipes, modifier = Modifier.fillMaxWidth()) { Text(ContextAction.AddRecipes.label) }
+        }
+    }
+}
+
+const val EMPTY_WEEK = "Nothing planned yet — add recipes from your Recipes."
 
 @Composable
 private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?) {

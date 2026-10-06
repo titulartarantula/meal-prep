@@ -39,7 +39,8 @@ import kotlinx.serialization.Serializable
 )
 
 @Serializable data class ShareIn(val text: String, val week: String? = null)
-@Serializable data class ShareResult(val recipe: Recipe, val entry: PlanEntry, val existing: Boolean = false)
+/** [entry] is null when the recipe was only saved to the library (no week sent; the app's way since 0.4.2). */
+@Serializable data class ShareResult(val recipe: Recipe, val entry: PlanEntry? = null, val existing: Boolean = false)
 @Serializable data class WeekSummary(val week: String, val entries: Int = 0, val carted: Boolean = false)
 @Serializable data class EntryIn(val recipeId: Int)
 @Serializable data class RatingIn(val family: Int, val company: String? = null, val note: String? = null)

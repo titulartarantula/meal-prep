@@ -37,7 +37,7 @@ class Notifier(private val context: Context) {
         message, when {
             retrySafe -> "Open Meal Prep to try again."
             kind == ImportWorker.PAGES -> "Check the shopping list for its ingredients before adding it again."
-            else -> "It may have been added already — check the week."
+            else -> "It may have been saved already — check Recipes."
         })
 
     private val nm = NotificationManagerCompat.from(context)
@@ -56,17 +56,23 @@ class Notifier(private val context: Context) {
         ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
     )
 
+    /** Saved to Recipes: tap opens the recipe (or the camera for a missing page); "Add to a week…" opens the week
+     *  picker. A job from 0.4.1 and earlier that also went into a week opens that week instead. */
     fun imported(r: ShareResult) {
-        val week = LocalDate.parse(r.entry.week)
+        val week = r.entry?.let { LocalDate.parse(it.week) }
         val missing = r.recipe.firstMissingRef()
-        val title = if (r.existing) "Already in your library: ${r.recipe.title}" else "Added ${r.recipe.title}"
         val text = listOfNotNull(
-            "Week of ${Weeks.shortDate(week)}",
+            week?.let { "Week of ${Weeks.shortDate(it)}" },
             RatingText.summary(r.recipe.ratings),
             missing?.let { (_, page) -> "Uses page $page — tap to add a photo of it" },
-        ).joinToString(" · ")
-        post("import-${r.entry.id}", CH_JOBS, title, text,
-            if (missing != null) Nav.ref(r.recipe.id, missing.first, missing.second) else Nav.home(week))
+        ).joinToString(" · ").ifEmpty { "It's in Recipes. Add it to a week when you plan." }
+        val open = when {
+            missing != null -> Nav.ref(r.recipe.id, missing.first, missing.second)
+            week != null -> Nav.home(week)
+            else -> Nav.recipe(r.recipe.id)
+        }
+        post("import-${r.recipe.id}", CH_JOBS, dev.mealprep.app.ui.home.doneTitle(r.recipe.title, r.existing), text, open,
+            actions = if (week == null) listOf("Add to a week…" to Nav.recipe(r.recipe.id, addToWeek = true)) else emptyList())
     }
 
     /** A referenced page was read and its ingredients added; offers the next missing page, if any. */
@@ -104,11 +110,14 @@ class Notifier(private val context: Context) {
     fun staplesReminder() = post("staples-reminder", CH_REMINDERS, "Time to check the staples",
         "Untick what you don't need this week, then build the cart.", Nav.list())
 
+    /** [actions]: extra buttons, label → deep link. */
     @SuppressLint("MissingPermission")
-    fun post(tag: String, channel: String, title: String, text: String, nav: String?) {
+    fun post(tag: String, channel: String, title: String, text: String, nav: String?, actions: List<Pair<String, String>> = emptyList()) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val id = tag.hashCode()
-        nm.notify(id, builder(channel, title, text).setContentIntent(openIntent(nav, id)).setAutoCancel(true).build())
+        val b = builder(channel, title, text).setContentIntent(openIntent(nav, id)).setAutoCancel(true)
+        actions.forEach { (label, link) -> b.addAction(0, label, openIntent(link, "$tag/$label".hashCode())) }
+        nm.notify(id, b.build())
     }
 
     private fun builder(channel: String, title: String, text: String) = NotificationCompat.Builder(context, channel)

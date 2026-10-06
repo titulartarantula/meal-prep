@@ -17,7 +17,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class RatingRoute(val entryId: Int, val week: String)
 @Serializable object StaplesRoute
 @Serializable object LibraryRoute
-@Serializable data class RecipeRoute(val id: Int)
+/** [addToWeek]: open with the "Add to a week" picker showing (from an import card or notification). */
+@Serializable data class RecipeRoute(val id: Int, val addToWeek: Boolean = false)
 
 /** Deep links carried in notification intents (extra "nav"). */
 object Nav {
@@ -29,6 +30,7 @@ object Nav {
     fun draft(id: Int) = "draft/$id"
     fun prep(week: LocalDate) = "prep/$week"
     fun list() = "list"
+    fun recipe(id: Int, addToWeek: Boolean = false) = "recipe/$id" + if (addToWeek) "/week" else ""
 
     fun parse(s: String?): Any? {
         val p = s?.split("/") ?: return null
@@ -41,6 +43,7 @@ object Nav {
                 "draft" -> DraftRoute(p[1].toInt())
                 "prep" -> PrepRoute(LocalDate.parse(p[1]).toString())
                 "list" -> ListRoute("")
+                "recipe" -> RecipeRoute(p[1].toInt(), p.getOrNull(2) == "week")
                 else -> null
             }
         }.getOrNull()

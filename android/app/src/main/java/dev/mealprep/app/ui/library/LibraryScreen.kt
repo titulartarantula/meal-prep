@@ -1,6 +1,12 @@
 package dev.mealprep.app.ui.library
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +26,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -29,21 +40,50 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.R
 import dev.mealprep.app.core.RatingText
 import dev.mealprep.app.data.api.Recipe
+import dev.mealprep.app.ui.camera.PagesState
 import dev.mealprep.app.ui.camera.refPrompt
+import dev.mealprep.app.ui.home.ImportCards
+import dev.mealprep.app.ui.nav.CameraRoute
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.TabHeader
 import dev.mealprep.app.ui.common.graphViewModel
 import java.time.LocalDate
 
+/**
+ * The Recipes tab: the library, and where recipes come in ("Add recipe": camera, photos, an NYT link; shares from
+ * other apps land here too). [onPhotos] gets the picked images, [onLink] a pasted NYT link (saved in the background).
+ */
 @Composable
-fun LibraryScreen(menu: List<Pair<String, Any>>, onOpen: (Any) -> Unit, onRecipe: (Int) -> Unit) {
-    val vm = graphViewModel { g -> LibraryViewModel(g.repo) }
+fun LibraryScreen(
+    menu: List<Pair<String, Any>>, onOpen: (Any) -> Unit, onRecipe: (Int) -> Unit,
+    onPhotos: (List<Uri>) -> Unit, onLink: (String) -> Unit,
+) {
+    val vm = graphViewModel { g -> LibraryViewModel(g.repo, g.imports, hidden = g.hiddenImports) }
     val state by vm.state.collectAsStateWithLifecycle()
+    val imports by vm.imports.collectAsStateWithLifecycle()
     LifecycleResumeEffect(Unit) { vm.onResume(); onPauseOrDispose { } }
-    Column(Modifier.fillMaxSize()) {
-        TabHeader("Recipes", menu, onOpen)
-        LibraryContent(state, vm::search, vm::sort, onRecipe, vm::load)
+    val ctx = LocalContext.current
+    var paste by remember { mutableStateOf<String?>(null) }   // non-null: the dialog is open (value = copied link or "")
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(PagesState.MAX_PAGES)) { uris ->
+        if (uris.isNotEmpty()) onPhotos(uris)
+    }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            TabHeader("Recipes", menu, onOpen)
+            ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
+            LibraryContent(state, vm::search, vm::sort, onRecipe, vm::load)
+        }
+        AddRecipeButton(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp), onPick = { w ->
+            when (w) {
+                AddWay.CAMERA -> onOpen(CameraRoute())
+                AddWay.PHOTOS -> picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                AddWay.LINK -> paste = clipboardNytLink(ctx) ?: ""
+            }
+        })
+    }
+    paste?.let { copied ->
+        PasteLinkDialog(copied.ifEmpty { null }, onSave = { url -> paste = null; onLink(url) }, onDismiss = { paste = null })
     }
 }
 
@@ -64,11 +104,12 @@ fun LibraryContent(
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (!state.loading && state.all.isEmpty()) {
             if (state.error != null) TextButton(onRetry) { Text("Try again") }
-            else Text("No recipes yet. Share one from NYT Cooking, or snap a cookbook page (⋮ menu).", Modifier.padding(vertical = 8.dp))
+            else Text(EMPTY_LIBRARY, Modifier.padding(vertical = 8.dp))
         } else if (state.shown.isEmpty() && state.query.isNotBlank()) {
             Text("No recipe titles match “${state.query.trim()}”.", Modifier.padding(vertical = 8.dp))
         }
-        LazyColumn(Modifier.weight(1f)) {
+        // Bottom padding: the last row can scroll clear of the Add recipe button.
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 88.dp)) {
             items(state.shown, key = { it.id }) { r ->
                 RecipeRow(r, today) { onRecipe(r.id) }
                 HorizontalDivider()
@@ -76,6 +117,9 @@ fun LibraryContent(
         }
     }
 }
+
+const val EMPTY_LIBRARY = "No recipes yet. Tap Add recipe to scan a cookbook page, choose photos or paste an NYT " +
+    "Cooking link — or share a recipe from the NYT Cooking app."
 
 @Composable
 private fun RecipeRow(r: Recipe, today: LocalDate, onClick: () -> Unit) {

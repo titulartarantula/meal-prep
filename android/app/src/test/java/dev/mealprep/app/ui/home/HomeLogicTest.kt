@@ -76,6 +76,16 @@ class HomeLogicTest {
         ), ui)
     }
 
+    @Test fun `a recipe saved to the library only has no week`() {
+        val c = UUID.randomUUID()
+        val out = workDataOf(ImportWorker.OUT_RECIPE_ID to 4, ImportWorker.OUT_TITLE to "Lentil Soup", ImportWorker.OUT_ENTRY_ID to -1,
+            ImportWorker.OUT_MISSING_LINE to -1)
+        val done = importUi(listOf(ImportJob(c, WorkInfo.State.SUCCEEDED, out)), emptySet()).single() as ImportUi.Done
+        assertEquals(ImportUi.Done(c, 4, "Lentil Soup", false, null, -1, 0, null), done)
+        assertEquals("Added Lentil Soup to Recipes", doneTitle(done.title, done.existing))
+        assertEquals("Already in your Recipes: Lentil Soup", doneTitle(done.title, true))
+    }
+
     @Test fun `an import waiting in retry backoff says so instead of spinning`() {
         val a = UUID.randomUUID(); val b = UUID.randomUUID(); val c = UUID.randomUUID()
         val ui = importUi(listOf(

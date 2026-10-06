@@ -137,7 +137,7 @@ class HomeViewModelTest {
     @Test fun `Cancel on an import waiting for the home network cancels its work`() = runTest {
         val wm = WorkManager.getInstance(env.context)
         val queue = ImportQueue(wm)
-        val id = queue.enqueueLink("https://cooking.nytimes.com/recipes/1-x", wk)   // test WorkManager: network never met
+        val id = queue.enqueueLink("https://cooking.nytimes.com/recipes/1-x")   // test WorkManager: network never met
         val v = HomeViewModel(env.repo, queue, today = { LocalDate.parse("2026-10-07") })
         v.cancelImport(id)
         assertEquals(WorkInfo.State.CANCELLED, wm.getWorkInfoById(id).get()!!.state)

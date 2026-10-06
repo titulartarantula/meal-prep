@@ -11,7 +11,16 @@ import dev.mealprep.app.ui.common.offlineSince
 import java.text.Normalizer
 import java.time.Instant
 import java.time.LocalDate
+import dev.mealprep.app.ui.home.ImportFeed
+import dev.mealprep.app.ui.home.ImportJob
+import dev.mealprep.app.ui.home.ImportUi
+import dev.mealprep.app.ui.home.importJobs
+import dev.mealprep.app.work.ImportQueue
+import java.util.UUID
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -49,10 +58,23 @@ fun plannedText(weeks: List<String>, today: LocalDate): String? {
     return if (labels.isEmpty()) null else "On the plan: " + labels.joinToString(", ")
 }
 
-class LibraryViewModel(private val repo: Repository) : ViewModel() {
+class LibraryViewModel(
+    private val repo: Repository,
+    queue: ImportQueue? = null,
+    jobs: Flow<List<ImportJob>> = queue?.let(::importJobs) ?: emptyFlow(),
+    /** Dismissed import cards, shared with This week (AppGraph.hiddenImports). */
+    hidden: MutableStateFlow<Set<UUID>> = MutableStateFlow(emptySet()),
+) : ViewModel() {
     private val _state = MutableStateFlow(LibraryState())
     val state = _state.asStateFlow()
     private var loadJob: Job? = null
+
+    // A recipe saved in the background (shared, scanned, pasted link) or a page added: show it.
+    private val feed = ImportFeed(repo, queue, viewModelScope, jobs, hidden) { load() }
+    val imports: StateFlow<List<ImportUi>> = feed.cards
+    fun dismissImport(id: UUID) = feed.dismiss(id)
+    fun cancelImport(id: UUID) = feed.cancel(id)
+    fun retryImport(id: UUID) = feed.retry(id)
 
     init { load() }
 

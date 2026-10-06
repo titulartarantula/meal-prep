@@ -31,7 +31,8 @@ fun statusStrip(entries: List<PlanEntry>, carted: Boolean, prep: PrepPlan?) =
 /** The one context button: Build cart → Start prep → Tonight: X. */
 sealed interface ContextAction {
     val label: String
-    data object AddRecipes : ContextAction { override val label = "Share a recipe to start" }
+    /** Nothing in the week: recipes are picked from the library (the Recipes tab). */
+    data object AddRecipes : ContextAction { override val label = "Add recipes from Recipes" }
     data class BuildCart(val week: LocalDate) : ContextAction { override val label get() = "Build cart" }
     data class ReviewCart(val draftId: Int, val building: Boolean) : ContextAction {
         override val label get() = if (building) "Cart building…" else "Review cart"

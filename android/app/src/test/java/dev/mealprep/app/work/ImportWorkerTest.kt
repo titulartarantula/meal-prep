@@ -38,7 +38,9 @@ import org.robolectric.Shadows.shadowOf
 class ImportWorkerTest {
     private val env = TestEnv()
     @get:Rule val tmp = TemporaryFolder()
-    private val link = ImportQueue.linkInput("https://cooking.nytimes.com/recipes/1-x", LocalDate.parse("2026-10-11"))
+    private val link = ImportQueue.linkInput("https://cooking.nytimes.com/recipes/1-x")
+    /** A job queued by 0.4.1 or earlier: it still carries the week the recipe went into. */
+    private val legacyLink = ImportQueue.linkInput("https://cooking.nytimes.com/recipes/1-x", LocalDate.parse("2026-10-11"))
 
     @Before fun setUp() {
         shadowOf(env.context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
@@ -58,9 +60,21 @@ class ImportWorkerTest {
     private fun notifications() =
         shadowOf(env.context.getSystemService(NotificationManager::class.java)).allNotifications
 
-    @Test fun `re-shared recipe reports the existing rating and the missing page`() = runTest {
+    @Test fun `a shared link is saved to Recipes only, with an Add to a week action`() = runTest {
+        env.on("POST", "/recipes/share", body = fixture("share_result_library.json"))
+        val out = (worker(link).doWork() as Result.Success).outputData
+        assertEquals(listOf("""{"text":"https://cooking.nytimes.com/recipes/1-x"}"""), env.bodies("POST", "/recipes/share"))
+        assertEquals(4, out.getInt(ImportWorker.OUT_RECIPE_ID, 0))
+        assertEquals(-1, out.getInt(ImportWorker.OUT_ENTRY_ID, 0))
+        assertEquals(null, out.getString(ImportWorker.OUT_WEEK))
+        val n = notifications().single()
+        assertEquals("Added Weeknight Lentil Soup to Recipes", n.extras.getString(Notification.EXTRA_TITLE))
+        assertEquals(listOf("Add to a week…"), n.actions.map { it.title.toString() })
+    }
+
+    @Test fun `re-shared recipe reports the existing rating and the missing page (an older job that carries a week)`() = runTest {
         env.on("POST", "/recipes/share", body = fixture("share_result.json"))
-        val r = worker(link).doWork()
+        val r = worker(legacyLink).doWork()
         val out = (r as Result.Success).outputData
         assertEquals(3, out.getInt(ImportWorker.OUT_RECIPE_ID, 0))
         assertEquals(12, out.getInt(ImportWorker.OUT_ENTRY_ID, 0))
@@ -71,7 +85,8 @@ class ImportWorkerTest {
         assertEquals(listOf("""{"text":"https://cooking.nytimes.com/recipes/1-x","week":"2026-10-11"}"""),
             env.bodies("POST", "/recipes/share"))
         val n = notifications().single()
-        assertEquals("Already in your library: Thai Green Curry Wings", n.extras.getString(Notification.EXTRA_TITLE))
+        assertEquals("Already in your Recipes: Thai Green Curry Wings", n.extras.getString(Notification.EXTRA_TITLE))
+        assertTrue(n.actions.isNullOrEmpty())                    // it is in a week already
         val text = n.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
         assertTrue(text.contains("Family 4.5/5")); assertTrue(text.contains("page 191"))
     }
@@ -112,7 +127,7 @@ class ImportWorkerTest {
         env.onSlow("POST", "/recipes/share", seconds = 4)
         assertTrue(worker(link).doWork() is Result.Failure)
         val text = notificationText()
-        assertTrue(text, text.endsWith("check again in a minute. It may have been added already — check the week."))
+        assertTrue(text, text.endsWith("check again in a minute. It may have been saved already — check Recipes."))
         assertFalse(text.contains("try again"))
     }
 
@@ -127,7 +142,7 @@ class ImportWorkerTest {
         val again = worker(link, attempt = 1, id = id).doWork() as Result.Failure
         assertEquals(1, env.count("POST", "/recipes/share"))
         assertFalse(again.outputData.getBoolean(ImportWorker.RETRY_SAFE, true))
-        assertTrue(notificationText().contains("It may have been added already — check the week."))
+        assertTrue(notificationText().contains("It may have been saved already — check Recipes."))
     }
 
     @Test fun `an unreachable attempt is still re-sent on retry`() = runTest {
@@ -153,19 +168,20 @@ class ImportWorkerTest {
     @Test fun `photo pages upload in order and are deleted after success`() = runTest {
         env.on("POST", "/recipes/photo", body = fixture("share_result.json"))
         val dir = batch("batch", "first", "second")
-        val r = worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), null)).doWork()
+        val r = worker(ImportQueue.photoInput(dir, null)).doWork()
         assertTrue(r is Result.Success)
         assertEquals(191, (r as Result.Success).outputData.getInt(ImportWorker.OUT_MISSING_PAGE, 0))
         val body = env.bodies("POST", "/recipes/photo").single()
         assertTrue(body.indexOf("first") in 0 until body.indexOf("second"))
         assertFalse(body.contains("name=\"title\""))            // no title: the part is left out
+        assertFalse(body.contains("name=\"week\""))             // library only
         assertFalse(dir.exists())
     }
 
     @Test fun `unreadable photo keeps the pages for Try again`() = runTest {
         env.on("POST", "/recipes/photo", code = 502, body = """{"detail":"couldn't read recipe: AIError: no ingredients"}""")
         val dir = batch("batch2", "x")
-        val r = worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), "Lemon Bars")).doWork() as Result.Failure
+        val r = worker(ImportQueue.photoInput(dir, "Lemon Bars")).doWork() as Result.Failure
         assertEquals(ImportWorker.PHOTO_UNREADABLE, r.outputData.getString(ImportWorker.ERROR))
         assertTrue(r.outputData.getBoolean(ImportWorker.RETRY_SAFE, false))     // the server saved nothing
         assertEquals(dir.path, r.outputData.getString(ImportWorker.DIR))         // "Try again" re-sends the same pages
@@ -176,17 +192,17 @@ class ImportWorkerTest {
         env.onSlow("POST", "/recipes/photo", seconds = 4)     // TestEnv's long-call read timeout is 2 s
         val dir = batch("batch3", "x")
         val id = UUID.randomUUID()
-        val r = worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), null), id = id).doWork() as Result.Failure
+        val r = worker(ImportQueue.photoInput(dir, null), id = id).doWork() as Result.Failure
         assertFalse(r.outputData.getBoolean(ImportWorker.RETRY_SAFE, true))
         assertTrue(File(dir, "page01.jpg").exists())
         // WorkManager running the same job again must not post the photos twice.
-        assertTrue(worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), null), attempt = 1, id = id).doWork() is Result.Failure)
+        assertTrue(worker(ImportQueue.photoInput(dir, null), attempt = 1, id = id).doWork() is Result.Failure)
         assertEquals(1, env.count("POST", "/recipes/photo"))
     }
 
     @Test fun `photos deleted from under the job fail with a message`() = runTest {
         val dir = tmp.newFolder("empty")
-        val r = worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), null)).doWork() as Result.Failure
+        val r = worker(ImportQueue.photoInput(dir, null)).doWork() as Result.Failure
         assertEquals(ImportWorker.PAGES_GONE, r.outputData.getString(ImportWorker.ERROR))
         assertEquals(0, env.count("POST", "/recipes/photo"))
     }
@@ -194,7 +210,7 @@ class ImportWorkerTest {
     @Test fun `waiting for the home network keeps the pages and retries`() = runTest {
         env.offline = true
         val dir = batch("batch4", "x")
-        assertTrue(worker(ImportQueue.photoInput(dir, LocalDate.parse("2026-10-11"), null)).doWork() is Result.Retry)
+        assertTrue(worker(ImportQueue.photoInput(dir, null)).doWork() is Result.Retry)
         assertTrue(File(dir, "page01.jpg").exists())
     }
 

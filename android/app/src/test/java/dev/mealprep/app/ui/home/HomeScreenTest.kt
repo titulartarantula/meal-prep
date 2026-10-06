@@ -125,6 +125,27 @@ class HomeScreenTest {
         assertEquals(dev.mealprep.app.ui.nav.CameraRoute("ref", 5, 2, 51), opened)
     }
 
+    @Test fun `a recipe saved to Recipes offers Add to a week`() {
+        var opened: Any? = null
+        val done = ImportUi.Done(java.util.UUID.randomUUID(), 4, "Lentil Soup", false, "Family 4/5", -1, 0)
+        compose.setContent { ImportCards(listOf(done), {}, {}, { opened = it }, {}) }
+        compose.onNodeWithText("Added Lentil Soup to Recipes").assertExists()
+        compose.onNodeWithText("Family 4/5").assertExists()
+        compose.onNodeWithText("Add to a week…").performClick()
+        assertEquals(dev.mealprep.app.ui.nav.RecipeRoute(4, addToWeek = true), opened)
+        compose.onNodeWithText("OK").assertExists()
+    }
+
+    @Test fun `an empty week points to Recipes instead of a share hint`() {
+        var action: ContextAction? = null
+        val empty = WeekUi(wk, weekView(wk, emptyList()), statusStrip(emptyList(), false, null), ContextAction.AddRecipes, loading = false)
+        compose.setContent { WeekContent(empty, LocalDate.parse("2026-10-07"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
+        compose.onNodeWithText(EMPTY_WEEK).assertExists()
+        compose.onNodeWithText("Add recipes from Recipes").performClick()
+        assertEquals(ContextAction.AddRecipes, action)
+        compose.onNodeWithText("Recipes you add to this week wait here until you put them on a night.").assertExists()
+    }
+
     @Test fun `a failed page import is worded for a page`() {
         val f = ImportUi.Failed(java.util.UUID.randomUUID(), "That page is already part of the recipe.", false, dev.mealprep.app.work.ImportWorker.PAGES)
         compose.setContent { ImportCards(listOf(f), {}, {}, {}, {}) }

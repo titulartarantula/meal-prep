@@ -7,7 +7,20 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import android.content.ClipData
+import android.content.ClipboardManager
+import androidx.compose.ui.test.performTextInput
+import androidx.work.WorkInfo
+import androidx.work.workDataOf
 import dev.mealprep.app.MainDispatcherRule
+import dev.mealprep.app.ui.home.ImportJob
+import dev.mealprep.app.work.ImportWorker
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import dev.mealprep.app.TestEnv
 import dev.mealprep.app.await
 import dev.mealprep.app.data.Repository
@@ -132,6 +145,44 @@ class LibraryTest {
         compose.onNodeWithText("Fri").performClick()
         compose.onNodeWithText("Add").performClick()
         assertEquals(LocalDate.parse("2026-10-11") to 5, added)
+    }
+
+    @Test fun `paste dialog takes only NYT recipe links and offers the copied one`() {
+        var saved: String? = null
+        compose.setContent { PasteLinkDialog("https://cooking.nytimes.com/recipes/1015819-x", onSave = { saved = it }, onDismiss = {}) }
+        compose.onNodeWithText("Save to Recipes").assertIsNotEnabled()
+        compose.onNodeWithText("NYT Cooking link").performTextInput("https://example.com/soup")
+        compose.onNodeWithText(NOT_NYT_LINK).assertExists()
+        compose.onNodeWithText("Save to Recipes").assertIsNotEnabled()
+        compose.onNodeWithText("Use cooking.nytimes.com/recipes/1015819-x").performClick()
+        compose.onNodeWithText("Save to Recipes").performClick()
+        assertEquals("https://cooking.nytimes.com/recipes/1015819-x", saved)
+    }
+
+    @Test fun `an NYT link on the clipboard is found, anything else is not`() {
+        val cm = env.context.getSystemService(ClipboardManager::class.java)
+        cm.setPrimaryClip(ClipData.newPlainText("x", "Try https://www.cooking.nytimes.com/recipes/1015819-x?smid=ck"))
+        assertEquals("https://cooking.nytimes.com/recipes/1015819-x", clipboardNytLink(env.context))
+        cm.setPrimaryClip(ClipData.newPlainText("x", "https://example.com/soup"))
+        assertNull(clipboardNytLink(env.context))
+    }
+
+    @Test fun `a recipe saved in the background reloads the library`() = runTest {
+        env.on("GET", "/recipes", body = fixture("library.json"))
+        val jobs = MutableStateFlow(emptyList<ImportJob>())
+        val vm = LibraryViewModel(env.repo, jobs = jobs)
+        vm.state.await { !it.loading && it.all.size == 3 }
+        val id = UUID.randomUUID()
+        jobs.value = listOf(ImportJob(id, WorkInfo.State.SUCCEEDED, workDataOf(ImportWorker.OUT_RECIPE_ID to 12, ImportWorker.OUT_TITLE to "Soup")))
+        vm.imports.await { it.size == 1 }
+        withContext(Dispatchers.Default) { withTimeout(5_000) { while (env.count("GET", "/recipes") < 2) delay(10) } }
+        vm.dismissImport(id)
+        vm.imports.await { it.isEmpty() }
+    }
+
+    @Test fun `an empty library says how to add a recipe`() {
+        compose.setContent { LibraryContent(LibraryState(emptyList(), loading = false), {}, {}, onRecipe = {}, onRetry = {}, today = today) }
+        compose.onNodeWithText(EMPTY_LIBRARY).assertExists()
     }
 
     @Test fun `library rows show ratings, planned weeks and a missing page`() {
