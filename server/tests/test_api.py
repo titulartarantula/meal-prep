@@ -395,7 +395,7 @@ def test_draft_accepts_items_omitting_qty_and_unit(conn):
 
 
 def test_stale_cart_fields_and_send_refused(conn, nyt):
-    """Jordan's report: a cart sent, then the week's recipes changed → the week is no longer carted, the old cart is
+    """The reported case: a cart sent, then the week's recipes changed → the week is no longer carted, the old cart is
     stale, a ready draft of the old plan can't be sent, and a new cart for the week wins."""
     pcx = GatePcx(); pcx.gate.set()
     c = client(conn, today=date(2026, 10, 7), pcx=pcx, ai=PickAI())
