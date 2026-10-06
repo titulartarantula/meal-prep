@@ -64,9 +64,34 @@ def test_share_nyt_into_week(conn, nyt):
     assert conn.execute("SELECT ai_provider, source_url FROM recipes").fetchone() == ("fake", "https://cooking.nytimes.com/recipes/1015819-chocolate-chip-cookies")
 
 
-def test_share_without_week_uses_upcoming_sunday(conn, nyt):
-    r = client(conn, today=date(2026, 10, 7)).post("/recipes/share", headers=H, json={"text": NYT})
-    assert r.json()["entry"]["week"] == "2026-10-11"
+def test_share_without_week_saves_to_library_only(conn, nyt):
+    c = client(conn, today=date(2026, 10, 7))
+    r = c.post("/recipes/share", headers=H, json={"text": NYT})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["entry"] is None and body["existing"] is False
+    assert body["recipe"]["title"] == "Best Chocolate Chip Cookies" and body["recipe"]["planned_weeks"] == []
+    assert conn.execute("SELECT count(*) FROM plan").fetchone()[0] == 0
+    assert [x["id"] for x in c.get("/recipes", headers=H).json()] == [body["recipe"]["id"]]
+
+
+def test_reshare_without_week_finds_library_recipe_with_ratings(conn, nyt):
+    c = client(conn, today=date(2026, 10, 14))
+    first = share(c, "2026-10-04").json()                     # an older app adds it to a week
+    c.patch(f"/plan/{first['entry']['id']}", headers=H, json={"day": 2})
+    c.put(f"/plan/{first['entry']['id']}/rating", headers=H, json={"family": 5, "note": "more chips"})
+    again = c.post("/recipes/share", headers=H, json={"text": NYT}).json()
+    assert again["existing"] is True and again["entry"] is None and again["recipe"]["id"] == first["recipe"]["id"]
+    assert again["recipe"]["ratings"]["last_family"] == 5 and again["recipe"]["ratings"]["notes"][0]["note"] == "more chips"
+    assert conn.execute("SELECT count(*) FROM plan").fetchone()[0] == 1   # nothing added
+
+
+def test_reshare_with_week_still_adds_entry(conn, nyt):
+    """Apps up to 0.4.1 always send a week: the recipe still goes into it."""
+    c = client(conn, today=date(2026, 10, 7))
+    c.post("/recipes/share", headers=H, json={"text": NYT})
+    r = share(c, "2026-10-18").json()
+    assert r["existing"] is True and r["entry"]["week"] == "2026-10-18" and r["recipe"]["planned_weeks"] == ["2026-10-18"]
 
 
 def test_default_week():
@@ -138,6 +163,17 @@ def test_photo_pages_passed_in_order(conn):
                files=[("files", ("a.jpg", b"page1", "image/jpeg")), ("files", ("b.jpg", b"page2", "image/jpeg"))])
     assert r.status_code == 200 and seen["order"] == [b"page1", b"page2"]
     assert r.json()["entry"]["week"] == "2026-10-11" and r.json()["recipe"]["source"] == "photo"
+
+
+def test_photo_without_week_saves_to_library_only(conn):
+    class Rec:
+        def complete_json(self, prompt, images=None):
+            return {"title": "Lentil Soup", "servings": 4, "ingredients": [], "steps": ["Simmer."]} if images else []
+    c = client(conn, ai=Rec())
+    r = c.post("/recipes/photo", headers=H, files=[("files", ("a.jpg", b"page1", "image/jpeg"))])
+    assert r.status_code == 200
+    assert r.json()["entry"] is None and r.json()["recipe"]["title"] == "Lentil Soup"
+    assert conn.execute("SELECT count(*) FROM plan").fetchone()[0] == 0
 
 
 class ShopPcx:

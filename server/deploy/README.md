@@ -78,6 +78,8 @@ and off → deletes the entries, the prep plan and its task events.
 | `PUT /plan/{entry}/rating` `{family 1–5, company? yes/maybe/no, note?}` | rate one time cooked → 204; re-rating overwrites (every change logged in `rating_history`); 404 unknown entry, 422 bad values |
 | `DELETE /plan/{entry}/rating` | remove the rating → 204 (idempotent) |
 | `GET /ratings/pending?today=YYYY-MM-DD` | unrated entries placed on a night before today, last 14 days, newest first (morning-after prompt) |
+| `POST /recipes/share` `{text, week?}` | import the NYT Cooking link in `text` into the library (or find it there: `existing: true`, no re-import) → `{recipe, entry, existing}`; `recipe` carries `ratings` + `planned_weeks`. With `week` it is also added to that week (not on a night) and `entry` is the plan entry; without one it is library only and `entry` is null. 422 no NYT link, 502 fetch/read failed (nothing saved) |
+| `POST /recipes/photo` multipart `files` (1–10 pages, in order) + optional `title`, `week` | read a cookbook recipe from photos (sync, ~20 s a page) → same shape as share; without `week` library only |
 | `GET /recipes?sort=newest\|favourites` | library with `ratings` summary (times cooked/rated, avg family, last, company verdict, ≤5 notes) and `planned_weeks` (ISO Sundays from this week on that have it) |
 | `GET /recipes/{id}` | one recipe + `ratings` summary + `planned_weeks` + `history` (every plan entry with its rating) |
 | `POST /weeks/{date}/entries` `{recipe_id}` | add a library recipe to a week (not on a night yet) → the entry; no duplicate check (the app checks first) |

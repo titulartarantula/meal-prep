@@ -181,12 +181,17 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         return {"ok": True, "provider": settings.provider}
 
     def _save_and_plan(c, r: Recipe, week: date | None, existing: bool = False) -> dict:
-        wk = db.week_start(week or default_week(today()))
+        """Save (or find) the library recipe; with a week also add it to that week (apps up to 0.4.1 always send
+        one). Without a week it is library only: `entry` is null."""
         r.id = db.save_recipe(c, r, ai_provider=settings.provider)
-        eid = db.add_to_week(c, wk, r.id)
-        entry = next(e for e in db.get_week(c, wk) if e.id == eid)
+        entry = None
+        if week is not None:
+            wk = db.week_start(week)
+            eid = db.add_to_week(c, wk, r.id)
+            entry = next(e for e in db.get_week(c, wk) if e.id == eid)
         # Include the current rating summary so the app can show "you rated this 5/5" on re-share.
-        out = RecipeOut(**r.model_dump(), ratings=db.rating_summaries(c, today(), [r.id])[r.id])
+        out = RecipeOut(**r.model_dump(), ratings=db.rating_summaries(c, today(), [r.id])[r.id],
+                        planned_weeks=db.planned_weeks(c, today(), [r.id]).get(r.id, []))
         return {"recipe": out, "entry": entry, "existing": existing}
 
     @app.post("/recipes/share", dependencies=A)
@@ -195,7 +200,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         if not url:
             raise HTTPException(422, "no NYT Cooking link found")
         existing = c.execute("SELECT id FROM recipes WHERE source_url=%s", (url,)).fetchone()
-        if existing:   # already in the library: just add it to the week, no re-import
+        if existing:   # already in the library: no re-import (added to the week if one was sent)
             return _save_and_plan(c, db.get_recipe(c, existing[0]), body.week, existing=True)
         try:
             title, servings, lines, steps = parse_nyt_html(fetch_nyt(url), url)
