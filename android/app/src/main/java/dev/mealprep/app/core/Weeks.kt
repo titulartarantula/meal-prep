@@ -64,6 +64,16 @@ object Weeks {
         else -> "Week of ${shortDate(weekStart(week))}"
     }
 
+    /** The week's dates under its title: "Oct 11 – 17", "Sep 27 – Oct 3". */
+    fun range(week: LocalDate): String {
+        val start = weekStart(week)
+        val end = start.plusDays(6)
+        return if (end.month == start.month) "${shortDate(start)} – ${end.dayOfMonth}" else "${shortDate(start)} – ${shortDate(end)}"
+    }
+
+    /** [range] for TalkBack, which reads "–" as a dash: "Oct 11 to 17". */
+    fun spokenRange(week: LocalDate): String = range(week).replace(" – ", " to ")
+
     /** Week-picker label: "This week (Oct 4)", "Next week (Oct 11)", "Week of Oct 18". */
     fun weekChoiceLabel(week: LocalDate, today: LocalDate): String = when (weeksBetween(today, week)) {
         0, 1 -> "${weekTitle(week, today)} (${shortDate(weekStart(week))})"

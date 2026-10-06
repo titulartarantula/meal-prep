@@ -38,7 +38,7 @@ fun prepDone(prep: PrepPlan?): Boolean =
 fun statusStrip(entries: List<PlanEntry>, carted: Boolean, prep: PrepPlan?) =
     StatusStrip(entries.any { it.day != null }, carted, prepDone(prep))
 
-/** The one context button: Build cart → Start prep → Tonight: X. */
+/** The one context button (docked at the bottom of the week): Build cart → Start Sunday prep → Tonight: X. */
 sealed interface ContextAction {
     val label: String
     /** Nothing in the week: recipes are picked from the library (the Recipes tab). */
@@ -47,7 +47,7 @@ sealed interface ContextAction {
     data class ReviewCart(val draftId: Int, val building: Boolean) : ContextAction {
         override val label get() = if (building) "Cart building…" else "Review cart"
     }
-    data class StartPrep(val week: LocalDate) : ContextAction { override val label get() = "Start prep" }
+    data class StartPrep(val week: LocalDate) : ContextAction { override val label get() = "Start Sunday prep" }
     data class ContinuePrep(val week: LocalDate, val done: Int, val total: Int, val building: Boolean) : ContextAction {
         override val label get() = if (building) "Prep plan on its way…" else "Prep: $done of $total done"
     }

@@ -31,6 +31,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.style.TextAlign
+import dev.mealprep.app.ui.common.BottomAction
+import kotlinx.coroutines.launch
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -143,13 +148,15 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
         onPauseOrDispose { }
     }
 
+    val scope = rememberCoroutineScope()
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(Weeks.weekTitle(current.plusWeeks((pager.currentPage - BACK).toLong()), today),
-                    style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-                OverflowMenu(menu, onOpen)
-            }
+            // Swiping changes the week too; these buttons make it visible (and one TalkBack stop each way).
+            WeekHeader(current.plusWeeks((pager.currentPage - BACK).toLong()), today,
+                canBack = pager.currentPage > 0, canForward = pager.currentPage < pager.pageCount - 1,
+                onPrev = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
+                onNext = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } },
+                menu = menu, onOpen = onOpen)
             message?.let { m ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     MessageText(m); TextButton(onClick = vm::clearMessage) { Text("OK") }
@@ -166,6 +173,25 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+/** The week's title with its dates under it, "Previous week" / "Next week" either side, and ⋮. */
+@Composable
+fun WeekHeader(
+    week: LocalDate, today: LocalDate, canBack: Boolean, canForward: Boolean, onPrev: () -> Unit, onNext: () -> Unit,
+    menu: List<Pair<String, Any>>, onOpen: (Any) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onPrev, enabled = canBack) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Previous week") }
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(Weeks.weekTitle(week, today), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() })
+            Text(Weeks.range(week), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center, modifier = Modifier.semantics { contentDescription = Weeks.spokenRange(week) })
+        }
+        IconButton(onNext, enabled = canForward) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Next week") }
+        OverflowMenu(menu, onOpen)
     }
 }
 
@@ -281,57 +307,64 @@ fun WeekContent(
     var sheetFor by remember { mutableStateOf<PlanEntry?>(null) }
     val all = ui.view?.all.orEmpty()
     val drop: (Slot, String?) -> Boolean = { slot, text -> dropMove(all, text, slot)?.let { (e, d) -> onPlace(e, d); true } ?: false }
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { OfflineBanner(ui.offlineSince); MessageText(ui.error) }
-        // Nothing known about the week (no saved copy either): only the message and Try again, not an empty week.
-        if (ui.failed) {
-            item { Button(onClick = onRefresh) { Text("Try again") } }
-            return@LazyColumn
-        }
-        item {
-            StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } },
-                onPrep = if (ui.hasPrep) { { onOpen(PrepRoute(ui.week.toString())) } } else null)
-        }
-        when {
-            ui.loading && ui.view == null -> {}   // the first load: no button until we know what the week needs
-            ui.action == ContextAction.AddRecipes -> item { EmptyWeek { onAction(ui.action) } }
-            // Nothing left to do: a line of text, not a big button that goes nowhere.
-            ui.action == ContextAction.AllSet -> item {
-                Text(ui.action.label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+    // The week's next step is docked at the bottom, in thumb reach; an empty week has its card instead, and a week
+    // with nothing left to do says so in the list.
+    val docked = ui.action.takeIf { !ui.failed && !(ui.loading && ui.view == null) && it != ContextAction.AddRecipes && it != ContextAction.AllSet }
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { OfflineBanner(ui.offlineSince); MessageText(ui.error) }
+            // Nothing known about the week (no saved copy either): only the message and Try again, not an empty week.
+            if (ui.failed) {
+                item { Button(onClick = onRefresh) { Text("Try again") } }
+                return@LazyColumn
             }
-            else -> item { Button(onClick = { onAction(ui.action) }, modifier = Modifier.fillMaxWidth()) { Text(ui.action.label) } }
-        }
-        val view = ui.view
-        if (view != null) {
             item {
-                Column(Modifier.fillMaxWidth().dropZone(drag, Slot.TRAY, drop).padding(4.dp)) {
-                    Text(NO_NIGHT, style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
-                    DropHint(drag, Slot.TRAY, "Drop here to take it off its night")
-                    if (view.unplaced.isEmpty()) Text("Recipes you add to this week wait here until you put them on a night.",
-                        style = MaterialTheme.typography.bodySmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { view.unplaced.forEach { EntryChip(it) { sheetFor = it } } }
+                StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } },
+                    onPrep = if (ui.hasPrep) { { onOpen(PrepRoute(ui.week.toString())) } } else null)
+            }
+            when {
+                ui.loading && ui.view == null -> {}   // the first load: no button until we know what the week needs
+                ui.action == ContextAction.AddRecipes -> item { EmptyWeek { onAction(ui.action) } }
+                // Nothing left to do: a line of text, not a big button that goes nowhere.
+                ui.action == ContextAction.AllSet -> item {
+                    Text(ui.action.label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
                 }
             }
-            if (all.isNotEmpty()) item {
-                Text("Hold a recipe and drag it to a night (or back here), or tap it to move it.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            items(view.nights, key = { it.day }) { n ->
-                val slot = Slot(n.day)
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).dropZone(drag, slot, drop).padding(4.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    // At least 64 dp so the nights line up; wider (never wrapped) with large text.
-                    Text(Weeks.nightTitle(view.week, n.day), Modifier.widthIn(min = 64.dp).padding(end = 8.dp), softWrap = false,
-                        fontWeight = if (n.date == today) FontWeight.Bold else FontWeight.Normal)
-                    Column {
-                        DropHint(drag, slot, "Drop here")
-                        if (n.entries.isEmpty() && drag.over != slot) Text("—", style = MaterialTheme.typography.bodySmall)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { n.entries.forEach { EntryChip(it) { sheetFor = it } } }
+            val view = ui.view
+            // An empty week is only its card: no tray, no seven empty nights.
+            if (view != null && all.isNotEmpty()) {
+                item {
+                    Column(Modifier.fillMaxWidth().dropZone(drag, Slot.TRAY, drop).padding(4.dp)) {
+                        Text(NO_NIGHT, style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
+                        DropHint(drag, Slot.TRAY, "Drop here to take it off its night")
+                        if (view.unplaced.isEmpty()) Text("Recipes you add to this week wait here until you put them on a night.",
+                            style = MaterialTheme.typography.bodySmall)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { view.unplaced.forEach { EntryChip(it) { sheetFor = it } } }
                     }
                 }
-            }
-        } else if (ui.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-        item { TextButton(onClick = onRefresh) { Text("Refresh") } }
+                item {
+                    Text("Hold a recipe and drag it to a night (or back here), or tap it to move it.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                items(view.nights, key = { it.day }) { n ->
+                    val slot = Slot(n.day)
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).dropZone(drag, slot, drop).padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        // At least 64 dp so the nights line up; wider (never wrapped) with large text.
+                        Text(Weeks.nightTitle(view.week, n.day), Modifier.widthIn(min = 64.dp).padding(end = 8.dp), softWrap = false,
+                            fontWeight = if (n.date == today) FontWeight.Bold else FontWeight.Normal)
+                        Column {
+                            DropHint(drag, slot, "Drop here")
+                            if (n.entries.isEmpty() && drag.over != slot) Text("—", style = MaterialTheme.typography.bodySmall)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { n.entries.forEach { EntryChip(it) { sheetFor = it } } }
+                        }
+                    }
+                }
+            } else if (view == null && ui.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            // The week reloads on its own (on return, on swipe, after every change); a button only when it's a saved copy.
+            if (ui.offlineSince != null || ui.error != null) item { TextButton(onClick = onRefresh) { Text("Refresh") } }
+        }
+        docked?.let { a -> BottomAction(a.label, { onAction(a) }) }
     }
     sheetFor?.let { e ->
         val ref by produceState<RefPrompt?>(null, e.recipeId) { value = loadRef(e.recipeId) }

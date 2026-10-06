@@ -40,6 +40,7 @@ import dev.mealprep.app.R
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.data.api.ListItem
+import dev.mealprep.app.ui.common.BottomAction
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.TabHeader
 import dev.mealprep.app.ui.common.WeekOption
@@ -53,42 +54,42 @@ fun ListContent(
     onStaple: (Int) -> Unit = {}, onEditStaples: () -> Unit = {}, onOpenDraft: (Int) -> Unit = {},
     today: LocalDate = LocalDate.now(),
 ) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        WeekSelector(state.options, state.weeks, onWeek)
-        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        MessageText(state.error)
-        if (!state.loading && state.items.isEmpty() && state.error != null) TextButton(onRetry) { Text("Try again") }
-        LazyColumn(Modifier.weight(1f)) {
-            state.existing?.let { d -> item { ExistingCart(d) { onOpenDraft(d.id) } } }
-            if (state.staples.isNotEmpty() || state.stapleError != null) item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Staples", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).semantics { heading() })
-                    TextButton(onEditStaples) { Text("Edit staples") }
+    Column(Modifier.fillMaxSize()) {
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            WeekSelector(state.options, state.weeks, onWeek)
+            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            MessageText(state.error)
+            if (!state.loading && state.items.isEmpty() && state.error != null) TextButton(onRetry) { Text("Try again") }
+            LazyColumn(Modifier.weight(1f)) {
+                state.existing?.let { d -> item { ExistingCart(d) { onOpenDraft(d.id) } } }
+                if (state.staples.isNotEmpty() || state.stapleError != null) item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Staples", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).semantics { heading() })
+                        TextButton(onEditStaples) { Text("Edit staples") }
+                    }
+                    Text("Ticked staples go in the cart. Untick what you don't need this week.", style = MaterialTheme.typography.bodySmall)
+                    MessageText(state.stapleError)
                 }
-                Text("Ticked staples go in the cart. Untick what you don't need this week.", style = MaterialTheme.typography.bodySmall)
-                MessageText(state.stapleError)
+                items(state.staples, key = { "staple-${it.id}" }) { s ->
+                    CheckRow(s.id in state.ticked, enabled = !state.building && state.draftId == null, onToggle = { onStaple(s.id) },
+                        title = "${s.name} · ${stapleAmount(s)}", lines = listOf(lastBoughtText(s.lastBought, today)))
+                }
+                if (state.onlyStaples) item {
+                    Text("No recipes planned for that week yet — only staples.", style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp))
+                }
+                if (state.toBuy.isNotEmpty()) item {
+                    Text("To buy", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp).semantics { heading() })
+                }
+                items(state.toBuy, key = { it.key }) { ItemRow(it, onToggle) }
+                if (state.probablyHave.isNotEmpty()) item {
+                    Text("Probably have — tick what you need", style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 8.dp).semantics { heading() })
+                }
+                items(state.probablyHave, key = { it.key }) { ItemRow(it, onToggle) }
             }
-            items(state.staples, key = { "staple-${it.id}" }) { s ->
-                CheckRow(s.id in state.ticked, enabled = !state.building && state.draftId == null, onToggle = { onStaple(s.id) },
-                    title = "${s.name} · ${stapleAmount(s)}", lines = listOf(lastBoughtText(s.lastBought, today)))
-            }
-            if (state.onlyStaples) item {
-                Text("No recipes planned for that week yet — only staples.", style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp))
-            }
-            if (state.toBuy.isNotEmpty()) item {
-                Text("To buy", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp).semantics { heading() })
-            }
-            items(state.toBuy, key = { it.key }) { ItemRow(it, onToggle) }
-            if (state.probablyHave.isNotEmpty()) item {
-                Text("Probably have — tick what you need", style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 8.dp).semantics { heading() })
-            }
-            items(state.probablyHave, key = { it.key }) { ItemRow(it, onToggle) }
         }
-        Button(onClick = onBuild, enabled = state.canBuild, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-            Text(if (state.building) "Starting…" else "Build cart (${state.neededCount} items)")
-        }
+        BottomAction(if (state.building) "Starting…" else "Build cart (${state.neededCount} items)", onBuild, enabled = state.canBuild)
     }
 }
 
