@@ -320,7 +320,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.get("/recipes/sources", dependencies=A)
     def recipe_sources(c=Depends(get_conn)):
-        """NYT Cooking, each cookbook and "Unknown book", with counts; `key` is the GET /recipes?source= value."""
+        """NYT Cooking, each cookbook and named other source, "Unknown book", "Other", with counts; `key` is the
+        GET /recipes?source= value."""
         return db.recipe_sources(c)
 
     @app.get("/books/search", dependencies=A)
@@ -367,7 +368,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     @app.get("/recipes", dependencies=A)
     def recipes(sort: Literal["newest", "favourites"] = "newest", source: str | None = None,
                 c=Depends(get_conn)) -> list[RecipeOut]:
-        """`source`: nyt, book (any book), other, book:<title> (any case), book: (book not known yet) or a book title."""
+        """`source`: nyt, book (any book), other (any other source), book:<title> / other:<name> (any case), book: (book
+        not known yet), other: (no name) or a book title."""
         summaries, planned = db.rating_summaries(c, today()), db.planned_weeks(c, today())
         out = [RecipeOut(**r.model_dump(), ratings=summaries.get(r.id, {}), planned_weeks=planned.get(r.id, []))
                for r in db.list_recipes(c, source)]  # newest first

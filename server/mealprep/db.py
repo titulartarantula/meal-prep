@@ -36,9 +36,12 @@ def save_recipe(conn, r: Recipe, ai_provider: str | None = None) -> int:
 
 
 def _source(kind, title, ref, author, isbn) -> tuple:
-    """An NYT recipe has no book, page, author or ISBN; an author/ISBN belongs to a known book title only."""
+    """An NYT recipe has no book, page, author or ISBN; an author/ISBN belongs to a known book title only (an "other"
+    source, e.g. "Mum's recipes", is a name and a note: no author/ISBN)."""
     if kind == "nyt":
         return None, None, None, None
+    if kind == "other":
+        return title, ref, None, None
     return (title, ref, author, isbn) if title else (None, ref, None, None)
 
 
@@ -69,18 +72,20 @@ def update_source(conn, rid: int, kind: str, title: str | None, ref: str | None,
 
 
 def source_filter(source: str | None) -> tuple[str, dict]:
-    """SQL condition for GET /recipes?source=: "nyt", "book" (every book), "other", "book:<title>" (case-insensitive),
-    "book:" (book not known yet); any other value is a book title."""
+    """SQL condition for GET /recipes?source=: "nyt", "book" (every book), "other" (every other source),
+    "book:<title>" / "other:<name>" (case-insensitive, spacing ignored), "book:" (book not known yet), "other:" (other
+    source without a name); any other value is a book title."""
     if not source:
         return "", {}
     s = source.strip()
     if s in ("nyt", "book", "other"):
         return " WHERE source_kind = %(kind)s", {"kind": s}
-    title = s[5:] if s.lower().startswith("book:") else s
+    kind = "other" if s.lower().startswith("other:") else "book"
+    title = s[len(kind) + 1:] if s.lower().startswith(kind + ":") else s
     title = " ".join(title.split())
     if not title:
-        return " WHERE source_kind = 'book' AND source_title IS NULL", {}
-    return " WHERE source_kind = 'book' AND lower(source_title) = lower(%(title)s)", {"title": title}
+        return f" WHERE source_kind = '{kind}' AND source_title IS NULL", {}
+    return f" WHERE source_kind = '{kind}' AND lower(source_title) = lower(%(title)s)", {"title": title}
 
 
 def list_recipes(conn, source: str | None = None) -> list[Recipe]:
@@ -89,8 +94,9 @@ def list_recipes(conn, source: str | None = None) -> list[Recipe]:
 
 
 def recipe_sources(conn) -> list[dict]:
-    """Distinct sources with counts: NYT Cooking, each book (titles grouped case-insensitively, the newest
-    recipe's spelling shown), Unknown book, Other. `key` is the GET /recipes?source= value that lists them."""
+    """Distinct sources with counts: NYT Cooking, each book and each named other source ("Mum's recipes") A–Z
+    (titles grouped case-insensitively, the newest recipe's spelling shown), Unknown book, Other (no name). `key` is
+    the GET /recipes?source= value that lists them."""
     rows = conn.execute(
         "SELECT source_kind, (array_agg(source_title ORDER BY id DESC))[1], count(*), "
         "(array_agg(source_author ORDER BY id DESC) FILTER (WHERE source_author IS NOT NULL))[1], "
@@ -99,13 +105,15 @@ def recipe_sources(conn) -> list[dict]:
     nyt = [{"key": "nyt", "kind": "nyt", "title": None, "label": "NYT Cooking", "count": n}
            for k, _, n, _, _ in rows if k == "nyt"]
     # a book's author/ISBN = the newest recipe's that has one
-    books = sorted(({"key": f"book:{t}", "kind": "book", "title": t, "label": t, "count": n, "author": a, "isbn": i}
-                    for k, t, n, a, i in rows if k == "book" and t is not None), key=lambda b: b["title"].lower())
+    books = [{"key": f"book:{t}", "kind": "book", "title": t, "label": t, "count": n, "author": a, "isbn": i}
+             for k, t, n, a, i in rows if k == "book" and t is not None]
+    named = [{"key": f"other:{t}", "kind": "other", "title": t, "label": t, "count": n}
+             for k, t, n, _, _ in rows if k == "other" and t is not None]
     unknown = [{"key": "book:", "kind": "book", "title": None, "label": "Unknown book", "count": n}
                for k, t, n, _, _ in rows if k == "book" and t is None]
-    other = [{"key": "other", "kind": "other", "title": None, "label": "Other",
-              "count": sum(n for k, _, n, _, _ in rows if k == "other")}]
-    return nyt + books + unknown + [o for o in other if o["count"]]
+    other = [{"key": "other:", "kind": "other", "title": None, "label": "Other", "count": n}
+             for k, t, n, _, _ in rows if k == "other" and t is None]
+    return nyt + sorted(books + named, key=lambda b: (b["title"].lower(), b["kind"])) + unknown + other
 
 
 def get_pick(conn, key: str) -> str | None:

@@ -88,7 +88,7 @@ def test_sources_list_with_counts(conn):
     got = client(conn).get("/recipes/sources", headers=H).json()
     assert [(s["key"], s["label"], s["count"]) for s in got] == [
         ("nyt", "NYT Cooking", 1), ("book:A Made-Up Garden", "A Made-Up Garden", 1),
-        ("book:Invented Bakes", "Invented Bakes", 2), ("book:", "Unknown book", 1), ("other", "Other", 1)]
+        ("book:Invented Bakes", "Invented Bakes", 2), ("book:", "Unknown book", 1), ("other:", "Other", 1)]
     assert client(conn).get("/recipes/sources", headers=H).status_code == 200
 
 
@@ -226,3 +226,74 @@ def test_sources_list_carries_the_books_author(conn):
     db.save_recipe(conn, book("Test Bun", "Invented Bakes", "12"))
     got = client(conn).get("/recipes/sources", headers=H).json()
     assert [(s["label"], s.get("author"), s["count"]) for s in got] == [("Invented Bakes", "Ada Pepper", 2)]
+
+
+# --- named other sources (0.7.1): "Mum's recipes", a free-text name + optional note in source_ref ---
+
+def setup_others(conn):
+    ids = setup_library(conn)   # "card" = an other source without a name
+    ids["mum1"] = db.save_recipe(conn, book("Test Pie", "mum's recipes", "the blue binder", kind="other"))
+    ids["mum2"] = db.save_recipe(conn, book("Test Crumble", "Mum's Recipes", kind="other"))
+    ids["club"] = db.save_recipe(conn, book("Test Curry", "Supper Club", kind="other"))
+    return ids
+
+
+def test_recipes_filter_by_named_other_source(conn):
+    ids = setup_others(conn)
+    c = client(conn)
+    def got(source):
+        r = c.get("/recipes", headers=H, params={"source": source})
+        assert r.status_code == 200
+        return {x["id"] for x in r.json()}
+    assert got("other") == {ids["card"], ids["mum1"], ids["mum2"], ids["club"]}   # every other source, as before
+    assert got("other:MUM'S  RECIPES") == got(" other:mum's recipes ") == {ids["mum1"], ids["mum2"]}
+    assert got("Other:Supper Club") == {ids["club"]}
+    assert got("other:") == got("other:   ") == {ids["card"]}                       # no name
+    assert got("other:Invented Bakes") == set()                                       # a book is not an other source
+    assert got("book:Supper Club") == got("Supper Club") == set()                    # and the other way round
+    assert got("book:Invented Bakes") == {ids["tart"], ids["bun"]}
+
+
+def test_sources_list_named_others_sorted_with_books(conn):
+    setup_others(conn)
+    got = client(conn).get("/recipes/sources", headers=H).json()
+    assert [(s["key"], s["kind"], s["label"], s["count"]) for s in got] == [
+        ("nyt", "nyt", "NYT Cooking", 1), ("book:A Made-Up Garden", "book", "A Made-Up Garden", 1),
+        ("book:Invented Bakes", "book", "Invented Bakes", 2), ("other:Mum's Recipes", "other", "Mum's Recipes", 2),
+        ("other:Supper Club", "other", "Supper Club", 1), ("book:", "book", "Unknown book", 1),
+        ("other:", "other", "Other", 1)]
+    c = client(conn)
+    for s in got:   # each key lists exactly its count
+        assert len(c.get("/recipes", headers=H, params={"source": s["key"]}).json()) == s["count"]
+
+
+def test_patch_to_other_source_has_no_author_or_isbn(conn):
+    ids = setup_library(conn)
+    c = client(conn)
+    rid = ids["stew"]
+    c.patch(f"/recipes/{rid}", headers=H, json={"source_title": "Invented Bakes", "source_author": "Ada Pepper",
+                                                "source_isbn": "000000002x", "source_ref": "12"})
+    # same name, other kind: the book's author/ISBN go, the name and note are kept
+    body = c.patch(f"/recipes/{rid}", headers=H, json={"source_kind": "other"}).json()
+    assert (body["source_kind"], body["source_title"], body["source_ref"], body["source_author"], body["source_isbn"]) == (
+        "other", "Invented Bakes", "12", None, None)
+    body = c.patch(f"/recipes/{rid}", headers=H, json={"source_kind": "other", "source_title": " Mum's   recipes ",
+                                                       "source_ref": "from the blue binder", "source_author": "Ada Pepper",
+                                                       "source_isbn": "000000002x"}).json()
+    assert (body["source_title"], body["source_ref"], body["source_author"], body["source_isbn"]) == (
+        "Mum's recipes", "from the blue binder", None, None)
+    # no name: a bare Other
+    body = c.patch(f"/recipes/{rid}", headers=H, json={"source_title": None, "source_ref": None}).json()
+    assert (body["source_kind"], body["source_title"]) == ("other", None)
+    # and back to a book
+    body = c.patch(f"/recipes/{rid}", headers=H, json={"source_kind": "book", "source_title": "Invented Bakes"}).json()
+    assert (body["source_kind"], body["source_title"]) == ("book", "Invented Bakes")
+
+
+def test_photo_import_into_a_named_other_source(conn):
+    c = client(conn, ai=PhotoAI())
+    f = [("files", ("a.jpg", b"page1", "image/jpeg"))]
+    rec = c.post("/recipes/photo", headers=H, files=f, data={"source_kind": "other", "source_title": "Mum's recipes",
+                                                              "source_ref": "card 3", "source_author": "Ada Pepper"}).json()["recipe"]
+    assert (rec["source_kind"], rec["source_title"], rec["source_ref"], rec["source_author"]) == (
+        "other", "Mum's recipes", "card 3", None)
