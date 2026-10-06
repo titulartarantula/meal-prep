@@ -35,7 +35,8 @@ fun OfflineBanner(since: Instant?) {
     if (since == null) return
     Text(
         "Offline — showing the copy saved ${since.atZone(ZoneId.systemDefault()).format(SAVED_AT)}",
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(8.dp),
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(8.dp),
+        color = MaterialTheme.colorScheme.onTertiaryContainer,
         style = MaterialTheme.typography.bodySmall,
     )
 }

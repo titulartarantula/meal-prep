@@ -52,6 +52,7 @@ import dev.mealprep.app.ui.common.WeekOption
 import dev.mealprep.app.ui.common.WeekPicker
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.home.refRoute
+import dev.mealprep.app.ui.theme.GardenAccent
 import java.time.LocalDate
 
 @Composable
@@ -198,8 +199,8 @@ fun AddToWeekDialog(
                     week) { week = it }
                 Text("Night (optional)")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FilterChip(night == null, { night = null }, { Text("No night yet") })
-                    (0..6).forEach { d -> FilterChip(night == d, { night = d }, { Text(Weeks.dayLabel(d)) }) }
+                    FilterChip(night == null, { night = null }, { Text("No night yet") }, colors = GardenAccent.chipColors())
+                    (0..6).forEach { d -> FilterChip(night == d, { night = d }, { Text(Weeks.dayLabel(d)) }, colors = GardenAccent.chipColors()) }
                 }
                 if (already) Text("It's already in that week. Pick another week, or move it on the week screen.",
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

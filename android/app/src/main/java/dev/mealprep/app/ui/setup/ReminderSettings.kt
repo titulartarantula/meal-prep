@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.settings.NotifPrefs
+import dev.mealprep.app.ui.theme.GardenAccent
 import dev.mealprep.app.work.StaplesReminder
 import java.time.DayOfWeek
 import java.time.LocalTime
@@ -74,7 +75,7 @@ fun StaplesReminderContent(n: NotifPrefs, onChange: (NotifPrefs) -> Unit) {
         if (n.staples) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 WEEK_DAYS.forEach { d ->
-                    FilterChip(n.staplesDay == d, { onChange(n.copy(staplesDay = d)) }, { Text(Weeks.dayLabel(d.value % 7)) })
+                    FilterChip(n.staplesDay == d, { onChange(n.copy(staplesDay = d)) }, { Text(Weeks.dayLabel(d.value % 7)) }, colors = GardenAccent.chipColors())
                 }
             }
             TextButton({

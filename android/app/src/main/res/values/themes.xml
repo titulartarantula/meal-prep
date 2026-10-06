@@ -2,5 +2,7 @@
 <resources>
     <!-- Window theme only (Compose draws the UI). Light here, dark in values-night, so the window behind the
          edge-to-edge system bars matches the system's light/dark mode instead of showing a white strip. -->
-    <style name="Theme.MealPrep" parent="@android:style/Theme.Material.Light.NoActionBar" />
+    <style name="Theme.MealPrep" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
 </resources>

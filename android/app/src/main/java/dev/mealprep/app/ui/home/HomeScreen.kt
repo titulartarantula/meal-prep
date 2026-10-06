@@ -88,6 +88,7 @@ import dev.mealprep.app.ui.nav.RatingRoute
 import dev.mealprep.app.ui.nav.RecipeRoute
 import dev.mealprep.app.ui.camera.RefPrompt
 import dev.mealprep.app.ui.camera.refPromptText
+import dev.mealprep.app.ui.theme.GardenAccent
 import dev.mealprep.app.work.ImportWorker
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
@@ -408,12 +409,12 @@ private fun EntryDialog(e: PlanEntry, ref: RefPrompt?, onDismiss: () -> Unit, on
                 }
                 Text("Move to")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    (0..6).forEach { d -> FilterChip(e.day == d, { if (e.day != d) onPlace(d) }, { Text(Weeks.dayLabel(d)) }) }
-                    FilterChip(e.day == null, { if (e.day != null) onPlace(null) }, { Text("No night (tray)") })
+                    (0..6).forEach { d -> FilterChip(e.day == d, { if (e.day != d) onPlace(d) }, { Text(Weeks.dayLabel(d)) }, colors = GardenAccent.chipColors()) }
+                    FilterChip(e.day == null, { if (e.day != null) onPlace(null) }, { Text("No night (tray)") }, colors = GardenAccent.chipColors())
                 }
                 Text("Make")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf(0.5, 1.0, 1.5, 2.0).forEach { m -> FilterChip(e.multiplier == m, { onScale(m) }, { Text("×${fmt(m)}") }) }
+                    listOf(0.5, 1.0, 1.5, 2.0).forEach { m -> FilterChip(e.multiplier == m, { onScale(m) }, { Text("×${fmt(m)}") }, colors = GardenAccent.chipColors()) }
                 }
                 if (e.day != null) Row {
                     TextButton({ onOpen(CardRoute(e.id)) }) { Text("Cook card") }

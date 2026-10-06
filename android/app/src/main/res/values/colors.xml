@@ -1,3 +1,5 @@
 <resources>
     <color name="ic_launcher_background">#2E7D32</color>
+    <!-- Garden surface behind Compose (and the launch splash): linen; warm charcoal in values-night. -->
+    <color name="window_background">#FAF7F2</color>
 </resources>

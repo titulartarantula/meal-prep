@@ -54,6 +54,7 @@ import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.TabHeader
 import dev.mealprep.app.ui.common.graphViewModel
+import dev.mealprep.app.ui.theme.GardenAccent
 import java.time.LocalDate
 
 /**
@@ -104,7 +105,7 @@ fun LibraryContent(
             leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
             modifier = Modifier.fillMaxWidth())
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.Center) {
-            LibrarySort.entries.forEach { s -> FilterChip(state.sort == s, { onSort(s) }, { Text(s.label) }) }
+            LibrarySort.entries.forEach { s -> FilterChip(state.sort == s, { onSort(s) }, { Text(s.label) }, colors = GardenAccent.chipColors()) }
         }
         if (state.all.isNotEmpty()) SourceFilter(state.sources, state.source, onSource)
         OfflineBanner(state.offlineSince)

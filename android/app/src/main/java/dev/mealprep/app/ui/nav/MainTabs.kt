@@ -11,6 +11,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import dev.mealprep.app.R
+import dev.mealprep.app.ui.theme.GardenAccent
 
 /** The three main screens behind the bottom bar. The Shopping list is there whatever state the week's cart is in. */
 enum class Tab(val label: String, @param:DrawableRes val icon: Int, val route: Any) {
@@ -38,10 +39,11 @@ fun NavController.openTab(t: Tab) = navigate(t.route) {
 @Composable
 fun MainTabs(selected: Tab, onSelect: (Tab) -> Unit) {
     NavigationBar {
+        val colors = GardenAccent.navItemColors()
         Tab.entries.forEach { t ->
             // The label names the tab, so the icon itself is decoration for TalkBack.
             NavigationBarItem(selected = t == selected, onClick = { onSelect(t) },
-                icon = { Icon(painterResource(t.icon), contentDescription = null) }, label = { Text(t.label) })
+                icon = { Icon(painterResource(t.icon), contentDescription = null) }, label = { Text(t.label) }, colors = colors)
         }
     }
 }
