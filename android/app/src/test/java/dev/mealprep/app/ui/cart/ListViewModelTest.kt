@@ -184,6 +184,14 @@ class ListViewModelTest {
         assertTrue(s.canBuild)                                                     // another cart can still be built
     }
 
+    @Test fun `a cart made before the week changed is offered as an older cart, and a new one can be built`() = runTest {
+        env.on("GET", "/weeks/2026-10-11/draft", body = fixture("draft_3_sent.json").replaceFirst("{", "{\"stale\": true, "))
+        val s = vm(listOf("2026-10-11")).state.await { !it.loading }
+        assertTrue(s.existing!!.stale)
+        assertEquals("You changed this week's recipes after the cart was made.", existingCartText(s.existing!!))
+        assertTrue(s.canBuild)
+    }
+
     @Test fun `last bought reads in days, then weeks`() {
         val today = LocalDate.parse("2026-10-07")
         assertEquals("Not bought through the app yet", lastBoughtText(null, today))

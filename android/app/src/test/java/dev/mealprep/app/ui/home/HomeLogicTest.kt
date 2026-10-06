@@ -49,6 +49,15 @@ class HomeLogicTest {
         assertEquals(ContextAction.AllSet, contextAction(wk, wed, entries, true, null, prep("ready", 0, 0)))
     }
 
+    @Test fun `a stale cart is an older cart - the week goes back to Build cart`() {
+        // The server says carted = false once the week's recipes changed after the cart was sent.
+        assertEquals(StatusStrip(planned = true, cartSent = false, prepDone = false), statusStrip(entries, false, null))
+        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "sent", stale = true), null))
+        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "ready", stale = true), null))
+        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "building", stale = true), null))
+        assertEquals(ContextAction.ReviewCart(8, false), contextAction(wk, wed, entries, false, Draft(8, "ready"), null))  // a new one
+    }
+
     @Test fun `tonight wins once the prep Sunday has passed`() {
         val tue = LocalDate.parse("2026-10-13")
         assertEquals(ContextAction.Tonight(21, "Chili"), contextAction(wk, tue, entries, false, null, null))

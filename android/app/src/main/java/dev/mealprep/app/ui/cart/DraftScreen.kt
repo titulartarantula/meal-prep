@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -80,7 +82,8 @@ class DraftActions(
 fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.now()) {
     val d = s.draft
     Column(Modifier.fillMaxSize()) {
-        BackTopBar("Cart", a.onBack, subtitle = d?.let { weeksTitle(it.weeks, today) })
+        val older = d != null && d.stale && d.status in setOf("ready", "sent")
+        BackTopBar(if (older) "Older cart" else "Cart", a.onBack, subtitle = d?.let { weeksTitle(it.weeks, today) })
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             if (d == null || d.status == "building") {
                 if (d != null || s.loading) {
@@ -93,6 +96,7 @@ fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.no
                 }
             }
             MessageText(s.error)
+            if (older) StaleBanner { a.onRebuild(d.weeks) }
             if (d == null && !s.loading) TextButton(a.onReload) { Text("Try again") }
             if (d != null && d.status != "building") {
                 LazyColumn(Modifier.weight(1f)) {
@@ -123,6 +127,21 @@ fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.no
     }
     s.swap?.let { swap -> SwapDialog(swap, a.onSearch, a.onChoose, a.onCloseSwap) }
 }
+
+/** On an older cart (the week's recipes changed since it was built): say so, and lead to a new cart. */
+@Composable
+private fun StaleBanner(onBuild: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(STALE_CART, Modifier.announced(), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onTertiaryContainer)
+            Button(onBuild, Modifier.padding(top = 4.dp).heightIn(min = 48.dp)) { Text(BUILD_NEW_CART) }
+        }
+    }
+}
+
+const val STALE_CART = "The week has changed since this cart was built. This older cart can't be changed or sent."
 
 /** The cart's weeks under its title: "This week (Oct 11)", "Oct 11 + Oct 18". */
 internal fun weeksTitle(weeks: List<String>, today: LocalDate): String? {

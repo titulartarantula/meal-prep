@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasClickAction
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.unit.dp
 import dev.mealprep.app.data.api.ListItem
 import dev.mealprep.app.data.api.Staple
 import dev.mealprep.app.ui.common.WeekOption
@@ -51,6 +53,34 @@ class ListScreenTest {
             )
         }
         return { weeks }
+    }
+
+    @Test fun `a stale cart card builds a new cart first and opens the old one second`() {
+        val old = dev.mealprep.app.data.api.Draft(3, "sent", stale = true)
+        val calls = mutableListOf<String>()
+        compose.setContent {
+            ListContent(ListState(weeks = setOf(oct11), options = options, loading = false, existing = old,
+                items = listOf(ListItem("onion|count", "onion", qty = 3.0))),
+                onWeek = {}, onToggle = {}, onBuild = { calls += "build" }, onOpenDraft = { calls += "open $it" },
+                today = LocalDate.parse("2026-10-07"))
+        }
+        compose.onNodeWithText("You changed this week's recipes after the cart was made.").assertExists()
+        compose.onNodeWithText("A cart for this week was already sent to Loblaws.").assertDoesNotExist()
+        compose.onNodeWithText("Open cart").assertDoesNotExist()
+        compose.onNodeWithText(BUILD_NEW_CART).assertHeightIsAtLeast(48.dp).performClick()
+        compose.onNodeWithText(OPEN_OLD_CART).assertHeightIsAtLeast(48.dp).performClick()
+        assertEquals(listOf("build", "open 3"), calls)
+    }
+
+    @Test fun `an up-to-date sent cart only opens`() {
+        compose.setContent {
+            ListContent(ListState(weeks = setOf(oct11), options = options, loading = false,
+                existing = dev.mealprep.app.data.api.Draft(3, "sent"), items = listOf(ListItem("onion|count", "onion", qty = 3.0))),
+                onWeek = {}, onToggle = {}, onBuild = {}, today = LocalDate.parse("2026-10-07"))
+        }
+        compose.onNodeWithText("A cart for this week was already sent to Loblaws.").assertExists()
+        compose.onNodeWithText("Open cart").assertExists()
+        compose.onNodeWithText(BUILD_NEW_CART).assertDoesNotExist()
     }
 
     @Test fun `the week selector is one line with the chosen week, and a dropdown role`() {

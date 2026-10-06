@@ -37,9 +37,10 @@ data class DraftState(
 ) {
     val total: Double get() = draft?.let { estimatedTotal(it.lines) } ?: 0.0
     val itemCount: Int get() = draft?.lines?.count { it.inCart() } ?: 0
-    /** Sending an empty cart would only make an empty Loblaws cart and mark the week carted. */
-    val canSend: Boolean get() = draft?.status == "ready" && busyLine == null && !sending && itemCount > 0
-    val editable: Boolean get() = draft?.status == "ready" && busyLine == null && !sending
+    /** Sending an empty cart would only make an empty Loblaws cart and mark the week carted; a stale cart (the
+     *  week's recipes changed since it was built) is an older cart: read-only, never sent (build a new one). */
+    val canSend: Boolean get() = draft?.status == "ready" && draft.stale.not() && busyLine == null && !sending && itemCount > 0
+    val editable: Boolean get() = draft?.status == "ready" && draft.stale.not() && busyLine == null && !sending
 }
 
 class DraftViewModel(private val repo: Repository, private val id: Int, private val pollMs: Long = 2_000) : ViewModel() {
@@ -141,10 +142,13 @@ class DraftViewModel(private val repo: Repository, private val id: Int, private 
         }
     }
 
-    /** 409: the draft is no longer "ready" (sent from the other phone, or a server restart failed it). */
+    /** 409: the draft is no longer "ready" (sent from the other phone, or a server restart failed it), or the week's
+     *  recipes changed since it was built (the server won't send a stale cart; the reload shows the banner). */
     private suspend fun refreshAfterConflict() {
         _state.update { it.copy(swap = null, error = CHANGED) }
-        (repo.draft(id) as? ApiResult.Ok)?.let { d -> _state.update { it.copy(draft = d.value) } }
+        (repo.draft(id) as? ApiResult.Ok)?.let { d ->
+            _state.update { it.copy(draft = d.value, error = if (d.value.stale) null else it.error) }
+        }
     }
 
     private fun ApiResult<*>.isConflict() = this is ApiResult.Err && (error as? ApiError.Http)?.code == 409

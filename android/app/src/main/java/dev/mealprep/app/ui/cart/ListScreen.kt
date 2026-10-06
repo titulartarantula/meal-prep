@@ -1,6 +1,9 @@
 package dev.mealprep.app.ui.cart
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -61,7 +64,7 @@ fun ListContent(
             MessageText(state.error)
             if (!state.loading && state.items.isEmpty() && state.error != null) TextButton(onRetry) { Text("Try again") }
             LazyColumn(Modifier.weight(1f)) {
-                state.existing?.let { d -> item { ExistingCart(d) { onOpenDraft(d.id) } } }
+                state.existing?.let { d -> item { ExistingCart(d, canBuild = state.canBuild, onOpen = { onOpenDraft(d.id) }, onBuild = onBuild) } }
                 if (state.staples.isNotEmpty() || state.stapleError != null) item {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Staples", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).semantics { heading() })
@@ -123,20 +126,33 @@ internal fun weeksLabel(weeks: Set<LocalDate>, options: List<WeekOption>): Strin
     }
 }
 
-/** A cart already made for the chosen week: the list leads back to it whatever its state. */
+/** A cart already made for the chosen week: the list leads back to it whatever its state. A stale one (the week's
+ *  recipes changed after it was made) leads to a new cart first; the old one stays viewable. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ExistingCart(d: Draft, onOpen: () -> Unit) {
+private fun ExistingCart(d: Draft, canBuild: Boolean, onOpen: () -> Unit, onBuild: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (d.stale) Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(existingCartText(d), style = MaterialTheme.typography.bodyMedium)
+            FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                itemVerticalAlignment = Alignment.CenterVertically) {
+                Button(onBuild, Modifier.heightIn(min = 48.dp), enabled = canBuild) { Text(BUILD_NEW_CART) }
+                TextButton(onOpen, Modifier.heightIn(min = 48.dp)) { Text(OPEN_OLD_CART) }
+            }
+        } else Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(existingCartText(d), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             TextButton(onOpen) { Text(if (d.status == "sent") "Open cart" else "Review cart") }
         }
     }
 }
 
-internal fun existingCartText(d: Draft): String = when (d.status) {
-    "sent" -> "A cart for this week was already sent to Loblaws."
-    "building" -> "A cart for this week is being built."
+const val BUILD_NEW_CART = "Build a new cart"
+const val OPEN_OLD_CART = "Open old cart"
+
+internal fun existingCartText(d: Draft): String = when {
+    d.stale -> "You changed this week's recipes after the cart was made."
+    d.status == "sent" -> "A cart for this week was already sent to Loblaws."
+    d.status == "building" -> "A cart for this week is being built."
     else -> "A cart for this week is ready to review."
 }
 

@@ -63,7 +63,8 @@ fun contextAction(week: LocalDate, today: LocalDate, entries: List<PlanEntry>, c
         ?.let { ContextAction.Tonight(it.id, it.title ?: "dinner") }
     // After the prep Sunday (or once prep is done) tonight's dinner is what matters.
     if (tonight != null && (today.isAfter(start) || prepDone(prep))) return tonight
-    if (!carted && draft != null && draft.status in setOf("building", "ready")) return ContextAction.ReviewCart(draft.id, draft.status == "building")
+    // A cart built before the week's recipes changed is an older cart: build a new one, don't review that one.
+    if (!carted && draft != null && !draft.stale && draft.status in setOf("building", "ready")) return ContextAction.ReviewCart(draft.id, draft.status == "building")
     if (!carted) return ContextAction.BuildCart(start)
     if (prep == null || prep.status == "failed") return ContextAction.StartPrep(start)
     if (!prepDone(prep)) return ContextAction.ContinuePrep(start, prep.checklist.done, prep.checklist.total, prep.status == "building")

@@ -36,7 +36,7 @@ data class WeekUi(
     val view: WeekView? = null,
     val strip: StatusStrip = StatusStrip(false, false, false),
     val action: ContextAction = ContextAction.AddRecipes,
-    /** The week's sent cart draft, so "Cart sent" can reopen it (Open in Loblaws again). */
+    /** The week's sent cart draft, so "Cart sent" can reopen it (Open in Loblaws again); not a stale one. */
     val sentDraftId: Int? = null,
     /** The week has a prep plan (any status), so "Prep done" opens it — also after Sunday, when the button shows tonight. */
     val hasPrep: Boolean = false,
@@ -143,7 +143,7 @@ class HomeViewModel(
             view = list?.let { weekView(w, it) } ?: prev.view,
             strip = statusStrip(list.orEmpty(), carted, p),
             action = contextAction(w, today(), list.orEmpty(), carted, d, p),
-            sentDraftId = d?.takeIf { it.status == "sent" }?.id,
+            sentDraftId = d?.takeIf { it.status == "sent" && !it.stale }?.id,
             hasPrep = p != null,
             loading = false,
             offlineSince = e.offlineSince,

@@ -21,8 +21,8 @@ import java.time.LocalDate
 
 data class WeekOption(val week: LocalDate, val label: String, val detail: String?)
 
-/** This week + the next count−1 weeks (the planning horizon: 4 in all); details ("2 recipes · cart sent") only when
- *  the server answered. */
+/** This week + the next count−1 weeks (the planning horizon: 4 in all); details ("2 recipes · cart sent", or
+ *  "recipes changed since cart" when the week changed after its cart was sent) only when the server answered. */
 fun weekOptions(today: LocalDate, summaries: List<WeekSummary>?, count: Int = Weeks.HORIZON): List<WeekOption> {
     val first = Weeks.weekStart(today)
     val byWeek = summaries.orEmpty().associateBy { LocalDate.parse(it.week) }
@@ -30,7 +30,12 @@ fun weekOptions(today: LocalDate, summaries: List<WeekSummary>?, count: Int = We
         val w = first.plusWeeks(i.toLong())
         val s = byWeek[w]
         val detail = s?.let {
-            listOfNotNull(if (it.entries == 1) "1 recipe" else "${it.entries} recipes", "cart sent".takeIf { _ -> it.carted }).joinToString(" · ")
+            val cart = when {
+                it.carted -> "cart sent"
+                it.cartStale -> "recipes changed since cart"
+                else -> null
+            }
+            listOfNotNull(if (it.entries == 1) "1 recipe" else "${it.entries} recipes", cart).joinToString(" · ")
         }
         WeekOption(w, Weeks.weekChoiceLabel(w, today), detail)
     }

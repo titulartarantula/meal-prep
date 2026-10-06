@@ -41,6 +41,40 @@ class DraftScreenTest {
         assertEquals(1, sent)
     }
 
+    @Test fun `a stale ready cart is an older cart - read-only, Send off, Build a new cart instead`() {
+        var rebuilt: List<String>? = null
+        var sent = 0
+        compose.setContent {
+            DraftContent(DraftState(ready.copy(stale = true), loading = false),
+                DraftActions(onSend = { sent++ }, onRebuild = { rebuilt = it }), today = today)
+        }
+        compose.onNodeWithText("Older cart").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        compose.onNodeWithText(STALE_CART).assertExists()
+        compose.onNodeWithText("Send to Loblaws").assertIsNotEnabled().performClick()
+        assertEquals(0, sent)
+        compose.onNodeWithContentDescription("One more onion").assertIsNotEnabled()
+        compose.onNodeWithText(BUILD_NEW_CART).assertHeightIsAtLeast(48.dp).performClick()
+        assertEquals(listOf("2026-10-11"), rebuilt)
+        assertEquals(false, DraftState(ready.copy(stale = true), loading = false).canSend)
+        assertEquals(true, DraftState(ready, loading = false).canSend)
+    }
+
+    @Test fun `a stale sent cart says so and still opens in Loblaws`() {
+        val sent = Http.json.decodeFromString(Draft.serializer(), fixture("draft_3_sent.json")).copy(stale = true)
+        var opened: String? = null
+        compose.setContent { DraftContent(DraftState(sent, loading = false), DraftActions(onLoblaws = { opened = it }), today = today) }
+        compose.onNodeWithText("Older cart").assertExists()
+        compose.onNodeWithText(STALE_CART).assertExists()
+        compose.onNodeWithText("Open in Loblaws").performClick()
+        assertEquals(sent.pcxCartId, opened)
+    }
+
+    @Test fun `an up-to-date cart has no banner`() {
+        compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(), today = today) }
+        compose.onNodeWithText(STALE_CART).assertDoesNotExist()
+        compose.onNodeWithText(BUILD_NEW_CART).assertDoesNotExist()
+    }
+
     @Test fun `a line with no product searches Loblaws directly`() {
         var swapped: String? = null
         compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(onSwap = { swapped = it.name })) }

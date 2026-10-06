@@ -58,7 +58,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class ShareIn(val text: String, val week: String? = null)
 /** [entry] is null when the recipe was only saved to the library (no week sent; the app's way since 0.4.2). */
 @Serializable data class ShareResult(val recipe: Recipe, val entry: PlanEntry? = null, val existing: Boolean = false)
-@Serializable data class WeekSummary(val week: String, val entries: Int = 0, val carted: Boolean = false)
+/** [carted]: the week's newest sent cart still matches its recipes; [cartStale]: a cart was sent but the week's
+ *  recipes changed since (absent from servers before 0.8.1). */
+@Serializable data class WeekSummary(val week: String, val entries: Int = 0, val carted: Boolean = false, val cartStale: Boolean = false)
 @Serializable data class EntryIn(val recipeId: Int)
 @Serializable data class RatingIn(val family: Int, val company: String? = null, val note: String? = null)
 @Serializable data class PendingRating(
@@ -108,6 +110,9 @@ import kotlinx.serialization.Serializable
     val id: Int, val status: String, val error: String? = null, val progress: Progress = Progress(),
     val weeks: List<String> = emptyList(), val lines: List<DraftLine> = emptyList(), val pcxCartId: String? = null,
     val estimatedTotal: Double = 0.0, val createdAt: String? = null, val sentAt: String? = null,
+    /** The week's recipes changed since this cart was built (added, removed or rescaled; a night move doesn't count):
+     *  an older cart, read-only, that can't be sent. */
+    val stale: Boolean = false,
 )
 @Serializable data class DraftIn(val items: List<ListItem>, val weeks: List<String>)
 @Serializable data class SearchIn(val term: String)

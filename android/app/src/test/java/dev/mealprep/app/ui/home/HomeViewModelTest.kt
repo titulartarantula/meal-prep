@@ -76,6 +76,15 @@ class HomeViewModelTest {
         assertEquals(ContextAction.BuildCart(wk), ui.action)
     }
 
+    @Test fun `a week changed after its cart was sent is planned only and builds a new cart`() = runTest {
+        env.on("GET", "/weeks", body = """[{"week":"2026-10-11","entries":3,"carted":false,"cart_stale":true}]""")
+        env.on("GET", "/weeks/2026-10-11/draft", body = fixture("draft_3_sent.json").replaceFirst("{", "{\"stale\": true, "))
+        val ui = vm.week(wk).await { !it.loading }
+        assertEquals(StatusStrip(planned = true, cartSent = false, prepDone = false), ui.strip)
+        assertEquals(ContextAction.BuildCart(wk), ui.action)
+        assertEquals(null, ui.sentDraftId)                                         // "Cart sent" doesn't open the old one
+    }
+
     @Test fun `placing an entry patches its day`() = runTest {
         env.on("PATCH", "/plan/23", code = 204)
         val cookies = vm.week(wk).await { !it.loading }.view!!.unplaced.single()
