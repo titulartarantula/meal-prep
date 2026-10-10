@@ -16,7 +16,7 @@ sealed interface CopyResult {
 }
 
 /**
- * Recipe files picked in the system picker or shared from another app arrive as content:// URIs whose read grant
+ * Recipe files (documents, JSON-LD, saved pages) picked in the system picker or shared from another app arrive as content:// URIs whose read grant
  * lasts only while the receiving screen lives: they are copied into cacheDir/imports at once (capped), and only the
  * copy is ever read again (preview, then apply).
  */
@@ -68,12 +68,25 @@ object ImportFiles {
         }
     }.getOrNull()?.trim()?.ifBlank { null }
 
-    /** "html" for a saved web page, else "json" (the server goes by the content; this only names the copy). */
-    fun extension(name: String, mime: String?): String = when {
-        name.lowercase().let { it.endsWith(".html") || it.endsWith(".htm") } -> "html"
-        name.lowercase().endsWith(".json") -> "json"
-        mime?.contains("html") == true -> "html"
-        else -> "json"
+    /** The copy's extension: pdf / docx / doc / txt / html / json, by the name, else the type, else "json" (the server
+     *  goes by the content; this only names the copy). */
+    fun extension(name: String, mime: String?): String {
+        val n = name.lowercase()
+        val m = mime?.substringBefore(';')?.trim()?.lowercase().orEmpty()
+        return when {
+            n.endsWith(".html") || n.endsWith(".htm") -> "html"
+            n.endsWith(".json") -> "json"
+            n.endsWith(".pdf") -> "pdf"
+            n.endsWith(".docx") -> "docx"
+            n.endsWith(".doc") -> "doc"
+            n.endsWith(".txt") || n.endsWith(".text") || n.endsWith(".md") -> "txt"
+            m.contains("html") -> "html"
+            m == "application/pdf" -> "pdf"
+            m == ShareParser.DOCX -> "docx"
+            m == "application/msword" -> "doc"
+            m == "text/plain" -> "txt"
+            else -> "json"
+        }
     }
 
     /** Copies older than a day (an import nobody finished). */

@@ -47,14 +47,18 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
             </intent-filter>
-            <!-- Recipe files (schema.org JSON-LD from Meal Prep or another recipe app, a saved web page) shared from
-                 another app, or opened with Meal Prep from Files / Drive. The server reads the content, not the type. -->
+            <!-- Recipe files (a recipe document: PDF, Word .docx, plain text; schema.org JSON-LD from Meal Prep or another
+                 recipe app; a saved web page) shared from another app, or opened with Meal Prep from Files / Drive. The
+                 server reads the content, not the type. A text/plain SEND is the link filter above (ShareParser tells a
+                 shared text file from a shared link). -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/json" />
                 <data android:mimeType="application/ld+json" />
                 <data android:mimeType="text/html" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -63,6 +67,9 @@
                 <data android:mimeType="application/json" />
                 <data android:mimeType="application/ld+json" />
                 <data android:mimeType="text/html" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
         <!-- Lets the phone's camera app write a page photo into the app's pages folder (fallback when CameraX can't start). -->

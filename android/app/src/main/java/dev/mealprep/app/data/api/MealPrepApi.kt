@@ -68,10 +68,11 @@ interface MealPrepApi {
     /** schema.org JSON-LD files (ratings and notes always included); the name comes in Content-Disposition. */
     @Streaming @GET("recipes/{id}/export") suspend fun exportRecipe(@Path("id") id: Int): Response<ResponseBody>
     @Streaming @GET("recipes/export") suspend fun exportLibrary(): Response<ResponseBody>
-    /** dry_run "true" = the preview (nothing written); "false" + [choices] (JSON object key → add/skip/update) = 202 and
-     *  a background job. */
+    /** dry_run "true" = the preview (nothing written; a document's first preview is a read job instead: 202, poll
+     *  [importJob]); "false" + [choices] (JSON object key → add/skip/update) = 202 and a background job. [name] = the
+     *  file's name on the phone (a document's recipes take it as their source). */
     @Multipart @POST("recipes/import")
     suspend fun importRecipes(@Part file: MultipartBody.Part, @Part("dry_run") dryRun: RequestBody,
-                              @Part("choices") choices: RequestBody? = null): ImportReport
+                              @Part("choices") choices: RequestBody? = null, @Part("name") name: RequestBody? = null): ImportReport
     @GET("imports/{id}") suspend fun importJob(@Path("id") id: Int): ImportReport
 }

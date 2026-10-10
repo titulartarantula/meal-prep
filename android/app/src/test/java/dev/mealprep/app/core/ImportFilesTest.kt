@@ -102,5 +102,12 @@ class ImportFilesTest {
         assertEquals("json", ImportFiles.extension("backup.json", "text/html"))
         assertEquals("html", ImportFiles.extension("download", "text/html"))
         assertEquals("json", ImportFiles.extension("download", "application/octet-stream"))
+        assertEquals("pdf", ImportFiles.extension("Cookbook chapter.PDF", null))
+        assertEquals("docx", ImportFiles.extension("cabin.docx", "application/octet-stream"))
+        assertEquals("doc", ImportFiles.extension("old.doc", null))
+        assertEquals("txt", ImportFiles.extension("notes.txt", null))
+        assertEquals("pdf", ImportFiles.extension("download", "application/pdf"))
+        assertEquals("docx", ImportFiles.extension("download", ShareParser.DOCX))
+        assertEquals("txt", ImportFiles.extension("download", "text/plain; charset=utf-8"))
     }
 }

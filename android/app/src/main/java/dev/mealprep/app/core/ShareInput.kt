@@ -11,8 +11,9 @@ sealed interface ShareInput {
     /** Pages already copied into the app's own storage (in-app camera, or Photos after copying). */
     data class Pages(val dir: File) : ShareInput
     data class NotARecipe(val text: String) : ShareInput
-    /** A recipe file (schema.org JSON-LD, a saved web page) shared from another app or opened from Files: a
-     *  content URI readable only while the receiving activity lives, so it is copied in at once (ImportFiles). */
+    /** A recipe file (a recipe document: PDF, Word, text; schema.org JSON-LD; a saved web page) shared from another
+     *  app or opened from Files: a content URI readable only while the receiving activity lives, so it is copied in at
+     *  once (ImportFiles). */
     data class RecipeFile(val uri: Uri, val mime: String?) : ShareInput
 }
 
@@ -23,8 +24,10 @@ object ShareParser {
     fun nytUrl(text: String?): String? =
         text?.let { NYT.find(it)?.value }?.replace("://www.", "://")?.replace("http://", "https://")
 
-    /** The types of the manifest's recipe-file filters (no zip: Paprika isn't imported). */
-    val RECIPE_FILE_TYPES = setOf("application/json", "application/ld+json", "text/html")
+    const val DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    /** The types of the manifest's recipe-file filters (no zip: Paprika isn't imported; no .doc: the server can't read
+     *  old Word files). text/plain: a text document shared as a file. */
+    val RECIPE_FILE_TYPES = setOf("application/json", "application/ld+json", "text/html", "application/pdf", DOCX, "text/plain")
     fun isRecipeFileType(type: String?) = type?.substringBefore(';')?.trim()?.lowercase() in RECIPE_FILE_TYPES
 
     private val LINK = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
@@ -43,9 +46,10 @@ object ShareParser {
                 ).distinct().joinToString("\n")
                 val stream = intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
                 when {
-                    // A file: a recipe type, or a text/plain share that carries only a file (some file managers).
-                    stream != null && (isRecipeFileType(intent.type) || intent.getCharSequenceExtra(Intent.EXTRA_TEXT) == null) ->
-                        ShareInput.RecipeFile(stream, intent.type)
+                    // A file: a recipe type, or a share that carries only a file (some file managers). A shared NYT link
+                    // that happens to come with a file (a text/plain share with both) stays a link.
+                    stream != null && (isRecipeFileType(intent.type) || intent.getCharSequenceExtra(Intent.EXTRA_TEXT) == null) &&
+                        nytUrl(text) == null -> ShareInput.RecipeFile(stream, intent.type)
                     else -> nytUrl(text)?.let { ShareInput.NytLink(it, text) } ?: ShareInput.NotARecipe(text)
                 }
             }

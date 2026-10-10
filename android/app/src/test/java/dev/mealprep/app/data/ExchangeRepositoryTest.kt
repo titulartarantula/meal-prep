@@ -9,6 +9,7 @@ import java.io.File
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -89,5 +90,25 @@ class ExchangeRepositoryTest {
         val saved = env.repo.importJob(7)
         assertEquals("done", saved.value!!.status); assertTrue(saved.offline)
         assertEquals(ApiError.Unreachable, saved.error)
+    }
+
+    @Test fun `preview and apply send the file's name for a document's source`() = runTest {
+        env.on("POST", "/recipes/import", body = fixture("import_preview.json"))
+        env.repo.importPreview(file(), "  Summer   salads.pdf ")
+        val sent = env.bodies("POST", "/recipes/import").single()
+        assertTrue(sent.contains("name=\"name\"") && sent.contains("\r\n\r\nSummer salads.pdf\r\n"))   // tidied
+        env.on("POST", "/recipes/import", code = 202, body = fixture("import_job_running.json"))
+        env.repo.importApply(file(), mapOf("0:9f2c1a7e" to "add"), "Summer salads.pdf")
+        assertTrue(env.bodies("POST", "/recipes/import").last().contains("\r\n\r\nSummer salads.pdf\r\n"))
+        env.on("POST", "/recipes/import", body = fixture("import_preview.json"))
+        env.repo.importPreview(file())
+        assertFalse(env.bodies("POST", "/recipes/import").last().contains("name=\"name\""))   // no name: no part
+    }
+
+    @Test fun `a document's first preview is its read job`() = runTest {
+        env.on("POST", "/recipes/import", code = 202, body = fixture("import_read_running.json"))
+        val r = (env.repo.importPreview(file(), "cookbook.pdf") as ApiResult.Ok).value
+        assertEquals(9, r.id); assertEquals("running", r.status); assertTrue(r.dryRun); assertEquals("pdf", r.format)
+        assertEquals(1, r.progress.done); assertEquals(3, r.progress.total); assertTrue(r.items.isEmpty())
     }
 }

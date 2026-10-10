@@ -1,0 +1,1 @@
+{"id": 9, "status": "running", "progress": {"done": 1, "total": 3}, "error": null, "counts": {"new": 0, "duplicate": 0, "failed": 0}, "dry_run": true, "format": "pdf", "file_sha": "7c1e2a90-invented", "warnings": [], "existing": false, "items": [], "created_at": "2026-10-10T14:00:00+00:00", "finished_at": null}

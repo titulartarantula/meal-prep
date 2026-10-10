@@ -23,6 +23,28 @@ class ExchangeTextTest {
         assertEquals(ExchangeText.COULDNT_READ, ExchangeText.importError(ApiError.Http(422, null)))
     }
 
+    @Test fun `document errors are mapped`() {
+        mapOf(
+            "This file can't be imported. Choose a recipe document (PDF, Word or text), a recipe file (.json) or a saved web page (.html)." to ExchangeText.NOT_A_RECIPE_FILE,
+            "This PDF is locked with a password. Save a copy without the password and import that." to ExchangeText.LOCKED,
+            "This is an old Word file (.doc). Save it as .docx or PDF, then import that." to ExchangeText.OLD_WORD,
+            "This looks like a photo. To add a recipe from photos, use Add recipe → Choose photos." to ExchangeText.PHOTO,
+            "There's no recipe text in this document." to ExchangeText.NO_TEXT,
+            "Couldn't read this document. It may be damaged: save or export it again, then import the new copy." to ExchangeText.DAMAGED,
+            "This document is too big to read in one go. Split it into smaller files and import each one." to ExchangeText.DOC_TOO_BIG,
+            "Read this document again before adding its recipes." to ExchangeText.READ_AGAIN,
+        ).forEach { (server, ours) -> assertEquals(server, ours, ExchangeText.importError(e422(server))) }
+        assertTrue(ExchangeText.NOT_A_RECIPE_FILE.contains("PDF, Word or text"))
+    }
+
+    @Test fun `a document's failed read in our words`() {
+        assertEquals(ExchangeText.NO_DOC_RECIPES, ExchangeText.readError("No recipes found in this document."))
+        assertEquals(ExchangeText.AI_DOWN, ExchangeText.readError("The AI couldn't read this document. Try again in a few minutes."))
+        assertEquals(ExchangeText.READ_RESTARTED, ExchangeText.readError("interrupted by a server restart"))
+        assertEquals(ExchangeText.COULDNT_READ, ExchangeText.readError("RuntimeError: bug"))
+        assertEquals(ExchangeText.COULDNT_READ, ExchangeText.readError(null))
+    }
+
     @Test fun `413 keeps the server's cap`() {
         assertEquals("This file is too big to import (max 20 MB). Export fewer recipes at a time, then import each file.",
             ExchangeText.importError(ApiError.Http(413, "This file is too big to import (max 20 MB).")))

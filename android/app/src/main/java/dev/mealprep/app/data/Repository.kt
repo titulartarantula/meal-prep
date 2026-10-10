@@ -216,14 +216,16 @@ class Repository(
             withContext(Dispatchers.IO) { ExportFile(name, ExportFiles.save(body.byteStream(), dir, name, now().toEpochMilli())) }
         }
 
-    /** What importing [file] would do (nothing is written). */
-    suspend fun importPreview(file: File): ApiResult<ImportReport> =
-        call { it.importRecipes(Http.filePart(file, file.name), Http.textPart("true")) }
+    /** What importing [file] would do (nothing is written), or, for a document read the first time, its read job
+     *  (202: poll [importJob] until done; its report is then the preview). */
+    suspend fun importPreview(file: File, name: String? = null): ApiResult<ImportReport> =
+        call { it.importRecipes(Http.filePart(file, file.name), Http.textPart("true"), name = name.clean()?.let(Http::textPart)) }
     /** Starts the import with [choices] (item key → add / skip / update): the job (202). Sending the same file and
      *  choices again within minutes returns the same job (existing = true), so a retry never imports twice. */
-    suspend fun importApply(file: File, choices: Map<String, String>): ApiResult<ImportReport> = call {
+    suspend fun importApply(file: File, choices: Map<String, String>, name: String? = null): ApiResult<ImportReport> = call {
         it.importRecipes(Http.filePart(file, file.name), Http.textPart("false"),
-            Http.textPart(json.encodeToString(MapSerializer(String.serializer(), String.serializer()), choices)))
+            Http.textPart(json.encodeToString(MapSerializer(String.serializer(), String.serializer()), choices)),
+            name.clean()?.let(Http::textPart))
     }
     /** An import job, with its last copy kept for offline (the result stays readable away from home). */
     suspend fun importJob(id: Int): Loaded<ImportReport> = load("import:$id", ImportReport.serializer()) { it.importJob(id) }

@@ -85,4 +85,19 @@ class ShareParserTest {
         assertEquals(true, ShareParser.hasLink("Soup https://recipes.example.org/soup"))
         assertEquals(false, ShareParser.hasLink("make soup"))
     }
+
+    @Test fun `recipe documents shared from another app or opened from Files`() {
+        val u = Uri.parse("content://com.example.files/doc/9")
+        listOf("application/pdf", ShareParser.DOCX).forEach { t ->
+            assertEquals(ShareInput.RecipeFile(u, t), ShareParser.parse(Intent(Intent.ACTION_SEND).setType(t).putExtra(Intent.EXTRA_STREAM, u)))
+            assertEquals(ShareInput.RecipeFile(u, t), ShareParser.parse(Intent(Intent.ACTION_VIEW).setDataAndType(u, t)))
+        }
+        assertEquals(ShareInput.RecipeFile(u, "text/plain"), ShareParser.parse(Intent(Intent.ACTION_VIEW).setDataAndType(u, "text/plain")))
+        // A text file shared with its name as the text is still the file.
+        val named = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, u)
+            .putExtra(Intent.EXTRA_TEXT, "Summer salads.txt")
+        assertEquals(ShareInput.RecipeFile(u, "text/plain"), ShareParser.parse(named))
+        // Old Word files aren't offered (the server can't read them).
+        assertEquals(false, ShareParser.isRecipeFileType("application/msword"))
+    }
 }
