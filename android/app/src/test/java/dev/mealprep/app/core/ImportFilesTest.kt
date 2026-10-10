@@ -119,4 +119,12 @@ class ImportFilesTest {
         assertFalse(ImportFiles.isPhoto("application/octet-stream", "cookbook.pdf"))
         assertFalse(ImportFiles.isPhoto(null, null))
     }
+
+    @Test fun `a picked file's provider is asked for its type, and one that can't answer isn't taken for a photo`() {
+        assertTrue(ImportFiles.isPhoto(resolver, uri("IMG_0042", "image/jpeg")))
+        assertTrue(ImportFiles.isPhoto(resolver, uri("page 2.heic", "application/octet-stream")))
+        assertFalse(ImportFiles.isPhoto(resolver, uri("cookbook.pdf", "application/pdf")))
+        // a cloud provider that's gone or offline: no type, no name — it goes to the file copy, which says what to do
+        assertFalse(ImportFiles.isPhoto(resolver, Uri.parse("content://gone.provider/doc/1")))
+    }
 }

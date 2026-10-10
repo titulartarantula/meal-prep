@@ -32,11 +32,13 @@ class RecipePickerTest {
     @Test fun `too many photos are refused before cloud copies begin`() {
         val uris = (1..11).map { Uri.parse("content://onedrive/photo/$it") }
         assertEquals(RecipePickerSelection.Error(MANY_PHOTOS), recipePickerSelection(uris) { true })
+        assertEquals(RecipePickerSelection.Photos(uris.take(10)), recipePickerSelection(uris.take(10)) { true })
+        assertTrue(MANY_PHOTOS.contains("10"))
     }
 
     @Test fun `cancel does nothing and supported types include images`() {
         assertNull(recipePickerSelection(emptyList(), image))
-        assertTrue((PICK_TYPES + "image/*").contains("image/*"))
+        assertTrue(PICK_TYPES.contains("image/*"))
         assertTrue(PICK_TYPES.contains("application/pdf"))
     }
 }

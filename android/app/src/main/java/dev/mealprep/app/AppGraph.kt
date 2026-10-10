@@ -55,6 +55,13 @@ class AppGraph(val context: Context) {
     /** Copies a picked or shared recipe file into [importsDir] while its read grant lasts. */
     suspend fun copyImport(uri: Uri): dev.mealprep.app.core.CopyResult =
         withContext(Dispatchers.IO) { dev.mealprep.app.core.ImportFiles.copyIn(context.contentResolver, uri, importsDir) }
+    /** What a pick in the file picker is (photos, one file, or a pick that can't be used). */
+    suspend fun pickedFiles(uris: List<Uri>): dev.mealprep.app.ui.exchange.RecipePickerSelection? =
+        withContext(Dispatchers.IO) {
+            dev.mealprep.app.ui.exchange.recipePickerSelection(uris) { u ->
+                dev.mealprep.app.core.ImportFiles.isPhoto(context.contentResolver, u)
+            }
+        }
     /** A share that arrived (MainActivity) and is waiting for the Share screen. */
     val pendingShare = MutableStateFlow<ShareInput?>(null)
     /** Import cards dismissed this run (This week and Recipes both show the cards). */

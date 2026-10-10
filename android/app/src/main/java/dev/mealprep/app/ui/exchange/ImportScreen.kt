@@ -70,17 +70,19 @@ const val SELECT_NONE = "Select none"
 const val LEAVE_NOTE = "You can leave this screen: the recipes keep coming in, and Meal Prep tells you when it's done."
 
 const val DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-const val MIXED_FILES = "Choose photos or one recipe document at a time, not both together."
-const val MANY_DOCUMENTS = "Choose one recipe document at a time. A document can contain several recipes."
-const val MANY_PHOTOS = "Choose up to 10 photos for one recipe."
+const val MIXED_FILES = "Choose one kind at a time: either photos of one recipe, or one recipe file."
+const val MANY_DOCUMENTS = "Choose one file at a time. A document can hold several recipes; you pick which to keep."
+const val MANY_PHOTOS = "A recipe can have up to ${PagesState.MAX_PAGES} pages. Choose ${PagesState.MAX_PAGES} photos or fewer."
 
-/** Document types in the file picker, extended with image MIME types for photos. Some
+/** What the system file picker offers: recipe documents (PDF, Word, text), recipe files, saved web pages, and photos of
+ *  a recipe's pages (from Files and cloud providers such as OneDrive, which the system photo picker can't see). Some
  *  providers type a .json as octet-stream or plain text; the server reads the content, so a wrong type only costs a
  *  clear message. */
 val PICK_TYPES = arrayOf("application/pdf", DOCX_TYPE, "text/plain", "application/json", "application/ld+json", "text/html",
-    "application/octet-stream")
+    "application/octet-stream", "image/*")
 
-/** One file picker can return many photos, but the recipe-document preview handles one file at a time. */
+/** What a pick in the file picker is: photos (the pages of one recipe, in the order picked) go to the photo review like
+ *  Choose photos; a file goes to the import preview, which takes one file at a time. */
 sealed interface RecipePickerSelection {
     data class Photos(val uris: List<Uri>) : RecipePickerSelection
     data class Document(val uri: Uri) : RecipePickerSelection
@@ -99,28 +101,28 @@ fun recipePickerSelection(uris: List<Uri>, isPhoto: (Uri) -> Boolean): RecipePic
     }
 }
 
-/** Files and cloud document providers (including OneDrive), unlike the system photo picker. */
+/**
+ * Opens the system file picker (several files allowed). Photos go to [onPhotos] (the photo review copies them in); a
+ * file is copied in at once (its read grant is short-lived) and goes to [onDocument], as does a pick that can't be used.
+ */
 @Composable
 fun rememberRecipeAndPhotoFilePicker(
     onPhotos: (List<Uri>) -> Unit, onDocument: (CopyResult) -> Unit,
 ): () -> Unit {
-    val ctx = LocalContext.current
-    val g = ctx.graph
+    val g = LocalContext.current.graph
     val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        when (val selection = recipePickerSelection(uris) { u ->
-            dev.mealprep.app.core.ImportFiles.isPhoto(
-                runCatching { ctx.contentResolver.getType(u) }.getOrNull(),
-                dev.mealprep.app.core.ImportFiles.displayName(ctx.contentResolver, u),
-            )
-        }) {
-            is RecipePickerSelection.Photos -> onPhotos(selection.uris)
-            is RecipePickerSelection.Document -> scope.launch { onDocument(g.copyImport(selection.uri)) }
-            is RecipePickerSelection.Error -> onDocument(CopyResult.Err(selection.message))
-            null -> {} // cancelled
+        if (uris.isNotEmpty()) scope.launch {
+            // Each file's type and name come from its provider (a query, slow for a cloud one): off the main thread.
+            when (val selection = g.pickedFiles(uris)) {
+                is RecipePickerSelection.Photos -> onPhotos(selection.uris)
+                is RecipePickerSelection.Document -> onDocument(g.copyImport(selection.uri))
+                is RecipePickerSelection.Error -> onDocument(CopyResult.Err(selection.message))
+                null -> {}
+            }
         }
     }
-    return { runCatching { launcher.launch(PICK_TYPES + "image/*") } }
+    return { runCatching { launcher.launch(PICK_TYPES) } }
 }
 
 class ImportActions(

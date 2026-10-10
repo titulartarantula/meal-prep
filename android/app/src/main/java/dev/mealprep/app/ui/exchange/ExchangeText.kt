@@ -13,7 +13,7 @@ object ExchangeText {
     const val NO_RECIPES = "There are no recipes in this file. Choose a recipe file exported from Meal Prep or another " +
         "recipe app, or a recipe's web page saved as .html."
     const val NOT_A_RECIPE_FILE = "Meal Prep can't import this kind of file. Choose a recipe document (PDF, Word or " +
-        "text), a recipe file (.json) or a recipe's web page saved as .html."
+        "text), a recipe file (.json), a recipe's web page saved as .html, or photos of a recipe's pages."
     const val NOT_JSON = "This recipe file is damaged or incomplete. Export it again from the other app, then import the new file."
     const val TOO_DEEP = "This file is built in a way Meal Prep can't read. Export it again from the other app, or save " +
         "the recipe's web page and import that instead."
@@ -29,7 +29,8 @@ object ExchangeText {
     const val LOCKED = "This PDF is locked with a password. Save a copy without the password, then import that."
     const val OLD_WORD = "This is an old Word file (.doc). Open it in Word or Google Docs, save it as .docx or PDF, " +
         "then import that."
-    const val PHOTO = "This looks like a photo. To add a recipe from photos, use Add recipe → Choose photos."
+    const val PHOTO = "This looks like a photo. To add a recipe from photos, use Add recipe → Choose photos, or choose " +
+        "only photos in Import from a file."
     const val NO_TEXT = "There's no recipe text in this document. Choose another file. For a photo of a page, use " +
         "Add recipe → Choose photos."
     const val DAMAGED = "Meal Prep couldn't read this document. It may be damaged: save or export it again, then " +

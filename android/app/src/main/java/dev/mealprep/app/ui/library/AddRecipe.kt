@@ -29,7 +29,8 @@ import androidx.compose.ui.unit.dp
 import dev.mealprep.app.R
 import dev.mealprep.app.core.ShareParser
 
-/** The ways to add a recipe from the Recipes tab (a file: a recipe or a whole library exported from another app). */
+/** The ways to add a recipe from the Recipes tab (a file: a recipe document, a recipe or a whole library exported from
+ *  another app, or photos of a recipe's pages from Files or a cloud drive). */
 enum class AddWay(val label: String) {
     CAMERA("Scan with camera"), PHOTOS("Choose photos"), LINK("Paste an NYT link"), FILE("Import from a file"),
 }

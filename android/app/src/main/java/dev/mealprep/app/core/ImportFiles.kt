@@ -32,6 +32,10 @@ object ImportFiles {
 
     private class TooBig : IOException()
 
+    /** Whether a picked file is a photo, by the type its provider gives (a provider that fails to answer: not one). */
+    fun isPhoto(resolver: ContentResolver, uri: Uri): Boolean =
+        isPhoto(runCatching { resolver.getType(uri) }.getOrNull(), displayName(resolver, uri))
+
     /** Some cloud providers label an image as octet-stream; use its displayed extension only in that case. */
     fun isPhoto(mime: String?, name: String?): Boolean {
         val type = mime?.substringBefore(';')?.trim()?.lowercase().orEmpty()

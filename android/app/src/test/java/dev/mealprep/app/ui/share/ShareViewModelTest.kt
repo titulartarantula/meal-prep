@@ -286,6 +286,7 @@ class ShareViewModelTest {
         vm.start(ShareInput.Photos(listOf(Uri.parse("content://m/bad"))))
         val none = vm.state.await { !it.copying && it.dir != null && it.message == ShareViewModel.UNREADABLE }
         assertEquals(ShareViewModel.UNREADABLE, none.message)
+        assertTrue(none.message!!.contains("save them to your phone first"))   // e.g. a cloud-only OneDrive photo
         assertFalse(none.canConfirm)
         assertEquals(1, tmp.root.listFiles()!!.size)                 // the first share's pages were discarded
     }
