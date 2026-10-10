@@ -1,5 +1,6 @@
 package dev.mealprep.app.ui.exchange
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -46,6 +47,7 @@ import dev.mealprep.app.core.CopyResult
 import dev.mealprep.app.data.api.ImportItem
 import dev.mealprep.app.data.api.ImportReport
 import dev.mealprep.app.graph
+import dev.mealprep.app.ui.camera.PagesState
 import dev.mealprep.app.ui.common.AdviceText
 import dev.mealprep.app.ui.common.BackTopBar
 import dev.mealprep.app.ui.common.BottomActionBar
@@ -68,22 +70,57 @@ const val SELECT_NONE = "Select none"
 const val LEAVE_NOTE = "You can leave this screen: the recipes keep coming in, and Meal Prep tells you when it's done."
 
 const val DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+const val MIXED_FILES = "Choose photos or one recipe document at a time, not both together."
+const val MANY_DOCUMENTS = "Choose one recipe document at a time. A document can contain several recipes."
+const val MANY_PHOTOS = "Choose up to 10 photos for one recipe."
 
-/** What the system file picker offers: recipe documents (PDF, Word, text), recipe files and saved web pages. Some
+/** Document types in the file picker, extended with image MIME types for photos. Some
  *  providers type a .json as octet-stream or plain text; the server reads the content, so a wrong type only costs a
  *  clear message. */
 val PICK_TYPES = arrayOf("application/pdf", DOCX_TYPE, "text/plain", "application/json", "application/ld+json", "text/html",
     "application/octet-stream")
 
-/** Opens the system file picker; the chosen file is copied in at once (its read grant is short-lived). */
-@Composable
-fun rememberRecipeFilePicker(onResult: (CopyResult) -> Unit): () -> Unit {
-    val g = LocalContext.current.graph
-    val scope = rememberCoroutineScope()
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch { onResult(g.copyImport(uri)) }
+/** One file picker can return many photos, but the recipe-document preview handles one file at a time. */
+sealed interface RecipePickerSelection {
+    data class Photos(val uris: List<Uri>) : RecipePickerSelection
+    data class Document(val uri: Uri) : RecipePickerSelection
+    data class Error(val message: String) : RecipePickerSelection
+}
+
+fun recipePickerSelection(uris: List<Uri>, isPhoto: (Uri) -> Boolean): RecipePickerSelection? {
+    if (uris.isEmpty()) return null
+    val photos = uris.filter(isPhoto)
+    return when {
+        photos.size == uris.size && uris.size > PagesState.MAX_PAGES -> RecipePickerSelection.Error(MANY_PHOTOS)
+        photos.size == uris.size -> RecipePickerSelection.Photos(uris)
+        photos.isNotEmpty() -> RecipePickerSelection.Error(MIXED_FILES)
+        uris.size > 1 -> RecipePickerSelection.Error(MANY_DOCUMENTS)
+        else -> RecipePickerSelection.Document(uris.single())
     }
-    return { runCatching { launcher.launch(PICK_TYPES) } }
+}
+
+/** Files and cloud document providers (including OneDrive), unlike the system photo picker. */
+@Composable
+fun rememberRecipeAndPhotoFilePicker(
+    onPhotos: (List<Uri>) -> Unit, onDocument: (CopyResult) -> Unit,
+): () -> Unit {
+    val ctx = LocalContext.current
+    val g = ctx.graph
+    val scope = rememberCoroutineScope()
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        when (val selection = recipePickerSelection(uris) { u ->
+            dev.mealprep.app.core.ImportFiles.isPhoto(
+                runCatching { ctx.contentResolver.getType(u) }.getOrNull(),
+                dev.mealprep.app.core.ImportFiles.displayName(ctx.contentResolver, u),
+            )
+        }) {
+            is RecipePickerSelection.Photos -> onPhotos(selection.uris)
+            is RecipePickerSelection.Document -> scope.launch { onDocument(g.copyImport(selection.uri)) }
+            is RecipePickerSelection.Error -> onDocument(CopyResult.Err(selection.message))
+            null -> {} // cancelled
+        }
+    }
+    return { runCatching { launcher.launch(PICK_TYPES + "image/*") } }
 }
 
 class ImportActions(
@@ -93,7 +130,8 @@ class ImportActions(
 )
 
 @Composable
-fun ImportScreen(route: ImportRoute, onBack: () -> Unit, onRecipe: (Int) -> Unit, onDone: () -> Unit) {
+fun ImportScreen(route: ImportRoute, onBack: () -> Unit, onRecipe: (Int) -> Unit, onDone: () -> Unit,
+                 onPhotos: (List<Uri>) -> Unit) {
     val g = LocalContext.current.graph
     val vm: ImportViewModel = viewModel(key = "import-${route.path}-${route.jobId}", factory = viewModelFactory {
         initializer {
@@ -102,12 +140,12 @@ fun ImportScreen(route: ImportRoute, onBack: () -> Unit, onRecipe: (Int) -> Unit
         }
     })
     val state by vm.state.collectAsStateWithLifecycle()
-    val pick = rememberRecipeFilePicker { r ->
+    val pick = rememberRecipeAndPhotoFilePicker(onPhotos = onPhotos, onDocument = { r ->
         when (r) {
             is CopyResult.Ok -> vm.newFile(r.value.file, r.value.name)
             is CopyResult.Err -> vm.fileError(r.message)
         }
-    }
+    })
     ImportContent(state, ImportActions(onBack = onBack, onToggle = vm::toggle, onApply = vm::apply, onRetry = vm::preview,
         onPickAnother = pick, onRecipe = onRecipe, onDone = onDone, onRefresh = vm::refresh, onSelectAll = vm::selectAll))
 }

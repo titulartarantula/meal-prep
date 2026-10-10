@@ -84,7 +84,7 @@ class ShareViewModel(
         const val NOT_NYT_LINK = "Only NYT Cooking links can be imported from a link. Save the recipe's web page " +
             "(or export it from the other app), then import the file: Recipes → More options → Import recipes from a file."
         const val TOO_MANY = "A recipe can have up to 10 pages. Delete the extras first."
-        const val UNREADABLE = "Couldn't open those photos. Try sharing them again."
+        const val UNREADABLE = "Couldn't open those photos. Choose or share them again."
         fun someUnreadable(failed: Int, total: Int) = "Couldn't open $failed of the $total photos; the rest are below."
         const val SAVE_FAILED = "Couldn't get the pages ready. Try again."
     }

@@ -58,7 +58,7 @@ import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.ui.camera.PagesState
 import dev.mealprep.app.ui.camera.refPrompt
 import dev.mealprep.app.ui.exchange.ExportHost
-import dev.mealprep.app.ui.exchange.rememberRecipeFilePicker
+import dev.mealprep.app.ui.exchange.rememberRecipeAndPhotoFilePicker
 import dev.mealprep.app.ui.nav.ImportRoute
 import dev.mealprep.app.ui.nav.importRoute
 import dev.mealprep.app.work.WatchedImport
@@ -84,7 +84,7 @@ fun LibraryScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val imports by vm.imports.collectAsStateWithLifecycle()
     val fileImports by vm.fileImports.collectAsStateWithLifecycle()
-    val pickFile = rememberRecipeFilePicker { r -> onOpen(importRoute(r)) }
+    val pickFile = rememberRecipeAndPhotoFilePicker(onPhotos = onPhotos, onDocument = { r -> onOpen(importRoute(r)) })
     LifecycleResumeEffect(Unit) { vm.onResume(); onPauseOrDispose { } }
     val ctx = LocalContext.current
     var paste by remember { mutableStateOf<String?>(null) }   // non-null: the dialog is open (value = copied link or "")

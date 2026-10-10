@@ -134,7 +134,11 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
         composable<ImportRoute> { back ->
             ImportScreen(back.toRoute<ImportRoute>(), onBack = up, onRecipe = { id -> nav.navigate(RecipeRoute(id)) },
                 // The new recipes are at the top of Recipes (newest first; the tab reloads when it shows).
-                onDone = { nav.popBackStack(); nav.openTab(Tab.RECIPES) })
+                onDone = { nav.popBackStack(); nav.openTab(Tab.RECIPES) },
+                onPhotos = { uris ->
+                    graph.pendingShare.value = ShareInput.Photos(uris)
+                    nav.navigate(ShareRoute) { popUpTo<ImportRoute> { inclusive = true } }
+                })
         }
         composable<ShareRoute> {
             ShareScreen(graph,

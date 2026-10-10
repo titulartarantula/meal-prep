@@ -32,6 +32,17 @@ object ImportFiles {
 
     private class TooBig : IOException()
 
+    /** Some cloud providers label an image as octet-stream; use its displayed extension only in that case. */
+    fun isPhoto(mime: String?, name: String?): Boolean {
+        val type = mime?.substringBefore(';')?.trim()?.lowercase().orEmpty()
+        if (type.startsWith("image/")) return true
+        if (type.isNotEmpty() && type != "application/octet-stream") return false
+        return name?.lowercase()?.let { n ->
+            listOf(".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".gif", ".bmp", ".tif", ".tiff", ".avif")
+                .any(n::endsWith)
+        } == true
+    }
+
     fun copyIn(resolver: ContentResolver, uri: Uri, dir: File, max: Long = MAX_BYTES, now: Long = System.currentTimeMillis()): CopyResult {
         val name = displayName(resolver, uri) ?: uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { null } ?: "recipes"
         val ext = extension(name, runCatching { resolver.getType(uri) }.getOrNull())

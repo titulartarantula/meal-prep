@@ -110,4 +110,13 @@ class ImportFilesTest {
         assertEquals("docx", ImportFiles.extension("download", ShareParser.DOCX))
         assertEquals("txt", ImportFiles.extension("download", "text/plain; charset=utf-8"))
     }
+
+    @Test fun `photos from a cloud files provider are identified without treating documents as images`() {
+        assertTrue(ImportFiles.isPhoto("image/jpeg", "download"))
+        assertTrue(ImportFiles.isPhoto("application/octet-stream", "family recipe.HEIC"))
+        assertTrue(ImportFiles.isPhoto(null, "scan.PNG"))
+        assertFalse(ImportFiles.isPhoto("application/pdf", "cover.jpg"))
+        assertFalse(ImportFiles.isPhoto("application/octet-stream", "cookbook.pdf"))
+        assertFalse(ImportFiles.isPhoto(null, null))
+    }
 }
