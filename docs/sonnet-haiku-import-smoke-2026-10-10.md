@@ -1,6 +1,6 @@
 # Meal Prep: Sonnet 5.5 vs Haiku 5.5 recipe-import smoke test (2026-10-10)
 
-**Scope:** exploratory, matched-input comparison of the local 0.10.0 import extraction code. No live service settings, database records, deployment, or app release changed. Each call used the same production prompt and local Claude CLI provider behavior (no tools for text, Read for images); modelUsage confirmed the requested model ID in every successful call. Data was invented, not Jordan's recipes.
+**Scope:** exploratory, matched-input comparison of the local 0.10.0 import extraction code. No live service settings, database records, deployment, or app release changed. Each call used the same production prompt and local Claude CLI provider behavior (no tools for text, Read for images); modelUsage confirmed the requested model ID in every successful call. Data was invented, not the household's recipes.
 
 | Case | Sonnet 5.5 | Haiku 5.5 |
 | --- | --- | --- |
