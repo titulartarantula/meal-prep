@@ -2,7 +2,7 @@
 
 _Published at https://github.com/titulartarantula/meal-prep/blob/main/docs/play/privacy-policy.md_
 
-_Last updated: 5 October 2026_
+_Last updated: 10 October 2026_
 
 Meal Prep helps a household plan the week's dinners. You share recipe links into the app, it sends them to a
 home server **that you set up and choose**, and it shows you the plan from that server. The developer runs no
@@ -15,9 +15,11 @@ sent to the server address you enter in Settings. The server reads the recipe an
 week plan (which recipe is on which night, and the scale you choose).
 
 **Recipe files you export or import.** You can export your recipes (with their ratings and notes) to a file you
-choose or send it to an app you choose, and import recipe files you pick or share to the app. Files go only
-between your phone and your household's server; the app reads only the file you chose, and links inside a file
-are kept as text, never opened.
+choose or send it to an app you choose, and import recipe files you pick or share to the app: recipe files from
+other apps, saved recipe web pages, and recipe documents (PDF, Word or plain text). Files go only between your
+phone and your household's server; the app reads only the file you chose, and links inside a file are kept as
+text, never opened. To find the recipes in a document, the server sends the document's text (or, for a scanned
+PDF, its page images) to the AI service it is configured to use, the same way it reads a cookbook photo.
 
 **The saved copy on your phone.** To work offline, the app keeps a copy of the current week's plan on the
 phone, in the app's private storage. Uninstalling the app removes it.
