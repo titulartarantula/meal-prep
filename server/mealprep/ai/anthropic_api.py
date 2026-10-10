@@ -6,6 +6,8 @@ from .base import AIError, parse_json
 # thinks (adaptive) before it answers, and the thinking counts against max_tokens, so leave plenty of room.
 MAX_TOKENS = 64000
 _now = time.monotonic
+# Models from before adaptive thinking (Claude 4.6) reject it; they answer without thinking.
+NO_ADAPTIVE = ("claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-5", "claude-opus-4-1", "claude-3")
 
 
 class AnthropicApi:
@@ -14,6 +16,7 @@ class AnthropicApi:
     def __init__(self, api_key: str, model: str, timeout: int = 180, max_tokens: int = MAX_TOKENS,
                  client: anthropic.Anthropic | None = None):
         self.model, self.timeout, self.max_tokens = model, timeout, max_tokens
+        self.last_usage = None                       # the last answer's token counts (for logs and cost checks)
         # The SDK retries connection errors, 408/409/429 and 5xx (incl. 529 overloaded) itself.
         self.client = client or anthropic.Anthropic(api_key=api_key, max_retries=3)
 
@@ -28,14 +31,15 @@ class AnthropicApi:
         # timeout is the whole call's budget (as for the CLI), not the SDK's per-read timeout
         deadline = _now() + self.timeout
         try:
-            with self.client.messages.stream(model=self.model, max_tokens=self.max_tokens,
-                                             thinking={"type": "adaptive"},
+            thinking = {} if self.model.startswith(NO_ADAPTIVE) else {"thinking": {"type": "adaptive"}}
+            with self.client.messages.stream(model=self.model, max_tokens=self.max_tokens, **thinking,
                                              messages=[{"role": "user", "content": content}],
                                              timeout=self.timeout) as stream:
                 for _ in stream:
                     if _now() > deadline:
                         raise AIError("Anthropic timed out")
                 message = stream.get_final_message()
+            self.last_usage = message.usage
         except anthropic.APIStatusError as e:
             raise AIError(f"Anthropic error: HTTP {e.status_code}") from e
         except anthropic.APIError as e:              # connection errors, timeouts, broken streams

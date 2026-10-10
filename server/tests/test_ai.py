@@ -161,6 +161,19 @@ def test_anthropic_api_request_shape_and_parse(tmp_path):
     assert blocks[-1] == {"type": "text", "text": "hi"}
 
 
+def test_anthropic_older_models_get_no_adaptive_thinking():
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return _stream(_sse(['{"ok": 1}']))
+    api = _anthropic(handler)
+    api.model = "claude-haiku-4-5"
+    assert api.complete_json("hi") == {"ok": 1}
+    assert "thinking" not in seen[0] and seen[0]["model"] == "claude-haiku-4-5"
+    assert api.last_usage.output_tokens == 9
+
+
 def test_anthropic_error_has_no_key():
     import httpx2
     with pytest.raises(AIError) as ei:
