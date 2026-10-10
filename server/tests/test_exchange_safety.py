@@ -44,14 +44,25 @@ def test_decode():
 
 
 @pytest.mark.parametrize("data, msg", [
-    (b"", importer.NOT_A_RECIPE_FILE), (b"   \n", importer.NOT_A_RECIPE_FILE), (b"hello", importer.NOT_A_RECIPE_FILE),
+    (b"", importer.NOT_A_RECIPE_FILE), (b"   \n", importer.NOT_A_RECIPE_FILE),
     (b"PK\x03\x04rest-of-a-zip", importer.NOT_A_RECIPE_FILE), (b"\x1f\x8b\x08gz", importer.NOT_A_RECIPE_FILE),
     (b"[]", importer.NO_RECIPES), (b"{}", importer.NO_RECIPES), (b'{"@type": "Thing"}', importer.NO_RECIPES),
     (b"<html><script>var x</script></html>", importer.NO_RECIPES), (b"{broken", "This file isn't valid JSON."),
+    (b'[{"name": "Test", ', "This file isn't valid JSON."), (b"<html><body>no recipe</body></html>", importer.NO_RECIPES),
+    (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1rest", "This is an old Word file"),
     (b"[" * 5000, "This file is nested too deeply to read.")])
 def test_read_file_errors(data, msg):
     with pytest.raises(safe.Unreadable, match=msg.replace(".", r"\.").replace("(", r"\(").replace(")", r"\)")):
         importer.read_file(data)
+
+
+@pytest.mark.parametrize("data, kind", [
+    (b"hello", "text"), (b"[From the recipe box]\nTest Pea Soup\n1 cup peas", "text"), (b"%PDF-1.4\n", "pdf")])
+def test_documents_need_reading(data, kind):
+    """Text and documents aren't errors any more: without a cached read they need the AI (a read job)."""
+    with pytest.raises(importer.NeedsReading) as e:
+        importer.read_file(data)
+    assert e.value.kind == kind
 
 
 def test_too_many_recipes_capped_with_warning():
@@ -82,7 +93,7 @@ def test_javascript_url_never_kept():
 def test_random_bytes_only_raise_our_errors(data):
     try:
         fmt, nodes, _ = importer.read_file(data)
-    except safe.Unreadable:
+    except (safe.Unreadable, importer.NeedsReading):
         return
     for n in nodes:
         try:

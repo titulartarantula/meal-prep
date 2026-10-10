@@ -203,6 +203,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     ai = provider or get_provider(settings)
     prep_ai = provider or get_provider(settings, timeout=settings.prep_timeout)
     import_ai = provider or get_provider(settings, timeout=settings.import_ai_timeout)
+    document_ai = provider or get_provider(settings, timeout=settings.document_ai_timeout)
     import_cap = settings.import_max_mb * 1024 * 1024
     too_big = f"This file is too big to import (max {settings.import_max_mb} MB)."
     shop = pcx or Pcx(settings.store_id, api_key=settings.pcx_apikey)
@@ -412,22 +413,43 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         except Exception:
             log.exception("import job %s: background run crashed", jid)
 
+    def run_read(jid: int, doc, name: str | None):
+        # a document's first preview: the AI finds its recipes in the background (own connection, like imports)
+        try:
+            with psycopg.connect(settings.dsn, autocommit=True) as bc:
+                importer.run_read(bc, jid, doc, name, document_ai)
+        except Exception:
+            log.exception("read job %s: background run crashed", jid)
+
     @app.post("/recipes/import", dependencies=A)
     def import_recipes(file: UploadFile = File(...), dry_run: bool = Form(True), choices: str | None = Form(None),
-                       c=Depends(get_conn)):
-        """Import schema.org JSON-LD (one recipe, a list, an @graph, our export) or a saved web page's JSON-LD.
-        dry_run (default) = preview: per-item new / duplicate / failed with default actions, nothing written.
+                       name: str | None = Form(None, max_length=500), c=Depends(get_conn)):
+        """Import schema.org JSON-LD (one recipe, a list, an @graph, our export), a saved web page's JSON-LD, or a
+        recipe document (PDF, Word .docx, plain text) with one or more recipes, told apart by content.
+        dry_run (default) = preview: per-item new / duplicate / failed with default actions, nothing written. A
+        document's FIRST preview is a read job instead (202, GET /imports/{id}: the AI finds its recipes; done = its
+        report is the preview); later previews of the same file answer at once from that read.
         dry_run=false + choices {item key: add/skip/update} → 202 and a background job (GET /imports/{id}).
-        A file that can't be read → 422, over the cap → 413; anything wrong with one recipe is that item's
+        `name`: the file's name on the phone (a document's recipes take it as their source when the document names
+        none). A file that can't be read → 422, over the cap → 413; anything wrong with one recipe is that item's
         `failed` status, never a 5xx. Links in the file are kept as text and never fetched."""
         try:
             data = safe.read_capped(file.file, import_cap)
         except safe.ImportTooBig:
             raise HTTPException(413, too_big)
+        name = name or file.filename
         try:
             if dry_run:
-                return importer.preview(c, data)[0]
-            jid, items, work, existing = importer.start(c, data, importer.parse_choices(choices))
+                try:
+                    return importer.preview(c, data, name)[0]
+                except importer.NeedsReading as e:
+                    jid, doc = importer.start_read(c, data, e.kind)
+                if doc is not None:
+                    threading.Thread(target=run_read, args=(jid, doc, name), name=f"read-{jid}", daemon=True).start()
+                return JSONResponse({**importer.get_job(c, jid), "existing": doc is None}, status_code=202)
+            jid, items, work, existing = importer.start(c, data, importer.parse_choices(choices), name)
+        except importer.NeedsReading:
+            raise HTTPException(422, importer.READ_AGAIN)
         except (safe.Unreadable, importer.BadChoices) as e:
             raise HTTPException(422, str(e))
         except Exception:   # a bug must not become a 500 for a file
@@ -439,7 +461,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.get("/imports/{job_id}", dependencies=A)
     def get_import(job_id: int, c=Depends(get_conn)):
-        """An import job: status running / done / failed, progress, per-item results (see POST /recipes/import)."""
+        """An import job: status running / done / failed, progress, per-item results (see POST /recipes/import). A
+        document's read job has dry_run true; when done its items are the preview (new / duplicate / failed)."""
         job = importer.get_job(c, job_id)
         if job is None:
             raise HTTPException(404, f"import {job_id}")

@@ -33,5 +33,7 @@ class Settings:
     import_max_mb: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_IMPORT_MAX_MB", "20")))
     import_workers: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_IMPORT_WORKERS", "4")))
     import_ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_IMPORT_AI_TIMEOUT", "180")))
+    # Recipe documents: each AI call that finds the recipes in a part of a document (s; the answer is long).
+    document_ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_DOCUMENT_AI_TIMEOUT", "600")))
     store_id: str = "1092"
     default_people: int = 4

@@ -279,3 +279,15 @@ CREATE TABLE IF NOT EXISTS import_jobs(
   finished_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS import_jobs_key_idx ON import_jobs(file_sha, choices_sha);
+
+-- Recipe documents (2026-10-10): a PDF / Word / text file's recipes as the AI found them (title, servings, lines,
+-- steps, notes, source hints), by the file's sha256. The first preview of a document starts a read job (an import_jobs
+-- row with choices_sha 'read'); later previews and the apply use this, so the item keys of the preview and the apply
+-- match without a second AI read. Rows older than 14 days are deleted when a new read starts.
+CREATE TABLE IF NOT EXISTS document_reads(
+  file_sha text PRIMARY KEY,
+  format text NOT NULL,
+  recipes jsonb NOT NULL,
+  warnings jsonb NOT NULL DEFAULT '[]',
+  created_at timestamptz NOT NULL DEFAULT now()
+);

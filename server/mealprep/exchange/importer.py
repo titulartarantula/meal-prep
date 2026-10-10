@@ -1,5 +1,11 @@
-"""Recipe import, the DB side: read a file (JSON-LD or a saved web page), preview what an import would do (new /
-duplicate / failed, nothing written), then apply the user's choices in a background job.
+"""Recipe import, the DB side: read a file (JSON-LD, a saved web page, or a recipe document: PDF, Word, text),
+preview what an import would do (new / duplicate / failed, nothing written), then apply the user's choices in a
+background job.
+
+A document's recipes are found by the AI (importers/document.py), which takes a while and wouldn't give the same items
+twice: its first preview starts a read job (choices_sha 'read'; GET /imports/{id} until done, whose report is then
+the preview), and the recipes found are kept in document_reads by the file's sha. Later previews and the apply build
+the same nodes from there, so preview and apply keys match.
 
 De-duplication, in order: the stable id (uid), the source link, title + the same source; a title match where one side
 has no source is only flagged ("add anyway"). A same-id recipe whose content changed can be replaced ("update").
@@ -12,6 +18,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import logging
+import math
 import re
 import unicodedata
 
@@ -19,9 +26,10 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import db
+from ..importers import document as docsplit
 from ..importers.structure import structure_ingredients
 from ..models import Recipe
-from . import extract, jsonld
+from . import documents, extract, jsonld
 from .safe import Unreadable, decode, loads_limited
 
 log = logging.getLogger(__name__)
@@ -29,7 +37,12 @@ log = logging.getLogger(__name__)
 MAX_RECIPES = 2000
 RECENT = "10 minutes"   # a retried apply of the same file + choices within this returns the same job
 NO_RECIPES = "No recipes found in this file."
-NOT_A_RECIPE_FILE = "This file can't be imported. Choose a recipe file (.json) or a saved web page (.html)."
+NOT_A_RECIPE_FILE = documents.NOT_A_RECIPE_FILE
+NOT_JSON = "This file isn't valid JSON."
+READ_AGAIN = "Read this document again before adding its recipes."
+READ = "read"            # choices_sha of a document's read job
+DOC_KINDS = ("pdf", "docx", "text")
+KEEP_READS = "14 days"
 COULDNT_READ = "Couldn't read this recipe"
 COULDNT_SAVE = "Couldn't save this recipe"
 FILE_CHANGED = "The file changed since the preview; preview it again."
@@ -43,24 +56,52 @@ class BadChoices(ValueError):
     pass
 
 
+class NeedsReading(Exception):
+    """A document whose recipes haven't been found yet (no cached read): preview → start_read; apply → 422."""
+
+    def __init__(self, kind: str):
+        super().__init__(kind)
+        self.kind = kind
+
+
 # --- reading the file -------------------------------------------------------------------------------------------
 
-def read_file(data: bytes) -> tuple[str, list[dict], list[str]]:
-    """(format "jsonld" | "html", Recipe nodes, file warnings), detected by content (not the file name). Anything
-    else, or a file without a recipe → Unreadable (422)."""
-    head = data.lstrip()[:4]
-    if not head or head.startswith((b"PK\x03\x04", b"\x1f\x8b")):   # zip / gzip (e.g. Paprika): not supported
-        raise Unreadable(NOT_A_RECIPE_FILE)
-    text = decode(data)
-    if text.lstrip()[:1] in ("{", "["):
-        fmt, nodes = "jsonld", extract.find_recipes(loads_limited(text))
-    elif re.search(r"<script", text, re.I):
+def kind_of(data: bytes) -> tuple[str, str | None]:
+    """(kind, decoded text for json/html) by content (documents.sniff)."""
+    kind = documents.sniff(data)
+    if kind in ("json", "html"):
+        return kind, decode(data)
+    return kind, None
+
+
+def read_file(data: bytes, conn=None, name: str | None = None) -> tuple[str, list[dict], list[str]]:
+    """(format "jsonld" | "html" | "pdf" | "docx" | "text", Recipe nodes, file warnings), detected by content (not
+    the file name). A document comes from its cached read (NeedsReading when there is none); `name` (the file's name
+    on the phone) is its recipes' source when the document doesn't name one. Anything else, or a file without a
+    recipe → Unreadable (422)."""
+    kind, text = kind_of(data)
+    warnings: list[str] = []
+    if kind == "json":
+        try:
+            fmt, nodes = "jsonld", extract.find_recipes(loads_limited(text))
+        except Unreadable as e:   # "[From the recipe box] …" is a text document; broken JSON stays a JSON error
+            if str(e) != NOT_JSON or not text.lstrip().startswith("[") or documents.looks_like_json(text):
+                raise
+            kind = "text"
+    elif kind == "html":
         fmt, nodes = "html", extract.from_html(text)
-    else:
-        raise Unreadable(NOT_A_RECIPE_FILE)
-    if not nodes:
+    if kind in DOC_KINDS:
+        cached = cached_read(conn, hashlib.sha256(data).hexdigest()) if conn is not None else None
+        if cached is None:
+            raise NeedsReading(kind)
+        fmt, recipes, warnings = cached
+        title = docsplit.doc_title(name)
+        nodes = [docsplit.to_node(r, title) for r in recipes]
+        if not nodes:
+            raise Unreadable(docsplit.NO_RECIPES)
+    elif not nodes:
         raise Unreadable(NO_RECIPES)
-    warnings = []
+    warnings = list(warnings)
     if len(nodes) > MAX_RECIPES:
         warnings.append(f"Only the first {MAX_RECIPES} of {len(nodes)} recipes can be imported from one file.")
         nodes = nodes[:MAX_RECIPES]
@@ -197,12 +238,12 @@ def counts(items: list[dict], keys) -> dict:
     return out
 
 
-def preview(conn, data: bytes) -> tuple[dict, list[Analysed]]:
-    fmt, nodes, warnings = read_file(data)
+def preview(conn, data: bytes, name: str | None = None) -> tuple[dict, list[Analysed]]:
+    fmt, nodes, warnings = read_file(data, conn, name)
     analysed = analyse(conn, nodes)
     items = [a.item for a in analysed]
     report = {"dry_run": True, "format": fmt, "file_sha": hashlib.sha256(data).hexdigest(), "warnings": warnings,
-              "counts": counts(items, ("new", "duplicate", "failed")), "items": items}
+              "counts": counts(items, PREVIEW_KEYS), "items": items}
     return report, analysed
 
 
@@ -260,6 +301,7 @@ def choices_sha(choices: dict) -> str:
 
 
 APPLY_KEYS = ("added", "updated", "duplicate", "skipped", "failed", "pending")
+PREVIEW_KEYS = ("new", "duplicate", "failed")
 
 
 def create_job(conn, report: dict, total: int, cs: str) -> int:
@@ -277,13 +319,15 @@ def recent_job(conn, file_sha: str, cs: str) -> int | None:
 
 
 def get_job(conn, job_id: int) -> dict | None:
+    """An apply job, or a document's read job (report.dry_run true: its items, once done, are the preview)."""
     row = conn.execute("SELECT id, status, report, progress_done, progress_total, error, created_at, finished_at "
                        "FROM import_jobs WHERE id=%s", (job_id,)).fetchone()
     if row is None:
         return None
     jid, status, report, done, total, error, created, finished = row
+    keys = PREVIEW_KEYS if report.get("dry_run") else APPLY_KEYS
     return {**report, "id": jid, "status": status, "progress": {"done": done, "total": total}, "error": error,
-            "counts": counts(report["items"], APPLY_KEYS), "created_at": created.isoformat(),
+            "counts": counts(report["items"], keys), "created_at": created.isoformat(),
             "finished_at": finished.isoformat() if finished else None}
 
 
@@ -373,10 +417,10 @@ def run_job(conn, job_id: int, items: list[dict], work: list[Work], ai, workers:
                      (Jsonb(report), f"{type(e).__name__}: {str(e)[:200]}", job_id))
 
 
-def start(conn, data: bytes, choices: dict[str, str]) -> tuple[int, list[dict], list[Work], bool]:
+def start(conn, data: bytes, choices: dict[str, str], name: str | None = None) -> tuple[int, list[dict], list[Work], bool]:
     """Apply, the synchronous part: (job id, items, work to run, existing). A retried apply of the same file and
     choices (running, or finished in the last few minutes) returns that job: existing = True, nothing to run."""
-    report, analysed = preview(conn, data)
+    report, analysed = preview(conn, data, name)
     cs = choices_sha(choices)
     jid = recent_job(conn, report["file_sha"], cs)
     if jid is not None:
@@ -385,3 +429,68 @@ def start(conn, data: bytes, choices: dict[str, str]) -> tuple[int, list[dict], 
     report.update(dry_run=False, items=items)
     report.pop("counts")
     return create_job(conn, report, len(work), cs), items, work, False
+
+
+# --- documents: the read job and its cache --------------------------------------------------------------------------
+
+def cached_read(conn, file_sha: str) -> tuple[str, list[dict], list[str]] | None:
+    row = conn.execute("SELECT format, recipes, warnings FROM document_reads WHERE file_sha=%s", (file_sha,)).fetchone()
+    return (row[0], row[1], row[2]) if row else None
+
+
+def start_read(conn, data: bytes, kind: str) -> tuple[int, documents.Document | None]:
+    """A document's first preview: its text is read now (a damaged, locked or empty file is Unreadable → 422 at
+    once), then a read job is made. → (job id, the document to read; None = the same file is already being read:
+    that job)."""
+    doc = documents.read(data, kind)
+    sha = hashlib.sha256(data).hexdigest()
+    with conn.transaction():
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext('mealprep-read'))")
+        row = conn.execute("SELECT id FROM import_jobs WHERE file_sha=%s AND choices_sha=%s AND status='running' "
+                           "ORDER BY id DESC LIMIT 1", (sha, READ)).fetchone()
+        if row:
+            return row[0], None
+        conn.execute(f"DELETE FROM document_reads WHERE created_at < now() - interval '{KEEP_READS}'")
+        if doc.scanned:   # parts to read (an estimate; the split updates it)
+            total = math.ceil(len(doc.pages) / docsplit.PAGES_PER_CALL)
+        else:
+            total = max(1, math.ceil(len(doc.text) / docsplit.CHUNK_CHARS))
+        report = {"dry_run": True, "format": kind, "file_sha": sha, "warnings": list(doc.warnings), "items": []}
+        return create_job(conn, report, total, READ), doc
+
+
+def run_read(conn, job_id: int, doc: documents.Document, name: str | None, ai) -> None:
+    """The background part of a document's first preview: the AI finds the recipes, they are cached by the file's sha,
+    and the job's report becomes the preview (done), or the job fails with a sentence for the user."""
+    report = conn.execute("SELECT report FROM import_jobs WHERE id=%s", (job_id,)).fetchone()[0]
+
+    def progress(done: int, total: int) -> None:
+        conn.execute("UPDATE import_jobs SET progress_done=%s, progress_total=%s WHERE id=%s", (done, total, job_id))
+
+    def fail(message: str) -> None:
+        conn.execute("UPDATE import_jobs SET status='failed', error=%s, finished_at=now() WHERE id=%s",
+                     (message, job_id))
+
+    try:
+        recipes, warns = docsplit.split(ai, doc, progress)
+    except docsplit.DocumentReadFailed as e:
+        return fail(str(e))
+    except Exception:
+        log.exception("read job %s: the split crashed", job_id)
+        return fail(docsplit.AI_FAILED)
+    if not recipes:   # not cached: reading it again may go better
+        return fail(docsplit.NO_RECIPES)
+    try:
+        warnings = report["warnings"] + warns
+        conn.execute("INSERT INTO document_reads(file_sha, format, recipes, warnings) VALUES(%s,%s,%s,%s) "
+                     "ON CONFLICT (file_sha) DO UPDATE SET format=EXCLUDED.format, recipes=EXCLUDED.recipes, "
+                     "warnings=EXCLUDED.warnings, created_at=now()",
+                     (report["file_sha"], report["format"], Jsonb(recipes), Jsonb(warnings)))
+        title = docsplit.doc_title(name)
+        items = [a.item for a in analyse(conn, [docsplit.to_node(r, title) for r in recipes])]
+        report.update(warnings=warnings, items=items)
+        conn.execute("UPDATE import_jobs SET status='done', report=%s, finished_at=now() WHERE id=%s",
+                     (Jsonb(report), job_id))
+    except Exception:
+        log.exception("read job %s: building the preview crashed", job_id)
+        fail("Couldn't read this file.")
