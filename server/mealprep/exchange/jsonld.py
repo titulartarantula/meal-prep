@@ -315,6 +315,11 @@ def node_hash(node) -> str:
     return hashlib.sha256(json.dumps(node, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
 
 
+def _type_set(t) -> set[str]:
+    """@type as a set of strings (a string or a list; anything else, e.g. an object, has no types)."""
+    return {x for x in (t if isinstance(t, list) else [t]) if isinstance(x, str)}
+
+
 def _heading(line: str) -> str | None:
     """"For the sauce:" → "Sauce"; "TOPPINGS:" → "Toppings"; a line with digits or no final colon is no heading."""
     if not line.endswith(":") or re.search(r"\d", line) or len(line) > 80:
@@ -402,8 +407,7 @@ def foreign_steps(v, warnings: list[str]) -> list[str]:
             for y in x:
                 walk(y, prefix, depth + 1)
         elif isinstance(x, dict):
-            types = x.get("@type")
-            types = set(types) if isinstance(types, list) else {types}
+            types = _type_set(x.get("@type"))
             if "HowToSection" in types:
                 name = clean_text(x.get("name"), 200)
                 walk(x.get("itemListElement"), name or prefix, depth + 1)
@@ -481,8 +485,7 @@ def _foreign_source(node: dict, url: str | None, warnings: list[str]) -> dict:
         based = next((b for b in based if isinstance(b, dict)), based[0] if based else None)
     src: dict = {"source_kind": "other", "source_url": url}
     if isinstance(based, dict):
-        types = based.get("@type")
-        types = set(types) if isinstance(types, list) else {types}
+        types = _type_set(based.get("@type"))
         title = clean_text(based.get("name"), 200)
         if "Book" in types or based.get("isbn"):
             isbn = None

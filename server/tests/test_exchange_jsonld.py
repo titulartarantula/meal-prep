@@ -251,3 +251,10 @@ def test_bad_block_ingredients_fall_back():
     n["mealprep:recipe"]["ingredients"][0] = {"raw": 5}
     inc = jsonld.from_jsonld(n)
     assert inc.origin == "schema.org" and len(inc.recipe.ingredients) == 6 and inc.warnings
+
+
+def test_odd_type_values_are_ignored_not_a_crash():
+    inc = jsonld.from_jsonld({"@type": "Recipe", "name": "Test Odd Types", "recipeInstructions": [
+        {"@type": {}, "text": "Stir."}, {"@type": [{}, "HowToStep"], "text": "Serve."}],
+        "isBasedOn": {"@type": {"x": 1}, "name": "Test Source"}})
+    assert inc.recipe.steps == ["Stir.", "Serve."] and inc.recipe.source_title == "Test Source"
