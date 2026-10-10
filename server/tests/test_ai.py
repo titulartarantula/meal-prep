@@ -104,32 +104,93 @@ def test_openai_official_uses_key_and_completion_tokens(tmp_path):
     assert body["messages"][0]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
 
 
-def test_anthropic_api_request_shape_and_parse(tmp_path):
-    import httpx, respx
+def _sse(texts, stop_reason="end_turn"):
+    """A Messages API event stream: a (hidden) thinking block, then one text block per entry of texts."""
+    events = [("message_start", {"type": "message_start", "message": {
+        "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-sonnet-5-5", "content": [],
+        "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": 5, "output_tokens": 1}}}),
+        ("content_block_start", {"type": "content_block_start", "index": 0,
+                                 "content_block": {"type": "thinking", "thinking": "", "signature": ""}}),
+        ("content_block_delta", {"type": "content_block_delta", "index": 0,
+                                 "delta": {"type": "signature_delta", "signature": "sig"}}),
+        ("content_block_stop", {"type": "content_block_stop", "index": 0})]
+    for i, t in enumerate(texts, 1):
+        events += [("content_block_start", {"type": "content_block_start", "index": i,
+                                            "content_block": {"type": "text", "text": ""}}),
+                   ("content_block_delta", {"type": "content_block_delta", "index": i,
+                                            "delta": {"type": "text_delta", "text": t}}),
+                   ("content_block_stop", {"type": "content_block_stop", "index": i})]
+    events += [("message_delta", {"type": "message_delta", "delta": {"stop_reason": stop_reason, "stop_sequence": None},
+                                  "usage": {"output_tokens": 9}}),
+               ("message_stop", {"type": "message_stop"})]
+    return "".join(f"event: {e}\ndata: {json.dumps(d)}\n\n" for e, d in events).encode()
+
+
+def _anthropic(handler, key="sk-ant-test", **kw):
+    import anthropic, httpx2
     from mealprep.ai.anthropic_api import AnthropicApi
+    client = anthropic.Anthropic(api_key=key, max_retries=0,
+                                 http_client=anthropic.DefaultHttpxClient(transport=httpx2.MockTransport(handler)))
+    return AnthropicApi(key, "claude-sonnet-5-5", client=client, **kw)
+
+
+def _stream(body):
+    import httpx2
+    return httpx2.Response(200, headers={"content-type": "text/event-stream"}, content=body)
+
+
+def test_anthropic_api_request_shape_and_parse(tmp_path):
     img = tmp_path / "p1.png"; img.write_bytes(b"\x89PNG")
-    with respx.mock:
-        route = respx.post("https://api.anthropic.com/v1/messages").mock(return_value=httpx.Response(
-            200, json={"content": [{"type": "text", "text": '```json\n{"ok": 1}\n```'}]}))
-        out = AnthropicApi("sk-ant-test", "claude-sonnet-5-5").complete_json("hi", images=[str(img)])
-    assert out == {"ok": 1}
-    req = route.calls[0].request
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return _stream(_sse(['```json\n{"ok": ', '1}\n```']))
+    out = _anthropic(handler).complete_json("hi", images=[str(img)])
+    assert out == {"ok": 1}                               # text blocks joined, the thinking block left out
+    req = seen[0]
     body = json.loads(req.content)
+    assert str(req.url) == "https://api.anthropic.com/v1/messages"
     assert req.headers["x-api-key"] == "sk-ant-test" and req.headers["anthropic-version"] == "2023-06-01"
+    assert body["stream"] is True and body["model"] == "claude-sonnet-5-5"
+    assert body["max_tokens"] == 64000 and body["thinking"] == {"type": "adaptive"}
     assert "temperature" not in body                      # Sonnet 5.x rejects temperature
     blocks = body["messages"][0]["content"]
     assert blocks[0]["type"] == "image" and blocks[0]["source"]["media_type"] == "image/png"
+    assert blocks[0]["source"]["data"] == "iVBORw=="
     assert blocks[-1] == {"type": "text", "text": "hi"}
 
 
 def test_anthropic_error_has_no_key():
-    import httpx, respx
-    from mealprep.ai.anthropic_api import AnthropicApi
-    with respx.mock:
-        respx.post("https://api.anthropic.com/v1/messages").mock(return_value=httpx.Response(401, text="bad key"))
-        with pytest.raises(AIError) as ei:
-            AnthropicApi("sk-ant-secret", "m").complete_json("hi")
+    import httpx2
+    with pytest.raises(AIError) as ei:
+        _anthropic(lambda r: httpx2.Response(401, json={"type": "error", "error": {
+            "type": "authentication_error", "message": "invalid x-api-key"}}), key="sk-ant-secret").complete_json("hi")
     assert "sk-ant-secret" not in str(ei.value) and "401" in str(ei.value)
+
+
+def test_anthropic_cut_off_or_declined_answer_is_an_ai_error():
+    with pytest.raises(AIError, match="cut off"):
+        _anthropic(lambda r: _stream(_sse(['{"steps": ['], stop_reason="max_tokens"))).complete_json("hi")
+    with pytest.raises(AIError, match="declined"):
+        _anthropic(lambda r: _stream(_sse([], stop_reason="refusal"))).complete_json("hi")
+
+
+def test_anthropic_connection_error_is_an_ai_error():
+    import httpx2
+
+    def handler(request):
+        raise httpx2.ConnectError("down")
+    with pytest.raises(AIError, match="APIConnectionError"):
+        _anthropic(handler).complete_json("hi")
+
+
+def test_anthropic_timeout_is_the_whole_call(monkeypatch):
+    import mealprep.ai.anthropic_api as mod
+    clock = iter([0.0, 5.0])                              # deadline 30 s after the start; later events at 99 s
+    monkeypatch.setattr(mod, "_now", lambda: next(clock, 99.0))
+    with pytest.raises(AIError, match="timed out"):
+        _anthropic(lambda r: _stream(_sse(["{}"])), timeout=30).complete_json("hi")
 
 
 def test_get_provider_api_options():

@@ -7,7 +7,10 @@ Layout on the server (`~/meal-prep/`):
 - `.env.db` (600) — Postgres creds for the container (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`).
 - `.env` (600) — `MEALPREP_TOKEN` (the app's bearer token), `MEALPREP_PROVIDER`, `MEALPREP_DSN`, `MEALPREP_TEST_DSN`,
   `MEALPREP_PCX_APIKEY` (the public web API key the loblaws.ca site sends as `x-apikey`), plus any provider settings
-  from `mealprep/config.py` (`MEALPREP_CLAUDE_BIN`, `MEALPREP_QWEN_URL`, API keys, …).
+  from `mealprep/config.py` (`MEALPREP_CLAUDE_BIN`, `MEALPREP_QWEN_URL`, API keys, …). With
+  `MEALPREP_PROVIDER=anthropic` (an API key in `MEALPREP_ANTHROPIC_KEY`, model `MEALPREP_ANTHROPIC_MODEL`, default
+  `claude-sonnet-5-5`) nothing needs a logged-in Claude CLI: answers are streamed with adaptive thinking and up to
+  64k tokens, and the SDK retries rate limits and overloads itself.
 - `server/` — rsynced from this repo's `server/`; venv in `server/.venv` (built with `uv`).
 - `~/.config/systemd/user/mealprep.service` — copy of `deploy/mealprep.service` (needs `loginctl enable-linger`).
 
