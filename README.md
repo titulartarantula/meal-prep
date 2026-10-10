@@ -14,8 +14,10 @@ It has two parts:
   out as schema.org JSON-LD files: export one recipe or the whole library (ratings and notes included) to a file
   or another app, and import files from Meal Prep or other recipe apps (or a saved recipe web page) with a preview
   before anything is added. Recipe documents (PDF, Word .docx or plain text, e.g. a family collection or a
-  cookbook chapter) can be imported too: the server finds each recipe in them and you pick which to keep. The app talks only to the household's own server; it keeps an offline copy of the
-  current week.
+  cookbook chapter) can be imported too: the server finds each recipe in them and you pick which to keep. The
+  file picker also takes photos of a recipe's pages (e.g. from OneDrive, which the photo picker can't see); they
+  go to the same review as Choose photos. The app talks only to the household's own server; it keeps an offline
+  copy of the current week.
 - **Server** (`server/`, Python 3.12 + FastAPI + Postgres). Imports recipes (schema.org JSON-LD from recipe
   pages, cookbook photos read by an AI model, or recipe documents — PDF, Word, text, scanned PDFs — split into
   recipes by the AI), suggests cookbook titles and authors for the app (Open Library,

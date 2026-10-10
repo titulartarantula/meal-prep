@@ -19,7 +19,9 @@ choose or send it to an app you choose, and import recipe files you pick or shar
 other apps, saved recipe web pages, and recipe documents (PDF, Word or plain text). Files go only between your
 phone and your household's server; the app reads only the file you chose, and links inside a file are kept as
 text, never opened. To find the recipes in a document, the server sends the document's text (or, for a scanned
-PDF, its page images) to the AI service it is configured to use, the same way it reads a cookbook photo.
+PDF, its page images) to the AI service it is configured to use, the same way it reads a cookbook photo. Photos
+of a recipe's pages that you pick this way (for example from OneDrive) are handled like the ones you choose in
+the photo picker: they are sent to your server, which has its AI service read them.
 
 **The saved copy on your phone.** To work offline, the app keeps a copy of the current week's plan on the
 phone, in the app's private storage. Uninstalling the app removes it.
