@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,13 +59,21 @@ import kotlinx.coroutines.launch
 const val IMPORT_TITLE = "Import recipes"
 const val SHOW_IN_RECIPES = "Show in Recipes"
 const val CHOOSE_ANOTHER = "Choose another file"
-const val AI_NOTE = "Ingredient lines from other apps are tidied by the AI as each recipe is added (about half a minute " +
-    "each). You can leave this screen meanwhile."
+const val AI_NOTE = "Ingredient lines from other apps and documents are tidied by the AI as each recipe is added (about " +
+    "half a minute each). You can leave this screen meanwhile."
+const val READ_NOTE = "Finding the recipes in a document takes a while: about half a minute for each part. If you leave, " +
+    "open the file again later: the server keeps reading it."
+const val SELECT_ALL = "Select all"
+const val SELECT_NONE = "Select none"
 const val LEAVE_NOTE = "You can leave this screen: the recipes keep coming in, and Meal Prep tells you when it's done."
 
-/** What the system file picker offers: recipe files and saved web pages. Some providers type a .json as
- *  octet-stream or plain text; the server reads the content, so a wrong type only costs a clear message. */
-val PICK_TYPES = arrayOf("application/json", "application/ld+json", "text/html", "text/plain", "application/octet-stream")
+const val DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+/** What the system file picker offers: recipe documents (PDF, Word, text), recipe files and saved web pages. Some
+ *  providers type a .json as octet-stream or plain text; the server reads the content, so a wrong type only costs a
+ *  clear message. */
+val PICK_TYPES = arrayOf("application/pdf", DOCX_TYPE, "text/plain", "application/json", "application/ld+json", "text/html",
+    "application/octet-stream")
 
 /** Opens the system file picker; the chosen file is copied in at once (its read grant is short-lived). */
 @Composable
@@ -79,7 +89,7 @@ fun rememberRecipeFilePicker(onResult: (CopyResult) -> Unit): () -> Unit {
 class ImportActions(
     val onBack: () -> Unit = {}, val onToggle: (String) -> Unit = {}, val onApply: () -> Unit = {},
     val onRetry: () -> Unit = {}, val onPickAnother: () -> Unit = {}, val onRecipe: (Int) -> Unit = {},
-    val onDone: () -> Unit = {}, val onRefresh: () -> Unit = {},
+    val onDone: () -> Unit = {}, val onRefresh: () -> Unit = {}, val onSelectAll: (Boolean) -> Unit = {},
 )
 
 @Composable
@@ -99,7 +109,7 @@ fun ImportScreen(route: ImportRoute, onBack: () -> Unit, onRecipe: (Int) -> Unit
         }
     }
     ImportContent(state, ImportActions(onBack = onBack, onToggle = vm::toggle, onApply = vm::apply, onRetry = vm::preview,
-        onPickAnother = pick, onRecipe = onRecipe, onDone = onDone, onRefresh = vm::refresh))
+        onPickAnother = pick, onRecipe = onRecipe, onDone = onDone, onRefresh = vm::refresh, onSelectAll = vm::selectAll))
 }
 
 @Composable
@@ -115,16 +125,24 @@ fun ImportContent(state: ImportState, actions: ImportActions) {
             OfflineBanner(state.offlineSince)
             when {
                 job != null -> JobBody(job, state.jobError, actions)
-                state.loading -> {
-                    Text("Reading ${state.name.ifBlank { "the file" }}…", Modifier.padding(vertical = 8.dp).announced())
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                state.loading -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Reading ${state.name.ifBlank { "the file" }}…", Modifier.padding(top = 8.dp).announced())
+                    val reading = state.reading
+                    val part = reading?.let(ImportLogic::readProgress)
+                    if (reading != null && part != null) {
+                        Text(part, Modifier.announced(), style = MaterialTheme.typography.bodyMedium)
+                        LinearProgressIndicator({ reading.progress.done.toFloat() / reading.progress.total }, Modifier.fillMaxWidth())
+                    } else LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (reading != null) {
+                        Text(READ_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 state.error != null -> Column {
                     MessageText(state.error)
                     if (state.canRetry) TextButton(actions.onRetry, Modifier.heightIn(min = 48.dp)) { Text("Try again") }
                     TextButton(actions.onPickAnother, Modifier.heightIn(min = 48.dp)) { Text(CHOOSE_ANOTHER) }
                 }
-                state.report != null -> PreviewBody(state.report, state.ticks, actions.onToggle)
+                state.report != null -> PreviewBody(state.report, state.ticks, actions.onToggle, actions.onSelectAll)
                 state.jobError != null -> Column {
                     MessageText(state.jobError)
                     TextButton(actions.onRefresh, Modifier.heightIn(min = 48.dp)) { Text("Try again") }
@@ -150,12 +168,20 @@ fun ImportContent(state: ImportState, actions: ImportActions) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PreviewBody(report: ImportReport, ticks: Set<String>, onToggle: (String) -> Unit) {
+private fun PreviewBody(report: ImportReport, ticks: Set<String>, onToggle: (String) -> Unit, onSelectAll: (Boolean) -> Unit) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Text(ImportLogic.summary(report), style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(vertical = 8.dp).semantics { heading() })
+        }
+        if (ImportLogic.offerSelectAll(report)) item(key = "select-all") {
+            val all = ImportLogic.selectableKeys(report)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton({ onSelectAll(true) }, Modifier.heightIn(min = 48.dp), enabled = !ticks.containsAll(all)) { Text(SELECT_ALL) }
+                TextButton({ onSelectAll(false) }, Modifier.heightIn(min = 48.dp), enabled = ticks.any { it in all }) { Text(SELECT_NONE) }
+            }
         }
         items(report.warnings) { w -> AdviceText("⚠ $w", Modifier.padding(vertical = 4.dp)) }
         if (report.items.any { it.key in ticks && it.aiTidy }) item {

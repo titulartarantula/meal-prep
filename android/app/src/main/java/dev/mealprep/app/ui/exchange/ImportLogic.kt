@@ -84,6 +84,20 @@ object ImportLogic {
         else -> null
     }
 
+    /** Every key that can be ticked (Select all). */
+    fun selectableKeys(r: ImportReport): Set<String> = r.items.filter(::selectable).map { it.key }.toSet()
+
+    /** Select all / Select none: offered when a file brings more than a few recipes to choose from (a document). */
+    fun offerSelectAll(r: ImportReport): Boolean = r.items.count(::selectable) > 3
+
+    // --- a document being read ---
+    /** A document's first preview is the server's read job (202) rather than the preview itself. */
+    fun isRead(r: ImportReport): Boolean = r.dryRun && r.id != null
+
+    /** "Part 2 of 5" while a long document is read (null while there's one part). */
+    fun readProgress(job: ImportReport): String? =
+        job.progress.total.takeIf { it > 1 }?.let { "Part ${minOf(job.progress.done + 1, it)} of $it" }
+
     // --- the job ---
     fun running(job: ImportReport) = job.status == "running"
 

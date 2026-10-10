@@ -132,4 +132,31 @@ class ImportScreenTest {
         compose.onNode(hasText("Recipe 6 (no name)")).assertIsDisplayed()
         compose.onNodeWithText("Add 2 recipes").assertIsDisplayed()
     }
+
+    @Test fun `a document being read shows the part and what to expect, read out`() {
+        val reading = Http.json.decodeFromString(ImportReport.serializer(), fixture("import_read_running.json"))
+        show(ImportState(name = "cookbook.pdf", loading = true, reading = reading))
+        compose.onNodeWithText("Reading cookbook.pdf…").assert(polite)
+        compose.onNodeWithText("Part 2 of 3").assert(polite)
+        compose.onNodeWithText(READ_NOTE).assertExists()
+    }
+
+    @Test fun `select all and select none for a file with many recipes`() {
+        val calls = mutableListOf<Boolean>()
+        show(ImportState(report = preview, ticks = setOf("0:9f2c1a7e")), ImportActions(onSelectAll = { calls += it }))
+        compose.onNodeWithText(SELECT_ALL).assertHeightIsAtLeast(48.dp).assertIsEnabled().performClick()
+        compose.onNodeWithText(SELECT_NONE).assertHeightIsAtLeast(48.dp).assertIsEnabled().performClick()
+        assertEquals(listOf(true, false), calls)
+    }
+
+    @Test fun `select all is off when all are ticked, select none when none are`() {
+        show(ImportState(report = preview, ticks = ImportLogic.selectableKeys(preview)))
+        compose.onNodeWithText(SELECT_ALL).assertIsNotEnabled()
+        compose.onNodeWithText(SELECT_NONE).assertIsEnabled()
+    }
+
+    @Test fun `a file with few recipes has no select all`() {
+        show(ImportState(report = preview.copy(items = preview.items.take(2)), ticks = emptySet()))
+        compose.onNodeWithText(SELECT_ALL).assertDoesNotExist()
+    }
 }

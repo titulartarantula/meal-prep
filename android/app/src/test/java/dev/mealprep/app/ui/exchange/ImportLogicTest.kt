@@ -81,4 +81,18 @@ class ImportLogicTest {
         assertTrue(ImportLogic.jobError(cut.copy(error = "boom"))!!.contains("Import the file again"))
         assertNull(ImportLogic.jobError(done))
     }
+
+    @Test fun `select all offers every tickable recipe when there are more than a few`() {
+        assertEquals(setOf("0:9f2c1a7e", "1:0b1c2d3e", "3:8c9d0e1f", "4:2a3b4c5d"), ImportLogic.selectableKeys(preview))
+        assertTrue(ImportLogic.offerSelectAll(preview))
+        assertFalse(ImportLogic.offerSelectAll(preview.copy(items = preview.items.take(3))))
+    }
+
+    @Test fun `a document's read job and its parts`() {
+        val reading = Http.json.decodeFromString(ImportReport.serializer(), fixture("import_read_running.json"))
+        assertTrue(ImportLogic.isRead(reading)); assertFalse(ImportLogic.isRead(preview)); assertFalse(ImportLogic.isRead(done))
+        assertEquals("Part 2 of 3", ImportLogic.readProgress(reading))
+        assertEquals("Part 3 of 3", ImportLogic.readProgress(reading.copy(progress = Progress(3, 3))))
+        assertNull(ImportLogic.readProgress(reading.copy(progress = Progress(0, 1))))
+    }
 }

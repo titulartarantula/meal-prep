@@ -22,6 +22,8 @@ data class ImportState(
     val name: String = "",
     /** Reading the file (the preview). */
     val loading: Boolean = false,
+    /** A document being read by the server's AI (its read job: progress), while [loading]. */
+    val reading: ImportReport? = null,
     /** The whole file couldn't be read, or isn't here ([canRetry]: Try again makes sense). */
     val error: String? = null,
     val canRetry: Boolean = false,
@@ -43,7 +45,8 @@ data class ImportState(
 }
 
 /**
- * Import recipes from a file: the preview (instant: what's new, already in Recipes, changed, unreadable), the ticks,
+ * Import recipes from a file: the preview (instant: what's new, already in Recipes, changed, unreadable; for a recipe
+ * document read the first time, the server's read job is polled until its report is the preview), the ticks,
  * then Add → the server's background job, polled here while the screen is open (JobWatchWorker carries on and
  * notifies if the app is closed). [jobId] > 0 opens a job already started (a notification, or after process death).
  * The ticks and the job id survive process death in [saved]; the report is simply read again.
@@ -94,15 +97,11 @@ class ImportViewModel(
 
     fun preview() {
         val f = file?.takeIf { it.exists() } ?: run { _state.update { it.copy(error = FILE_GONE, canRetry = false, loading = false) }; return }
-        _state.update { it.copy(loading = true, error = null) }
-        viewModelScope.launch {
-            when (val r = repo.importPreview(f)) {
-                is ApiResult.Ok -> {
-                    val keep = saved.get<ArrayList<String>>(TICKS)?.toSet()
-                    val selectable = r.value.items.filter(ImportLogic::selectable).map { it.key }.toSet()
-                    val ticks = keep?.intersect(selectable) ?: ImportLogic.defaultTicks(r.value)
-                    _state.update { it.copy(loading = false, report = r.value, ticks = ticks) }
-                }
+        _state.update { it.copy(loading = true, error = null, reading = null) }
+        polling?.cancel()
+        polling = viewModelScope.launch {
+            when (val r = repo.importPreview(f, _state.value.name)) {
+                is ApiResult.Ok -> if (ImportLogic.isRead(r.value) && r.value.status == "running") read(r.value) else show(r.value)
                 // Try again only helps when the file wasn't the problem (offline, slow, the token, the server).
                 is ApiResult.Err -> _state.update { it.copy(loading = false, error = ExchangeText.importError(r.error),
                     canRetry = r.error !is ApiError.Http || r.error.code >= 500) }
@@ -110,11 +109,50 @@ class ImportViewModel(
         }
     }
 
+    /** A document: the server's AI finds its recipes (a read job); poll it until it is the preview. A Wi-Fi drop keeps
+     *  polling; a failed read or a job the server doesn't know any more ends with the reason and Try again. */
+    private suspend fun read(job: ImportReport) {
+        var current = job
+        while (true) {
+            _state.update { it.copy(reading = current) }
+            if (current.status == "done") return show(current)
+            if (current.status == "failed") {
+                _state.update { it.copy(loading = false, reading = null, error = ExchangeText.readError(current.error), canRetry = true) }
+                return
+            }
+            delay(pollMs)
+            val l = repo.importJob(current.id ?: return)
+            val next = l.value
+            val err = l.error
+            if (next != null && next.id == current.id) current = next
+            else if (err is ApiError.Http) {
+                _state.update { it.copy(loading = false, reading = null, error = ExchangeText.importError(err), canRetry = true) }
+                return
+            }
+        }
+    }
+
+    private fun show(report: ImportReport) {
+        val keep = saved.get<ArrayList<String>>(TICKS)?.toSet()
+        val ticks = keep?.intersect(ImportLogic.selectableKeys(report)) ?: ImportLogic.defaultTicks(report)
+        _state.update { it.copy(loading = false, reading = null, report = report, ticks = ticks, applyError = null) }
+    }
+
     fun toggle(key: String) {
         val s = _state.value
         val item = s.report?.items?.firstOrNull { it.key == key } ?: return
         if (!ImportLogic.selectable(item) || s.job != null || s.starting) return
         val ticks = if (key in s.ticks) s.ticks - key else s.ticks + key
+        saved[TICKS] = ArrayList(ticks)
+        _state.update { it.copy(ticks = ticks) }
+    }
+
+    /** Select all / Select none (a document with many recipes). */
+    fun selectAll(all: Boolean) {
+        val s = _state.value
+        val report = s.report ?: return
+        if (s.job != null || s.starting) return
+        val ticks = if (all) ImportLogic.selectableKeys(report) else emptySet()
         saved[TICKS] = ArrayList(ticks)
         _state.update { it.copy(ticks = ticks) }
     }
@@ -127,7 +165,7 @@ class ImportViewModel(
         val f = file?.takeIf { it.exists() } ?: run { _state.update { it.copy(applyError = FILE_GONE) }; return }
         _state.update { it.copy(starting = true, applyError = null) }
         viewModelScope.launch {
-            when (val r = repo.importApply(f, ImportLogic.choices(report, s.ticks))) {
+            when (val r = repo.importApply(f, ImportLogic.choices(report, s.ticks), s.name)) {
                 is ApiResult.Ok -> {
                     val id = r.value.id
                     if (id == null) { _state.update { it.copy(starting = false, applyError = ExchangeText.COULDNT_READ) }; return@launch }
@@ -137,7 +175,12 @@ class ImportViewModel(
                     _state.update { it.copy(starting = false, job = r.value) }
                     if (ImportLogic.running(r.value)) poll(id)
                 }
-                is ApiResult.Err -> _state.update { it.copy(starting = false, applyError = ExchangeText.importError(r.error, apply = true)) }
+                is ApiResult.Err -> {
+                    val message = ExchangeText.importError(r.error, apply = true)
+                    _state.update { it.copy(starting = false, applyError = message) }
+                    // The server no longer has this document's read (it keeps them two weeks): read it again.
+                    if (message == ExchangeText.READ_AGAIN) { _state.update { it.copy(report = null) }; preview() }
+                }
             }
         }
     }

@@ -65,6 +65,12 @@ class TestEnv : Closeable {
         routes["$method $path"] = { response(200, bodies[minOf(n.getAndIncrement(), bodies.size - 1)]) }
     }
 
+    /** One (code, body) per call, the last repeated. */
+    fun onResponses(method: String, path: String, replies: List<Pair<Int, String>>) {
+        val n = AtomicInteger()
+        routes["$method $path"] = { replies[minOf(n.getAndIncrement(), replies.size - 1)].let { (c, b) -> response(c, b) } }
+    }
+
     fun onSlow(method: String, path: String, seconds: Long) {
         routes["$method $path"] = {
             MockResponse.Builder().code(200).body("{}").headersDelay(seconds, java.util.concurrent.TimeUnit.SECONDS).build()

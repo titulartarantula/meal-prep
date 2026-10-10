@@ -10,10 +10,12 @@ import dev.mealprep.app.data.api.Http
 import dev.mealprep.app.data.api.ImportReport
 import dev.mealprep.app.fixture
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -178,5 +180,84 @@ class ImportViewModelTest {
         vm.apply()
         val job = vm.state.await { it.job != null }.job!!
         assertTrue(job.items.any { "The file changed since the preview; preview it again." in it.reasons })
+    }
+
+    // --- recipe documents ---
+
+    private fun readFailed(error: String) = fixture("import_read_running.json")
+        .replace("\"status\": \"running\"", "\"status\": \"failed\"").replace("\"error\": null", "\"error\": \"$error\"")
+
+    @Test fun `a document is read by the server, polled, then previewed`() = runTest {
+        env.on("POST", "/recipes/import", code = 202, body = fixture("import_read_running.json"))
+        env.onSequence("GET", "/imports/9", listOf(fixture("import_read_running.json"), fixture("import_read_done.json")))
+        val vm = vm()
+        val reading = vm.state.await { it.reading != null }
+        assertTrue(reading.loading); assertNull(reading.report)
+        assertEquals("Part 2 of 3", ImportLogic.readProgress(reading.reading!!))
+        val s = vm.state.await { it.report != null }
+        assertFalse(s.loading); assertNull(s.reading); assertNull(s.error)
+        assertEquals(setOf("0:9f2c1a7e", "1:0b1c2d3e"), s.ticks); assertEquals("Add 2 recipes", s.buttonLabel)
+        assertTrue(env.bodies("POST", "/recipes/import").single().contains("\r\n\r\nrecipes.json\r\n"))   // the name
+        assertTrue(watched.isEmpty())                                      // a read isn't an import job to watch
+    }
+
+    @Test fun `a document read before answers at once`() = runTest {
+        env.on("POST", "/recipes/import", body = fixture("import_read_done.json"))
+        val s = vm().state.await { it.report != null }
+        assertEquals("pdf", s.report!!.format); assertEquals(0, env.count("GET", "/imports/9"))
+    }
+
+    @Test fun `a failed read says why and offers Try again, which reads again`() = runTest {
+        env.on("POST", "/recipes/import", code = 202, body = fixture("import_read_running.json"))
+        env.on("GET", "/imports/9", body = readFailed("No recipes found in this document."))
+        val vm = vm()
+        val s = vm.state.await { it.error != null }
+        assertEquals(ExchangeText.NO_DOC_RECIPES, s.error); assertTrue(s.canRetry); assertNull(s.reading); assertFalse(s.loading)
+        env.on("GET", "/imports/9", body = fixture("import_read_done.json"))
+        vm.preview()
+        assertEquals(6, vm.state.await { it.report != null }.report!!.items.size)
+        assertEquals(2, env.count("POST", "/recipes/import"))
+    }
+
+    @Test fun `the AI being down while reading says so`() = runTest {
+        env.on("POST", "/recipes/import", code = 202, body = fixture("import_read_running.json"))
+        env.on("GET", "/imports/9", body = readFailed("The AI couldn't read this document. Try again in a few minutes."))
+        assertEquals(ExchangeText.AI_DOWN, vm().state.await { it.error != null }.error)
+    }
+
+    @Test fun `reading carries on through a Wi-Fi drop`() = runTest {
+        env.on("POST", "/recipes/import", code = 202, body = fixture("import_read_running.json"))
+        env.on("GET", "/imports/9", body = fixture("import_read_running.json"))
+        val vm = vm()
+        vm.state.await { it.reading != null }
+        env.offline = true
+        withContext(Dispatchers.Default) { Thread.sleep(300) }              // polls offline: the saved copy, no error
+        assertNull(vm.state.value.error); assertTrue(vm.state.value.loading)
+        env.offline = false
+        env.on("GET", "/imports/9", body = fixture("import_read_done.json"))
+        assertEquals(6, vm.state.await { it.report != null }.report!!.items.size)
+    }
+
+    @Test fun `select all and select none`() = runTest {
+        preview()
+        val vm = vm(); vm.state.await { it.report != null }
+        vm.selectAll(true)
+        assertEquals(setOf("0:9f2c1a7e", "1:0b1c2d3e", "3:8c9d0e1f", "4:2a3b4c5d"), vm.state.value.ticks)
+        assertEquals("Add 3, update 1", vm.state.value.buttonLabel)
+        vm.selectAll(false)
+        assertTrue(vm.state.value.ticks.isEmpty())
+    }
+
+    @Test fun `an apply after the server lost the document's read reads it again`() = runTest {
+        preview()
+        val vm = vm(); vm.state.await { it.report != null }
+        env.onResponses("POST", "/recipes/import", listOf(
+            422 to """{"detail":"Read this document again before adding its recipes."}""",
+            202 to fixture("import_read_running.json")))
+        env.on("GET", "/imports/9", body = fixture("import_read_done.json"))
+        vm.apply()
+        val s = vm.state.await { it.report != null && !it.starting && env.count("GET", "/imports/9") > 0 }
+        assertNull(s.applyError); assertNull(s.job); assertTrue(s.canApply)
+        assertEquals(3, env.count("POST", "/recipes/import"))            // preview, the refused apply, the new read
     }
 }
