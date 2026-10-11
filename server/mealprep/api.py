@@ -1,4 +1,4 @@
-import logging, tempfile, threading
+import logging, re, tempfile, threading
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Callable, Literal
 
@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import books, db, drafts, prepplan, staples, subrecipe
+from . import books, db, drafts, prepplan, recipe_edit, staples, subrecipe
 from .ai import AIError, get_provider
 from .exchange import importer, jsonld, safe
 from .config import Settings
@@ -16,7 +16,7 @@ from .importers.nyt import extract_nyt_url, fetch_nyt, parse_nyt_html
 from .importers.photo import import_photo, import_subrecipe
 from .importers.structure import structure_ingredients
 from .matcher import fill_cart
-from .models import ListItem, PlanEntry, Recipe, RecipeDetail, RecipeOut, SourceKind, Staple
+from .models import EDITABLE_FIELDS, ListItem, PlanEntry, Recipe, RecipeDetail, RecipeOut, SourceKind, Staple, recipe_revision
 from .pcx import Pcx
 from .shopping import build_list
 
@@ -39,18 +39,80 @@ def _text(v: str | None, limit: int, what: str) -> str | None:
 _isbn = books.normalise_isbn
 
 
-class RecipePatch(BaseModel):   # partial update: omitted fields are left unchanged; null clears the source fields
+def _note(v: str | None, what: str) -> str | None:
+    """Multi-line text (notes, description): lines trimmed, runs of blank lines kept to one; blank → None."""
+    if v is None:
+        return None
+    v = re.sub(r"\n{3,}", "\n\n", "\n".join(" ".join(line.split()) for line in v.splitlines())).strip()
+    if len(v) > jsonld.MAX_TEXT:
+        raise ValueError(f"{what} is longer than {jsonld.MAX_TEXT} characters")
+    return v or None
+
+
+Minutes = Annotated[int, Field(strict=True, ge=0, le=10_000)]
+
+
+class RecipePatch(BaseModel):
+    """Partial update: omitted fields are left unchanged; null clears the source fields and the optional details
+    (servings, notes, description, times, yield). `ingredients` are the lines as the recipe screen shows them (see
+    recipe_edit), `steps` one per item; blank ones are dropped. `expected_revision` (RecipeOut.revision when the edit
+    began) refuses the edit with 409 if the recipe changed meanwhile."""
     title: str | None = None
     source_kind: SourceKind | None = None
     source_title: str | None = None
     source_ref: str | None = None
     source_author: str | None = None
     source_isbn: str | None = None
+    servings: Annotated[int, Field(strict=True, ge=1, le=1000)] | None = None
+    ingredients: list[str] | None = None
+    steps: list[str] | None = None
+    notes: str | None = None
+    description: str | None = None
+    prep_minutes: Minutes | None = None
+    cook_minutes: Minutes | None = None
+    total_minutes: Minutes | None = None
+    yield_text: str | None = None
+    expected_revision: str | None = None
 
     @field_validator("title")
     @classmethod
     def _title(cls, v):
         return _text(v, 200, "title")
+
+    @field_validator("ingredients")
+    @classmethod
+    def _ingredients(cls, v):
+        if v is None:
+            return None
+        lines = [x for x in (_text(x, jsonld.MAX_LINE, "an ingredient line") for x in v) if x]
+        if len(lines) > jsonld.MAX_LINES:
+            raise ValueError(f"a recipe can have at most {jsonld.MAX_LINES} ingredient lines")
+        return lines
+
+    @field_validator("steps")
+    @classmethod
+    def _steps(cls, v):
+        if v is None:
+            return None
+        steps = [x for x in (_text(x, jsonld.MAX_STEP, "a step") for x in v) if x]
+        if len(steps) > jsonld.MAX_STEPS:
+            raise ValueError(f"a recipe can have at most {jsonld.MAX_STEPS} steps")
+        return steps
+
+    @field_validator("notes")
+    @classmethod
+    def _notes(cls, v):
+        return _note(v, "notes")
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, v):
+        return _note(v, "description")
+
+    @field_validator("yield_text")
+    @classmethod
+    def _yield(cls, v):
+        return _text(v, 200, "yield_text")
 
     @field_validator("source_title")
     @classmethod
@@ -204,6 +266,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     prep_ai = provider or get_provider(settings, timeout=settings.prep_timeout)
     import_ai = provider or get_provider(settings, timeout=settings.import_ai_timeout)
     document_ai = provider or get_provider(settings, timeout=settings.document_ai_timeout)
+    edit_ai = provider or get_provider(settings, timeout=settings.edit_ai_timeout)
     import_cap = settings.import_max_mb * 1024 * 1024
     too_big = f"This file is too big to import (max {settings.import_max_mb} MB)."
     shop = pcx or Pcx(settings.store_id, api_key=settings.pcx_apikey)
@@ -304,16 +367,32 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.patch("/recipes/{recipe_id}", dependencies=A)
     def patch_recipe(recipe_id: int, body: RecipePatch, c=Depends(get_conn)) -> RecipeOut:
-        """Rename a recipe or set where it comes from. An NYT recipe has no book title or page. A different book title
-        sent without an author/ISBN clears them (they belonged to the old book)."""
+        """Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it
+        comes from. An NYT recipe has no book title or page. A different book title sent without an author/ISBN clears
+        them (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else
+        the deterministic clean-up). The id, uid, plan entries and ratings stay; a cart or prep plan made from the old
+        lines goes stale (db.plan_fingerprint, prepplan._stale)."""
         fields = body.model_dump(include=body.model_fields_set)   # only what the client sent
-        for f in ("title", "source_kind"):
+        expected = fields.pop("expected_revision", None)
+        for f in ("title", "source_kind", "ingredients", "steps"):
             if f in fields and fields[f] is None:
-                raise HTTPException(422, f"{f} can't be null" if f == "source_kind" else "title can't be blank")
-        with c.transaction():
-            r = db.get_recipe(c, recipe_id, for_update=True)
+                raise HTTPException(422, "title can't be blank" if f == "title" else f"{f} can't be null")
+
+        def check(r: Recipe | None) -> Recipe:
             if r is None:
                 raise HTTPException(404, f"recipe {recipe_id}")
+            if expected is not None and recipe_revision(r) != expected:
+                raise HTTPException(409, "This recipe was changed (on another phone?) since you started editing it.")
+            return r
+
+        before = check(db.get_recipe(c, recipe_id))
+        content = {k: v for k, v in fields.items() if k in EDITABLE_FIELDS}
+        if "ingredients" in content:   # the AI may take seconds: outside the row lock, re-checked under it
+            content["ingredients"] = recipe_edit.edit_ingredients(edit_ai, before.ingredients, content["ingredients"])
+        with c.transaction():
+            r = check(db.get_recipe(c, recipe_id, for_update=True))
+            if "ingredients" in content and r.ingredients != before.ingredients:
+                raise HTTPException(409, "The recipe changed while it was being saved; try again.")
             kind = fields.get("source_kind", r.source_kind)
             title = fields.get("source_title", r.source_title)
             ref = fields.get("source_ref", r.source_ref)
@@ -324,8 +403,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                 if any(fields.get(f) for f in ("source_title", "source_ref", "source_author", "source_isbn")):
                     raise HTTPException(422, "an NYT Cooking recipe has no book title or page")
             db.update_source(c, recipe_id, kind, title, ref, author, isbn)
-            if "title" in fields:
-                db.update_recipe(c, recipe_id, r.model_copy(update={"title": fields["title"]}))
+            if content:
+                db.update_recipe(c, recipe_id, r.model_copy(update=content))
         return _recipe_out(c, recipe_id)
 
     @app.get("/recipes/sources", dependencies=A)

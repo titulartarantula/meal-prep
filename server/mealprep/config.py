@@ -35,5 +35,7 @@ class Settings:
     import_ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_IMPORT_AI_TIMEOUT", "180")))
     # Recipe documents: each AI call that finds the recipes in a part of a document (s; the answer is long).
     document_ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_DOCUMENT_AI_TIMEOUT", "600")))
+    # Edit recipe: the AI structuring changed ingredient lines while the app waits (s); slower → the deterministic clean-up.
+    edit_ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_EDIT_AI_TIMEOUT", "20")))
     store_id: str = "1092"
     default_people: int = 4

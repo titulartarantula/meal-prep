@@ -1,3 +1,5 @@
+import hashlib
+import json
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -136,9 +138,26 @@ class RatingSummary(BaseModel):
     imported_ratings: int = 0    # of times_rated, how many came from another library's export ("incl. N from …")
 
 
+# What the app's Edit recipe changes (PATCH /recipes/{id}); `revision` is a hash of these, so an edit made on an older
+# copy (another phone changed the recipe meanwhile) can be refused instead of undoing that change.
+EDITABLE_FIELDS = {"title", "servings", "ingredients", "steps", "description", "notes", "prep_minutes", "cook_minutes",
+                   "total_minutes", "yield_text"}
+
+
+def recipe_revision(r: Recipe) -> str:
+    text = json.dumps(r.model_dump(mode="json", include=EDITABLE_FIELDS), sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
 class RecipeOut(Recipe):
     ratings: RatingSummary = RatingSummary()
     planned_weeks: list[str] = []    # ISO Sundays from this week on that have this recipe (the library shows them)
+    revision: str | None = None      # recipe_revision(), filled in here (PATCH expected_revision)
+
+    @model_validator(mode="after")
+    def _revision(self):
+        self.revision = recipe_revision(self)
+        return self
 
 
 class CookedEntry(BaseModel):
@@ -198,6 +217,9 @@ class MealIn(BaseModel):
     ingredients: list[str]       # scaled, one line each
     steps: list[str]
     notes: list[str] = []        # "last time: less salt"
+    # db.cooking_key of the recipe when the plan was written (since 2026-10-11; None in older plans): an edit of its
+    # lines or steps since then makes the plan and its cook card stale.
+    recipe_key: str | None = None
 
     def serves(self) -> Serves:
         return Serves(entry_id=self.entry_id, recipe_id=self.recipe_id, title=self.title, night=self.label,

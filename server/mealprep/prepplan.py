@@ -61,7 +61,8 @@ def gather_meals(conn, weeks: list[date], today: date, people: int = 4) -> list[
             label=_label(wk, e.day, multi), factor=round(f, 3),
             ingredients=[_ingredient_line(i, f) for i in r.ingredients if not i.expanded], steps=list(r.steps),
             notes=[("last time: " if k == 0 else f"{n['date'] or 'earlier'}: ") + n["note"]
-                   for k, n in enumerate(recent)]))
+                   for k, n in enumerate(recent)],
+            recipe_key=db.cooking_key(r)))
     return out
 
 
@@ -257,9 +258,20 @@ def _checklist(tasks: list[dict]) -> dict:
             "actual_minutes": actual}
 
 
+def _edited(conn, m: MealIn) -> bool:
+    """The meal's recipe changed (lines, steps, servings) since the plan was written. Plans from before recipe keys
+    can't tell: not stale for this reason."""
+    if m.recipe_key is None:
+        return False
+    r = db.get_recipe(conn, m.recipe_id)
+    return r is None or db.cooking_key(r) != m.recipe_key
+
+
 def _stale(conn, weeks, meals: list[MealIn]) -> bool:
     now = {(e.id, e.recipe_id, e.day, e.multiplier) for w in weeks for e in db.get_week(conn, w)}
-    return now != {(m.entry_id, m.recipe_id, m.day, m.multiplier) for m in meals}
+    if now != {(m.entry_id, m.recipe_id, m.day, m.multiplier) for m in meals}:
+        return True
+    return any(_edited(conn, m) for m in meals)
 
 
 def get_prep_plan(conn, plan_id: int) -> dict | None:
@@ -311,13 +323,16 @@ def set_task_done(conn, plan_id: int, task_id: str, done: bool) -> dict:
 
 
 def get_card(conn, entry_id: int) -> dict | None:
-    """The entry's card from the newest ready plan; stale if the entry moved night or multiplier since."""
-    row = conn.execute("SELECT cc.card, cc.day, cc.multiplier, cc.prep_plan_id, pp.finished_at FROM cook_cards cc "
-                       "JOIN prep_plans pp ON pp.id = cc.prep_plan_id WHERE cc.plan_id=%s AND pp.status='ready' "
-                       "ORDER BY pp.id DESC LIMIT 1", (entry_id,)).fetchone()
+    """The entry's card from the newest ready plan; stale if the entry moved night or multiplier since, or its recipe was
+    edited (lines, steps, servings)."""
+    row = conn.execute("SELECT cc.card, cc.day, cc.multiplier, cc.prep_plan_id, pp.finished_at, "
+                       "(SELECT m FROM jsonb_array_elements(pp.input) m WHERE (m ->> 'entry_id')::int = cc.plan_id LIMIT 1) "
+                       "FROM cook_cards cc JOIN prep_plans pp ON pp.id = cc.prep_plan_id "
+                       "WHERE cc.plan_id=%s AND pp.status='ready' ORDER BY pp.id DESC LIMIT 1", (entry_id,)).fetchone()
     if row is None:
         return None
-    card, day, mult, pid, finished = row
+    card, day, mult, pid, finished, meal = row
     cur = conn.execute("SELECT day, multiplier FROM plan WHERE id=%s", (entry_id,)).fetchone()
+    stale = cur is None or tuple(cur) != (day, mult) or (meal is not None and _edited(conn, MealIn(**meal)))
     return CookCard(**card, prep_plan_id=pid, generated_at=finished.isoformat() if finished else None,
-                    stale=cur is None or tuple(cur) != (day, mult)).model_dump()
+                    stale=stale).model_dump()

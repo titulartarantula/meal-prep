@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 import hashlib
+import json
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -224,26 +225,58 @@ def record_products(conn, store_id: str, products) -> None:
                          (p.code, store_id, p.price, p.stock))
 
 
-def plan_fingerprint(conn, weeks) -> str:
+def _hash(obj) -> str:
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def shopping_key(servings, ingredients) -> str:
+    """What a recipe makes the shopping list buy: its servings (the scale) and each bought line's item, amount, unit and
+    whether it's likely on hand (ticked or not). The wording of a line, its prep notes, the title and steps aren't in it.
+    `ingredients`: Ingredient models or their stored dicts."""
+    rows = [i if isinstance(i, dict) else i.model_dump() for i in ingredients]
+    return _hash([servings, [[i.get("name"), None if i.get("qty") is None else float(i["qty"]), i.get("unit"),
+                              bool(i.get("likely_on_hand"))]
+                             for i in rows if not i.get("expanded")]])[:16]
+
+
+def cooking_key(r: Recipe) -> str:
+    """What a prep plan and cook card were written from: servings, every ingredient line and the steps (not the title or
+    notes)."""
+    return _hash([r.servings, [i.model_dump(mode="json") for i in r.ingredients], list(r.steps)])[:16]
+
+
+def plan_fingerprint(conn, weeks, version: int = 2) -> str:
     """Stable hash of the shopping-relevant plan of these weeks: the multiset of (week, recipe, scale) over every entry,
     placed on a night or not (as the shopping list uses them). Moving a dinner to another night doesn't change it;
-    adding or removing a recipe or changing its scale does."""
+    adding or removing a recipe or changing its scale does. Version 2 ("2:" + 32 hex, since 2026-10-11) also covers
+    what each recipe buys (shopping_key), so editing a planned recipe's ingredients or servings changes it; version 1
+    (32 hex, carts from 0.8.1 on) is still computed for the carts that recorded it."""
     wks = sorted({week_start(w) for w in weeks})
-    rows = conn.execute("SELECT week, recipe_id, multiplier FROM plan WHERE week = ANY(%s)", (wks,)).fetchall()
-    entries = sorted(f"{w.isoformat()}|{r}|{float(m):.4f}" for w, r, m in rows)
+    rows = conn.execute("SELECT p.week, p.recipe_id, p.multiplier, r.servings, r.data -> 'ingredients' FROM plan p "
+                        "JOIN recipes r ON r.id = p.recipe_id WHERE p.week = ANY(%s)", (wks,)).fetchall()
+    entries = sorted(f"{w.isoformat()}|{r}|{float(m):.4f}" + (f"|{shopping_key(s, ings or [])}" if version >= 2 else "")
+                     for w, r, m, s, ings in rows)
     text = ",".join(w.isoformat() for w in wks) + ";" + ";".join(entries)
-    return hashlib.sha256(text.encode()).hexdigest()[:32]
+    digest = hashlib.sha256(text.encode()).hexdigest()[:32]
+    return digest if version == 1 else f"{version}:{digest}"
+
+
+def _fingerprint_version(fp: str) -> int:
+    head, sep, _ = fp.partition(":")
+    return int(head) if sep and head.isdigit() else 1
 
 
 def cart_is_stale(conn, weeks, fingerprint: str | None, _cache: dict | None = None) -> bool:
-    """A cart is stale when its weeks' plan changed since it was made. No fingerprint (older carts) = not stale."""
+    """A cart is stale when its weeks' plan changed since it was made (compared with the fingerprint version it
+    recorded). No fingerprint (older carts) = not stale."""
     if fingerprint is None or not weeks:
         return False
-    key = tuple(sorted(weeks))
+    v = _fingerprint_version(fingerprint)
+    key = (tuple(sorted(weeks)), v)
     if _cache is None:
-        return plan_fingerprint(conn, key) != fingerprint
+        return plan_fingerprint(conn, key[0], v) != fingerprint
     if key not in _cache:
-        _cache[key] = plan_fingerprint(conn, key)
+        _cache[key] = plan_fingerprint(conn, key[0], v)
     return _cache[key] != fingerprint
 
 

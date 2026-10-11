@@ -423,7 +423,7 @@ def test_fingerprint_is_stable_and_ignores_nights_and_order(conn):
     a, b = _recipe(conn, "A"), _recipe(conn, "B")
     ea = db.add_to_week(conn, WK[0], a); db.add_to_week(conn, WK[0], b)
     fp = db.plan_fingerprint(conn, WK)
-    assert fp == db.plan_fingerprint(conn, WK) and len(fp) == 32
+    assert fp == db.plan_fingerprint(conn, WK) and len(fp) == 34 and fp.startswith("2:")   # version 2 since recipe edits
     db.update_entry(conn, ea, day=2)                       # placed on a night
     assert db.plan_fingerprint(conn, WK) == fp
     db.update_entry(conn, ea, day=5)                       # moved to another night
