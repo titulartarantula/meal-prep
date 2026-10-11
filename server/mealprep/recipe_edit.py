@@ -101,6 +101,9 @@ def edit_ingredients(ai, old: list[Ingredient], lines: list[str]) -> list[Ingred
             out[k] = o.model_copy(update={"sub_recipe": section})
     result: list[Ingredient] = list(out)
     for old_index, h in hidden:
+        if h.sub_recipe is None:   # no sub-recipe named to follow: it stays where it was
+            result.insert(min(old_index, len(result)), h)
+            continue
         first = next((k for k, i in enumerate(result) if i.sub_recipe == h.sub_recipe and not i.expanded), None)
         if first is not None:
             result.insert(first, h)

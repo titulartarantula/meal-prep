@@ -107,6 +107,13 @@ def test_deleting_a_sub_recipes_lines_brings_its_reference_line_back():
     assert [i.raw for i in out] == ["1 lb spinach", "Batter for 24 crêpes, page 191", "2 cups milk"]
 
 
+def test_an_expanded_line_without_a_sub_recipe_name_stays_where_it_was():
+    old = [i.model_copy(update={"sub_recipe": None}) if i.expanded else i for i in crepes().ingredients]
+    out = recipe_edit.edit_ingredients(LineAI(), old, ["1 lb spinach", "Batter for 24 crêpes:", "1 cup flour", "3 eggs",
+                                                       "2 cups milk", "1 lemon"])
+    assert [i.raw for i in out][:2] == ["1 lb spinach", "Batter for 24 crêpes, page 191"] and out[1].expanded
+
+
 def test_a_changed_line_mentioning_a_page_gets_its_reference():
     out = recipe_edit.edit_ingredients(LineAI(), stew().ingredients, ["Pastry, page 12"])
     assert out[0].ref_page == 12 and not out[0].expanded
