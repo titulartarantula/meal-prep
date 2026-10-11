@@ -72,7 +72,7 @@ def edit_ingredients(ai, old: list[Ingredient], lines: list[str]) -> list[Ingred
     items = parse_lines(lines, {i.sub_recipe for i in old if i.sub_recipe})
     out: list[Ingredient | None] = [None] * len(items)
     new: list[int] = []
-    m = difflib.SequenceMatcher(None, [i.raw for i in shown], [it.text for it in items], autojunk=False)
+    m = difflib.SequenceMatcher(None, [_clean(i.raw) for i in shown], [it.text for it in items], autojunk=False)
     used: set[int] = set()
     for tag, a, _, b, b2 in m.get_opcodes():
         if tag == "equal":
@@ -81,7 +81,7 @@ def edit_ingredients(ai, old: list[Ingredient], lines: list[str]) -> list[Ingred
                 used.add(a + k - b)
     for k, it in enumerate(items):   # a line moved elsewhere is still the same line
         if out[k] is None:
-            j = next((j for j, o in enumerate(shown) if j not in used and o.raw == it.text), None)
+            j = next((j for j, o in enumerate(shown) if j not in used and _clean(o.raw) == it.text), None)
             if j is None:
                 new.append(k)
             else:

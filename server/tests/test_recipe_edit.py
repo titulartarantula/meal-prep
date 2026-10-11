@@ -72,6 +72,12 @@ def test_lines_are_cleaned_blank_ones_dropped_and_order_follows_the_text():
     assert [i.raw for i in out] == ["Salt", "2 cups stock"] and out == [old[2], old[0]]
 
 
+def test_a_line_saved_with_odd_spacing_is_still_the_same_line():
+    old = [ing("2  cups\tstock", "stock", 2, "cup")]
+    ai = LineAI()
+    assert recipe_edit.edit_ingredients(ai, old, ["2 cups stock", "1 onion"])[0] == old[0] and ai.asked == [["1 onion"]]
+
+
 def test_without_the_ai_changed_lines_get_the_deterministic_clean_up():
     ai = LineAI(fail=True)
     out = recipe_edit.edit_ingredients(ai, stew().ingredients, ["2 cups stock", "1 onion, diced", "1 tsp kosher salt"])
