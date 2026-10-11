@@ -16,7 +16,9 @@ It has two parts:
   before anything is added. Recipe documents (PDF, Word .docx or plain text, e.g. a family collection or a
   cookbook chapter) can be imported too: the server finds each recipe in them and you pick which to keep. The
   file picker also takes photos of a recipe's pages (e.g. from OneDrive, which the photo picker can't see); they
-  go to the same review as Choose photos. The app talks only to the household's own server; it keeps an offline
+  go to the same review as Choose photos. Any recipe can be edited (title, servings, ingredient lines, steps,
+  notes), e.g. to fix a word the photo reading got wrong; a cart or prep plan made from the old lines is marked as
+  out of date. The app talks only to the household's own server; it keeps an offline
   copy of the current week.
 - **Server** (`server/`, Python 3.12 + FastAPI + Postgres). Imports recipes (schema.org JSON-LD from recipe
   pages, cookbook photos read by an AI model, or recipe documents — PDF, Word, text, scanned PDFs — split into
