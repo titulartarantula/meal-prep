@@ -158,7 +158,8 @@ class HomeViewModel(
     fun scale(entry: PlanEntry, multiplier: Double) =
         mutate(entry, { es -> es.map { if (it.id == entry.id) it.copy(multiplier = multiplier) else it } }) { repo.scaleEntry(entry.id, multiplier) }
 
-    /** A dinner taken off the week, hidden at once but kept on the server until the Undo snackbar goes. */
+    /** A dinner taken off the week, hidden at once but kept on the server until the Undo snackbar goes or This week is
+     *  left (HomeScreen calls [commitRemove] on pause). */
     private val _removed = MutableStateFlow<PlanEntry?>(null)
     val removed: StateFlow<PlanEntry?> = _removed.asStateFlow()
 

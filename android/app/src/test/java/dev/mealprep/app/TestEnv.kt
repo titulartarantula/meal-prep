@@ -59,6 +59,11 @@ class TestEnv : Closeable {
         routes["$method $path"] = { response(code, body, headers) }
     }
 
+    /** The body is made per call (a fake server whose answer depends on earlier requests). */
+    fun onEach(method: String, path: String, body: () -> String) {
+        routes["$method $path"] = { response(200, body()) }
+    }
+
     /** Successive calls get successive bodies; the last one repeats. */
     fun onSequence(method: String, path: String, bodies: List<String>) {
         val n = AtomicInteger()

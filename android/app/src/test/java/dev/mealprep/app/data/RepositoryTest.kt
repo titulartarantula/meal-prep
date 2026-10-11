@@ -6,7 +6,13 @@ import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.cache.CachedDoc
 import dev.mealprep.app.fixture
 import java.time.LocalDate
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -33,6 +39,22 @@ class RepositoryTest {
         assertEquals(ApiError.Unreachable, saved.error)
         assertTrue(saved.offline)
         assertEquals(env.now, saved.fetchedAt)
+    }
+
+    @Test fun `plan reads wait for a plan write still on its way, so a removed dinner is never read back as planned`() = runTest {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        env.onGated("DELETE", "/plan/21", gate, "")
+        env.on("GET", "/recipes", body = "[]")
+        val removing = launch(Dispatchers.Default) { env.repo.removeEntry(21) }
+        withContext(Dispatchers.Default) { withTimeout(5_000) { while (env.count("DELETE", "/plan/21") == 0) delay(10) } }
+        val reading = async(Dispatchers.Default) { env.repo.recipes() }
+        withContext(Dispatchers.Default) { delay(300) }
+        assertEquals(0, env.count("GET", "/recipes"))                              // held back while the DELETE is open
+        gate.countDown()
+        removing.join()
+        assertEquals(emptyList<Any>(), reading.await().value)
+        val order = env.requests.map { it.method }
+        assertTrue(order.indexOf("DELETE") < order.indexOf("GET"))
     }
 
     @Test fun `book search is live and never saved`() = runTest {

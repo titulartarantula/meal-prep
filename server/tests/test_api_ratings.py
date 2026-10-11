@@ -174,3 +174,18 @@ def test_recipes_list_the_weeks_they_are_planned_in_from_this_week_on(conn):
     rs = {r["id"]: r for r in c.get("/recipes", headers=H).json()}
     assert rs[rid]["planned_weeks"] == ["2026-10-11", "2026-10-18"] and rs[other]["planned_weeks"] == []
     assert c.get(f"/recipes/{rid}", headers=H).json()["planned_weeks"] == ["2026-10-11", "2026-10-18"]
+
+
+def test_a_recipe_removed_from_a_week_is_no_longer_planned_there(conn):
+    # The library's "On the plan" is the plan table as it is: DELETE /plan/{id} takes the week off at once (a rated
+    # entry too), while another entry of the same recipe keeps its own week.
+    rid = setup(conn, "Chili")
+    c = client(conn, today=TODAY)
+    gone, kept = placed(conn, rid, day=2), placed(conn, rid, week="2026-10-18", day=None)
+    c.put(f"/plan/{gone}/rating", headers=H, json={"family": 4})
+    assert c.delete(f"/plan/{gone}", headers=H).status_code == 204
+    [r] = [r for r in c.get("/recipes", headers=H).json() if r["id"] == rid]
+    assert r["planned_weeks"] == ["2026-10-18"]
+    assert c.get(f"/recipes/{rid}", headers=H).json()["planned_weeks"] == ["2026-10-18"]
+    assert c.delete(f"/plan/{kept}", headers=H).status_code == 204
+    assert c.get(f"/recipes/{rid}", headers=H).json()["planned_weeks"] == []

@@ -47,8 +47,12 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -79,6 +83,8 @@ data class Loaded<T>(val value: T?, val error: ApiError?, val fetchedAt: Instant
     val offline: Boolean get() = error != null && fetchedAt != null
 }
 
+private const val PLAN_WRITE_WAIT = 40_000L   // ms; longer than a write's connect + read timeouts
+
 class Repository(
     private val apis: ApiProvider,
     private val cache: CacheDao,
@@ -90,6 +96,20 @@ class Repository(
         val api = apis.api() ?: return ApiResult.Err(ApiError.NotConfigured)
         return apiCall { block(api) }
     }
+
+    /** Plan writes (add to a week, place, scale, remove) still on their way to the server. Reads of what they change
+     *  wait for them, so a screen opened right after a change (Recipes after Remove from week) never shows the plan
+     *  from before it. */
+    private val planWrites = MutableStateFlow(0)
+
+    /** Counted from the call itself, before it suspends: a read started right after it waits for it. */
+    private suspend fun <T> planWrite(block: suspend (MealPrepApi) -> T): ApiResult<T> {
+        planWrites.update { it + 1 }
+        try { return call(block) } finally { planWrites.update { it - 1 } }
+    }
+
+    /** Waits for [planWrites] (each ends with its own HTTP timeouts; the cap only keeps a screen from waiting forever). */
+    private suspend fun afterPlanWrites() { withTimeoutOrNull(PLAN_WRITE_WAIT) { planWrites.first { it == 0 } } }
 
     private suspend fun <T> load(key: String, ser: KSerializer<T>, fetch: suspend (MealPrepApi) -> T): Loaded<T> =
         when (val r = call(fetch)) {
@@ -115,13 +135,23 @@ class Repository(
     private fun wk(d: LocalDate) = Weeks.weekStart(d).toString()
 
     // --- cached reads (offline copies) ---
-    suspend fun weeks(from: LocalDate, count: Int = 8): Loaded<List<WeekSummary>> =
-        load("weeks:${wk(from)}:$count", ListSerializer(WeekSummary.serializer())) { it.weeks(wk(from), count) }
-    suspend fun week(week: LocalDate): Loaded<List<PlanEntry>> =
-        load("week:${wk(week)}", ListSerializer(PlanEntry.serializer())) { it.week(wk(week)) }
-    suspend fun recipes(sort: String = "newest"): Loaded<List<Recipe>> =
-        load("recipes:$sort", ListSerializer(Recipe.serializer())) { it.recipes(sort) }
-    suspend fun recipe(id: Int): Loaded<Recipe> = load("recipe:$id", Recipe.serializer()) { it.recipe(id) }
+    // The plan reads wait for plan writes in flight (afterPlanWrites).
+    suspend fun weeks(from: LocalDate, count: Int = 8): Loaded<List<WeekSummary>> {
+        afterPlanWrites()
+        return load("weeks:${wk(from)}:$count", ListSerializer(WeekSummary.serializer())) { it.weeks(wk(from), count) }
+    }
+    suspend fun week(week: LocalDate): Loaded<List<PlanEntry>> {
+        afterPlanWrites()
+        return load("week:${wk(week)}", ListSerializer(PlanEntry.serializer())) { it.week(wk(week)) }
+    }
+    suspend fun recipes(sort: String = "newest"): Loaded<List<Recipe>> {
+        afterPlanWrites()   // "On the plan: …"
+        return load("recipes:$sort", ListSerializer(Recipe.serializer())) { it.recipes(sort) }
+    }
+    suspend fun recipe(id: Int): Loaded<Recipe> {
+        afterPlanWrites()
+        return load("recipe:$id", Recipe.serializer()) { it.recipe(id) }
+    }
     suspend fun sources(): Loaded<List<RecipeSource>> = load("sources", ListSerializer(RecipeSource.serializer())) { it.sources() }
     suspend fun weekPrepPlan(week: LocalDate): Loaded<PrepPlan?> =
         loadOptional("prep:${wk(week)}", PrepPlan.serializer()) { it.weekPrepPlan(wk(week)) }
@@ -153,8 +183,10 @@ class Repository(
     suspend fun prepPlan(id: Int): ApiResult<PrepPlan> = call { it.prepPlan(id) }
     /** Book suggestions for "Which book?" (live, never saved: offline the caller falls back to the household's books). */
     suspend fun searchBooks(q: String, limit: Int = 8): ApiResult<List<BookHit>> = call { it.searchBooks(q, limit) }
-    suspend fun shoppingList(weeks: List<LocalDate>, staples: List<Int> = emptyList()): ApiResult<List<ListItem>> =
-        call { it.list(ListIn(weeks.map(::wk), staples = staples)) }
+    suspend fun shoppingList(weeks: List<LocalDate>, staples: List<Int> = emptyList()): ApiResult<List<ListItem>> {
+        afterPlanWrites()
+        return call { it.list(ListIn(weeks.map(::wk), staples = staples)) }
+    }
 
     // --- writes ---
     /** Sets the recipe's book, page, author and ISBN (blank = not known / none), or with [kind] "other" its source's
@@ -165,12 +197,12 @@ class Repository(
         return call { it.patchRecipe(id, Bodies.sourcePatch(title.clean(), ref.clean(), author.takeIf { book }.clean(),
             isbn.takeIf { book }.clean(), kind)) }
     }
-    suspend fun addToWeek(week: LocalDate, recipeId: Int): ApiResult<PlanEntry> = call { it.addEntry(wk(week), EntryIn(recipeId)) }
+    suspend fun addToWeek(week: LocalDate, recipeId: Int): ApiResult<PlanEntry> = planWrite { it.addEntry(wk(week), EntryIn(recipeId)) }
     suspend fun placeEntry(entryId: Int, day: Int?): ApiResult<Unit> =
-        call { it.patchEntry(entryId, Bodies.entryPatch(day = day, unplace = day == null)) }
+        planWrite { it.patchEntry(entryId, Bodies.entryPatch(day = day, unplace = day == null)) }
     suspend fun scaleEntry(entryId: Int, multiplier: Double): ApiResult<Unit> =
-        call { it.patchEntry(entryId, Bodies.entryPatch(multiplier = multiplier)) }
-    suspend fun removeEntry(entryId: Int): ApiResult<Unit> = call { it.deleteEntry(entryId) }
+        planWrite { it.patchEntry(entryId, Bodies.entryPatch(multiplier = multiplier)) }
+    suspend fun removeEntry(entryId: Int): ApiResult<Unit> = planWrite { it.deleteEntry(entryId) }
     suspend fun setRating(entryId: Int, family: Int, company: String?, note: String?): ApiResult<Unit> =
         call { it.putRating(entryId, RatingIn(family, company, note?.trim()?.ifBlank { null })) }
     suspend fun deleteRating(entryId: Int): ApiResult<Unit> = call { it.deleteRating(entryId) }

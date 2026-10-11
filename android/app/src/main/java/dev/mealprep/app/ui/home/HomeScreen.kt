@@ -83,6 +83,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
@@ -128,14 +130,16 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
     val pending by vm.pending.collectAsStateWithLifecycle()
     val removed by vm.removed.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
-    // Taking a dinner off the week waits for this snackbar: Undo keeps it, anything else makes it final. (Leaving
-    // the screen while it shows brings it back on return; the ViewModel finishes it if Home goes away.)
+    // Taking a dinner off the week waits for this snackbar: Undo keeps it, anything else makes it final, leaving This
+    // week too (another tab or screen, or the app): Recipes, the shopping list and the other phone read the server, so
+    // a removal held back after leaving showed the dinner as still planned there.
     LaunchedEffect(removed) {
         val e = removed ?: return@LaunchedEffect
         val r = snackbar.showSnackbar("Took ${e.title ?: "the recipe"} off the week", actionLabel = "Undo", withDismissAction = true,
             duration = SnackbarDuration.Long)
         if (r == SnackbarResult.ActionPerformed) vm.undoRemove() else vm.commitRemove()
     }
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { vm.commitRemove() }
     AskForNotificationsOnce(graph)
     val drag = remember { WeekDrag() }
 
