@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
 
 /** The result of "Add to week": what to say, and the week to open if it worked. */
 data class Added(val text: String, val week: LocalDate?, val ok: Boolean)
@@ -43,6 +44,9 @@ data class RecipeState(
     val savingSource: Boolean = false,
     /** Why Edit source didn't save (null = fine). */
     val sourceError: String? = null,
+    /** Edit recipe is saving, or why it didn't save (null = fine). */
+    val savingEdit: Boolean = false,
+    val editError: String? = null,
 )
 
 /** "the week of Oct 18" / "this week" for sentences. */
@@ -60,6 +64,14 @@ internal fun addMessage(e: ApiError): String = when (e) {
     else -> e.userMessage()
 }
 
+/** Why Edit recipe didn't save: off the home network, changed on another phone meanwhile (409), or the server's words. */
+internal fun editMessage(e: ApiError): String = when {
+    e == ApiError.Unreachable || e == ApiError.NotConfigured -> "Saving changes needs the home network (or WireGuard). Your changes are still here."
+    e is ApiError.Http && e.code == 409 -> "This recipe was changed on another phone since you started editing it. " +
+        "Copy anything you want to keep, then Back, Discard and edit again."
+    else -> e.userMessage()
+}
+
 internal fun sourceMessage(e: ApiError): String = when (e) {
     ApiError.Unreachable, ApiError.NotConfigured -> "Changing the source needs the home network (or WireGuard)."
     else -> e.userMessage()
@@ -69,7 +81,7 @@ class RecipeViewModel(
     private val repo: Repository,
     private val id: Int,
     private val today: () -> LocalDate = LocalDate::now,
-    /** After it was added to a week (the phone's reminders are re-planned). */
+    /** After it was added to a week or edited (the phone's reminders are re-planned). */
     private val afterChange: () -> Unit = {},
 ) : ViewModel() {
     private val _state = MutableStateFlow(RecipeState())
@@ -123,6 +135,30 @@ class RecipeViewModel(
                 }
                 is ApiResult.Err -> {
                     _state.update { it.copy(savingSource = false, sourceError = sourceMessage(r.error)) }
+                    done(false)
+                }
+            }
+        }
+    }
+
+    /** Edit recipe opened: no message left over from the last time. */
+    fun editOpened() = _state.update { it.copy(editError = null) }
+
+    /** Saves Edit recipe's [body] (RecipeDraft.changes); done(true) once the server took it and the recipe was re-read
+     *  (the phone's reminders are re-planned: they name the dinner). On failure the editor stays open with the reason. */
+    fun saveEdit(body: JsonObject, done: (Boolean) -> Unit = {}) {
+        if (_state.value.savingEdit) return
+        _state.update { it.copy(savingEdit = true, editError = null) }
+        viewModelScope.launch {
+            when (val r = repo.editRecipe(id, body)) {
+                is ApiResult.Ok -> {
+                    val fresh = repo.recipe(id).value ?: r.value
+                    afterChange()
+                    _state.update { it.copy(savingEdit = false, recipe = fresh) }
+                    done(true)
+                }
+                is ApiResult.Err -> {
+                    _state.update { it.copy(savingEdit = false, editError = editMessage(r.error)) }
                     done(false)
                 }
             }

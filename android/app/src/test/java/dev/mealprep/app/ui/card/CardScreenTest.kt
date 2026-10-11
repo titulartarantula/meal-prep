@@ -51,7 +51,7 @@ class CardScreenTest {
 
     @Test fun `stale card says to write a new plan`() {
         compose.setContent { CardContent(CardState(card.copy(stale = true), loading = false), emptySet(), CardUiActions()) }
-        compose.onNodeWithText("This card was written before the recipe moved or changed size — write a new prep plan to refresh it.").assertExists()
+        compose.onNodeWithText("This card was written before the recipe moved, changed size or was edited — write a new prep plan to refresh it.").assertExists()
     }
 
     @Test fun `no card shows the reason and a refresh`() {

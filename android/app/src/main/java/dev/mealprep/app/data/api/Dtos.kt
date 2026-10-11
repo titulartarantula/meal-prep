@@ -40,6 +40,9 @@ import kotlinx.serialization.Serializable
     val description: String? = null, val notes: String? = null,
     val prepMinutes: Int? = null, val cookMinutes: Int? = null, val totalMinutes: Int? = null,
     val yieldText: String? = null, val image: String? = null,
+    /** A hash of what Edit recipe changes (since 0.11.0): sent back as expected_revision, so an edit of an older copy
+     *  is refused (409) instead of undoing another phone's change. */
+    val revision: String? = null,
 ) {
     /** Indexes of lines like "Batter for 24 crêpes, page 191" whose page hasn't been attached yet. */
     val missingPages: List<Int> get() = ingredients.indices.filter { ingredients[it].refPage != null && !ingredients[it].expanded }
@@ -118,8 +121,8 @@ import kotlinx.serialization.Serializable
     val id: Int, val status: String, val error: String? = null, val progress: Progress = Progress(),
     val weeks: List<String> = emptyList(), val lines: List<DraftLine> = emptyList(), val pcxCartId: String? = null,
     val estimatedTotal: Double = 0.0, val createdAt: String? = null, val sentAt: String? = null,
-    /** The week's recipes changed since this cart was built (added, removed or rescaled; a night move doesn't count):
-     *  an older cart, read-only, that can't be sent. */
+    /** The week's recipes changed since this cart was built (added, removed or rescaled, or, for carts built since
+     *  0.11.0, what a recipe buys was edited; a night move doesn't count): an older cart, read-only, that can't be sent. */
     val stale: Boolean = false,
 )
 @Serializable data class DraftIn(val items: List<ListItem>, val weeks: List<String>)

@@ -71,6 +71,7 @@ import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.home.refRoute
 import dev.mealprep.app.work.SyncWorker
 import java.time.LocalDate
+import kotlinx.serialization.json.JsonObject
 
 @Composable
 fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, onBack: () -> Unit, addToWeek: Boolean = false) {
@@ -78,7 +79,7 @@ fun RecipeScreen(id: Int, onOpen: (Any) -> Unit, onWeek: (LocalDate) -> Unit, on
     val state by vm.state.collectAsStateWithLifecycle()
     RecipeContent(state, onAdd = vm::addToWeek, onWeek = onWeek, onOpen = onOpen, onDismissAdded = vm::dismissAdded,
         onRetry = vm::load, onBack = onBack, startPicking = addToWeek, onEditSource = vm::editSource, onStartEdit = vm::loadBooks,
-        onBookTyped = vm::bookTyped, onEditOther = vm::editOther)
+        onBookTyped = vm::bookTyped, onEditOther = vm::editOther, onEditOpened = vm::editOpened, onSaveEdit = vm::saveEdit)
 }
 
 @Composable
@@ -106,14 +107,34 @@ fun RecipeContent(
     onEditOther: (String, String, (Boolean) -> Unit) -> Unit = { _, _, _ -> },
     /** Share or save this recipe (the export dialog; tests pass their own). */
     exportHost: @Composable (Int, () -> Unit) -> Unit = { id, close -> ExportHost(id, close) },
+    onEditOpened: () -> Unit = {},
+    /** Edit recipe's changes (RecipeDraft.changes), then done(saved). */
+    onSaveEdit: (JsonObject, (Boolean) -> Unit) -> Unit = { _, _ -> },
 ) {
     var picking by rememberSaveable { mutableStateOf(startPicking) }
     var editing by rememberSaveable { mutableStateOf(false) }
     var sharing by rememberSaveable { mutableStateOf(false) }
+    // Edit recipe's fields while it's open (kept across rotation); null = the recipe is shown.
+    var draft by rememberSaveable(stateSaver = RecipeDraft.saver) { mutableStateOf<RecipeDraft?>(null) }
     val r = state.recipe
+    val d = draft
+    if (r != null && d != null) {
+        EditRecipeScreen(r, d, { draft = it }, state.savingEdit, state.editError,
+            onSave = {
+                val body = d.changes(r)
+                if (body == null) draft = null else onSaveEdit(body) { ok -> if (ok) draft = null }
+            },
+            onClose = { draft = null })
+        return
+    }
     Column(Modifier.fillMaxSize()) {
         BackTopBar(r?.title ?: "Recipe", onBack) {
-            if (r != null) IconButton({ sharing = true }) { Icon(painterResource(R.drawable.ic_share), contentDescription = SHARE_ONE) }
+            if (r != null) {
+                IconButton({ onEditOpened(); draft = RecipeDraft.from(r) }) {
+                    Icon(painterResource(R.drawable.ic_edit), contentDescription = EDIT_RECIPE)
+                }
+                IconButton({ sharing = true }) { Icon(painterResource(R.drawable.ic_share), contentDescription = SHARE_ONE) }
+            }
         }
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             OfflineBanner(state.offlineSince)

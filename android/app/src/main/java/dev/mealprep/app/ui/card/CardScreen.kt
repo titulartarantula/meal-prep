@@ -78,7 +78,7 @@ fun CardContent(s: CardState, done: Set<Int>, a: CardUiActions, today: LocalDate
                 return@LazyColumn
             }
             if (card.stale) item {
-                Text("This card was written before the recipe moved or changed size — write a new prep plan to refresh it.",
+                Text("This card was written before the recipe moved, changed size or was edited — write a new prep plan to refresh it.",
                     color = MaterialTheme.colorScheme.error)
             }
             cardSections(card).forEach { (title, lines) ->

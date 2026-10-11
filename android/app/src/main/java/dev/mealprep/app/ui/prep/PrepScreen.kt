@@ -115,7 +115,7 @@ fun PrepContent(s: PrepState, week: LocalDate, today: LocalDate, a: PrepActions)
                         // Only the newest ready plan can be out of date; a building/failed newer one already says so above.
                         // The button goes under the note: side by side, large text squeezed the note to a word a line.
                         if (plan.stale && plan.id == newest?.id) {
-                            Text("The week changed since this plan was written.")
+                            Text("The week or its recipes changed since this plan was written.")
                             TextButton(writeNew, enabled = !s.starting) { Text("Write a new plan") }
                         }
                         plan.warnings.forEach { AdviceText("⚠ $it") }

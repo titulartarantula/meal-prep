@@ -197,6 +197,8 @@ class Repository(
         return call { it.patchRecipe(id, Bodies.sourcePatch(title.clean(), ref.clean(), author.takeIf { book }.clean(),
             isbn.takeIf { book }.clean(), kind)) }
     }
+    /** Edit recipe: [body] holds only the changed fields (RecipeDraft.changes) and the revision the edit began from. */
+    suspend fun editRecipe(id: Int, body: kotlinx.serialization.json.JsonObject): ApiResult<Recipe> = call { it.patchRecipe(id, body) }
     suspend fun addToWeek(week: LocalDate, recipeId: Int): ApiResult<PlanEntry> = planWrite { it.addEntry(wk(week), EntryIn(recipeId)) }
     suspend fun placeEntry(entryId: Int, day: Int?): ApiResult<Unit> =
         planWrite { it.patchEntry(entryId, Bodies.entryPatch(day = day, unplace = day == null)) }
