@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import books, db, drafts, prepplan, recipe_edit, staples, subrecipe
+from . import books, db, drafts, extras, prepplan, recipe_edit, staples, subrecipe
 from .ai import AIError, get_provider
 from .exchange import importer, jsonld, safe
 from .config import Settings
@@ -229,6 +229,24 @@ class LinePatch(BaseModel):   # partial update: omitted fields are left unchange
 
 class SearchIn(BaseModel):
     term: str = Field(min_length=1)
+
+
+class ExtraIn(BaseModel):     # an item added by search for a week (see extras.py)
+    week: date
+    term: Annotated[str, Field(min_length=1, max_length=200)]
+    product_code: Annotated[str, Field(min_length=1, max_length=64)]
+    quantity: Annotated[int, Field(gt=0, le=10000)] = 1
+
+
+class ExtraPatch(BaseModel):
+    product_code: Annotated[str, Field(min_length=1, max_length=64)] | None = None
+    quantity: Annotated[int, Field(gt=0, le=10000)] | None = None
+
+
+class AddLineIn(BaseModel):   # "Add an item" on a cart under review
+    term: Annotated[str, Field(min_length=1, max_length=200)]
+    product_code: Annotated[str, Field(min_length=1, max_length=64)]
+    quantity: Annotated[int, Field(gt=0, le=10000)] = 1
 
 
 class PrepPlanIn(BaseModel):
@@ -686,7 +704,9 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.post("/drafts", status_code=202, dependencies=A)
     def create_draft(body: DraftIn, c=Depends(get_conn)):
-        did = drafts.create_draft(c, body.items, body.weeks, store_id=settings.store_id, ai_provider=settings.provider)
+        # The weeks' items added by search come after the list's lines (the app doesn't send them).
+        items = [it for it in body.items if it.extra_id is None] + extras.items_for(c, body.weeks)
+        did = drafts.create_draft(c, items, body.weeks, store_id=settings.store_id, ai_provider=settings.provider)
         threading.Thread(target=run_build, args=(did,), name=f"draft-{did}", daemon=True).start()
         return {"id": did, "status": "building"}
 
@@ -736,6 +756,47 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                                store_id=settings.store_id)
         except httpx.HTTPError as e:
             raise HTTPException(502, f"PC Express search failed: {type(e).__name__}")
+
+    @app.post("/drafts/{draft_id}/lines", status_code=201, dependencies=A)
+    def add_line(draft_id: int, body: AddLineIn, c=Depends(get_conn)):
+        """Add an item found by search to a cart under review (and to its week's added items)."""
+        return _draft_call(extras.add_to_draft, c, draft_id, body.term, body.product_code, body.quantity)
+
+    @app.get("/products/choices", dependencies=A)
+    def product_choices(term: str = Query(..., min_length=1, max_length=200), page: int = Query(0, ge=0, le=50),
+                        c=Depends(get_conn)):
+        """The chooser for an item added by search: like a line's choices, without a line."""
+        try:
+            return drafts.search_choices(c, shop, term, page=page, store_id=settings.store_id)
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"PC Express search failed: {type(e).__name__}")
+
+    def _extra_call(fn, *args, **kw):
+        try:
+            return fn(*args, **kw)
+        except extras.ExtraNotFound as e:
+            raise HTTPException(404, str(e))
+        except drafts.UnknownProduct as e:
+            raise HTTPException(422, f"unknown product {e} — search for it first")
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    @app.get("/extras", dependencies=A)
+    def get_extras(week: list[date] = Query(..., min_length=1), c=Depends(get_conn)):
+        """Items added by search for these weeks (oldest week first, then as added)."""
+        return extras.list_extras(c, week)
+
+    @app.post("/extras", status_code=201, dependencies=A)
+    def add_extra(body: ExtraIn, c=Depends(get_conn)):
+        return _extra_call(extras.add_extra, c, body.week, body.term, body.product_code, body.quantity)
+
+    @app.patch("/extras/{extra_id}", dependencies=A)
+    def patch_extra(extra_id: int, body: ExtraPatch, c=Depends(get_conn)):
+        return _extra_call(extras.update_extra, c, extra_id, quantity=body.quantity, product_code=body.product_code)
+
+    @app.delete("/extras/{extra_id}", status_code=204, dependencies=A)
+    def delete_extra(extra_id: int, c=Depends(get_conn)):
+        extras.delete_extra(c, extra_id)
 
     @app.post("/drafts/{draft_id}/send", dependencies=A)
     def send_draft(draft_id: int, c=Depends(get_conn)):

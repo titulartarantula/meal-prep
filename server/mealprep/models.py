@@ -68,6 +68,10 @@ class ListItem(BaseModel):
     recipes: list[str] = []
     staple: bool = False         # a weekly staple is (part of) this line; recipes then include "Staples"
     staple_packs: int | None = None  # a staple counted in packs ("1 carton of milk"): buy at least this many
+    # An item added by search (`extras`, 0.13.0): the product and quantity were chosen in the chooser.
+    extra_id: int | None = None
+    product_code: str | None = None
+    quantity: int | None = None
 
 
 class Staple(BaseModel):

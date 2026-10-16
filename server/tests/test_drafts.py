@@ -283,8 +283,8 @@ class QtyAI:
         self.prompts.append(prompt); return {"code": self.code, "quantity": self.quantity}
 
 
-def sized(code, size, sold_by=None):
-    return Product(code=code, name=f"P{code}", brand="PC", package_size=size, price=4.0, stock="OK", sold_by=sold_by)
+def sized(code, size, sold_by=None, price=4.0):
+    return Product(code=code, name=f"P{code}", brand="PC", package_size=size, price=price, stock="OK", sold_by=sold_by)
 
 
 MILK = ListItem(key="whole milk|vol", name="whole milk", qty=6, unit="cup", recipes=["Pudding"])
@@ -296,8 +296,8 @@ def one_line(conn, it, cands, ai):
 
 
 def test_ai_too_few_packs_is_raised_to_the_floor(conn):
-    ai = QtyAI("L1", 1)
-    _, line = one_line(conn, MILK, [sized("L1", "1 l"), sized("L4", "4 l")], ai)
+    ai = QtyAI("L1", 1)   # (the 4 L costs more than two 1 L, so no bigger pack is taken instead)
+    _, line = one_line(conn, MILK, [sized("L1", "1 l"), sized("L4", "4 l", price=9.0)], ai)
     assert line["quantity"] == 2 and line["packs_min"] == 2 and line["needs_check"] is False
     assert line["why"] == "Need 6 cups → 2 × 1 L"
     assert '"min_packs": 2' in ai.prompts[0] and "exactly that is bought" in ai.prompts[0]

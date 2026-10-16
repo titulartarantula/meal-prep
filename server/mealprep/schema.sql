@@ -298,3 +298,17 @@ CREATE TABLE IF NOT EXISTS document_reads(
 ALTER TABLE products ADD COLUMN IF NOT EXISTS detail jsonb;
 ALTER TABLE picks ADD COLUMN IF NOT EXISTS pinned boolean NOT NULL DEFAULT false;
 ALTER TABLE cart_lines ADD COLUMN IF NOT EXISTS note text;
+
+-- Items added by search (0.13.0): a product chosen in the chooser for a week, outside the recipes and staples. Drafts
+-- of the week get a line for each (cart_lines.extra_id); see extras.py.
+CREATE TABLE IF NOT EXISTS extras(
+  id serial PRIMARY KEY,
+  week date NOT NULL,
+  term text NOT NULL,
+  key text NOT NULL,
+  product_code text NOT NULL,
+  quantity int NOT NULL CHECK (quantity > 0),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS extras_week_idx ON extras(week);
+ALTER TABLE cart_lines ADD COLUMN IF NOT EXISTS extra_id int;

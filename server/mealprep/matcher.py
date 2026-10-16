@@ -1,5 +1,5 @@
 import json
-from . import db, planner
+from . import bulk, db, planner
 from .ai.base import AIError
 from .models import CartLine, CartResult
 
@@ -8,8 +8,10 @@ OUT_OF_STOCK = {"OUT", "OUT_OF_STOCK"}   # live API reports "OUT"
 PROMPT = """Pick the best grocery product for this shopping-list need, and how many packages to buy.
 Need: {need}
 Candidates (JSON; min_packs = the fewest packages of that product that cover the need, worked out from its
-package_size; 1 where that can't be worked out): {cands}
-Prefer: the plain/standard version, the smallest package that covers the amount, regular brands over specialty.
+package_size; 1 where that can't be worked out; cover_cost = what min_packs of it cost, where known): {cands}
+Prefer: the plain/standard version; the cheapest way to cover the amount (one bigger pack — club/family size — over
+several small ones when its cover_cost is no higher; otherwise the smallest package that covers it); regular brands
+over specialty.
 Quantity: its min_packs (where it was worked out, exactly that is bought); otherwise the packages the need calls for, usually 1.
 Return ONLY JSON: {{"code": candidate code, "quantity": integer packages}}"""
 
@@ -24,10 +26,18 @@ def _need(it):
 def _choose(provider, it, cands):
     """AI pick (code, packages). The caller settles the quantity with `planner.default_quantity`."""
     mins = planner.min_packs(it, cands)
+
+    def cand(p):
+        out = {**p.model_dump(include={"code", "name", "brand", "package_size", "price"}), "min_packs": mins[p.code]}
+        cov = bulk.cover(it, p)
+        if cov:
+            out["min_packs"], out["cover_cost"] = cov
+            if not p.package_size:
+                out["package_size"] = bulk.size_text(p)
+        return out
     try:
         ch = provider.complete_json(PROMPT.format(need=_need(it), cands=json.dumps(
-            [{**p.model_dump(include={"code", "name", "brand", "package_size", "price"}), "min_packs": mins[p.code]}
-             for p in cands], ensure_ascii=False)))
+            [cand(p) for p in cands], ensure_ascii=False)))
     except AIError:
         return None, 0
     if not isinstance(ch, dict):

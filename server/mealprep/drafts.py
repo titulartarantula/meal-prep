@@ -5,12 +5,11 @@ picks concurrently in a bounded thread pool; all DB writes stay on the calling t
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import math
-import re
 
 import httpx
 from psycopg.types.json import Jsonb
 
-from . import db, planner
+from . import bulk, db, planner
 from .ingredients import item_key, split_prep
 from .matcher import OUT_OF_STOCK, _choose
 from .models import ListItem, Product
@@ -18,6 +17,7 @@ from .models import ListItem, Product
 log = logging.getLogger(__name__)
 MAX_ALTERNATIVES = 5
 CHOICES_PAGE = 20          # chooser results per page (Loblaws adds its sponsored results to the first page)
+HINT_SAVING = 1.0          # a remembered pick's line mentions a bigger pack that saves at least this much ($)
 MAX_BOUGHT = 5             # products sent before for a line, fetched for the chooser when the search lacks them
 BETTER_BY = 0.97           # a better value is at least 3 % cheaper per unit
 
@@ -102,8 +102,8 @@ def create_draft(conn, items, weeks, store_id: str, ai_provider: str | None) -> 
                            (store_id, ai_provider, wks, len(needed), fp)).fetchone()[0]
         for pos, it in enumerate(needed):
             conn.execute("INSERT INTO cart_lines(cart_id, position, item, item_key, item_name, need_qty, need_unit, "
-                         "status, source) VALUES(%s,%s,%s,%s,%s,%s,%s,'pending','none')",
-                         (did, pos, Jsonb(it.model_dump(mode="json")), it.key, it.name, it.qty, it.unit))
+                         "status, source, extra_id) VALUES(%s,%s,%s,%s,%s,%s,%s,'pending','none',%s)",
+                         (did, pos, Jsonb(it.model_dump(mode="json")), it.key, it.name, it.qty, it.unit, it.extra_id))
     return did
 
 
@@ -154,6 +154,7 @@ def _match(pcx, provider, it, pick, last, pinned=False, usual=None):
         note = (f"Your usual {name} is out of stock this week" if pin is not None
                 else f"Your usual {name} isn't sold at Loblaws any more") + " — matched another."
         pick = None
+    found = _with_bulk(pcx, it, found)
     cands = [p for p in found if p.stock not in OUT_OF_STOCK]
     if pick and note is None:
         gone = next((p for p in found if p.code == pick[0] and p.stock in OUT_OF_STOCK), None)
@@ -164,11 +165,63 @@ def _match(pcx, provider, it, pick, last, pinned=False, usual=None):
     by_code = {p.code: p for p in cands}
     if pick and pick[0] in by_code:
         p = by_code[pick[0]]
-        return found, cands, pick[0], fit_quantity(it, p, planner.remembered_quantity(it, p, last), last), "memory", None
+        hint = bulk.better_cover(it, p, cands)
+        note = bulk.hint_note(hint[0], bulk.cover(it, hint[0])[0], hint[1]) if hint and hint[1] >= HINT_SAVING else None
+        return found, cands, pick[0], fit_quantity(it, p, planner.remembered_quantity(it, p, last), last), "memory", note
     code, qty = _choose(provider, it, cands)
     if code in by_code:
-        qty = fit_quantity(it, by_code[code], planner.default_quantity(it, by_code[code], qty))
+        chosen = by_code[code]
+        bigger = bulk.better_cover(it, chosen, cands)
+        if bigger:   # the same thing in a bigger pack covers the need for no more: take it
+            big, saving = bigger
+            n_chosen, n_big = bulk.cover(it, chosen)[0], bulk.cover(it, big)[0]
+            why = bulk.swap_note(chosen, n_chosen, big, n_big, saving)
+            note = f"{note} {why}" if note else why
+            code, chosen, qty = big.code, big, n_big
+        qty = fit_quantity(it, chosen, planner.default_quantity(it, chosen, qty))
     return found, cands, code, qty, "ai", note
+
+
+def _with_bulk(pcx, it, found):
+    """The search results plus the same item's club packs when bigger packs could matter (`bulk.wanted`). A failed
+    club-pack search just leaves them out."""
+    if not bulk.wanted(it, [p for p in found if p.stock not in OUT_OF_STOCK]):
+        return found
+    term = search_term(it.name)
+    try:
+        more = pcx.search(f"{term} {bulk.BULK_WORDS}")
+    except httpx.HTTPError:
+        return found
+    return bulk.merge(term, found, more)
+
+
+def _match_extra(pcx, provider, it):
+    """Worker for an item added by search: its chosen product (fetched by code, this week's price and stock) in the
+    chosen quantity. Out of stock or no longer sold: the item's search term is matched as usual and `note` says
+    why. Returns what `_match` returns."""
+    p = pcx.product(it.product_code) if it.product_code else None
+    if p is not None and p.stock not in OUT_OF_STOCK:
+        return [p], [p], p.code, order_quantity(p, it.quantity or 1), "user", None
+    name = (p.name if p else None) or it.name
+    note = (f"{name} is out of stock this week" if p is not None else f"{name} isn't sold at Loblaws any more") \
+        + " — matched another."
+    found = pcx.search(search_term(it.name)) + ([p] if p is not None else [])
+    cands = [c for c in found if c.stock not in OUT_OF_STOCK]
+    if not cands:
+        return found, cands, None, None, "none", note
+    code, _ = _choose(provider, it, cands)
+    by_code = {c.code: c for c in cands}
+    if code not in by_code:
+        return found, cands, None, None, "none", note
+    return found, cands, code, _substitute_quantity(by_code[code], it.quantity or 1), "ai", note
+
+
+def _substitute_quantity(p, q: int) -> int:
+    """An added item's quantity on its substitute: grams chosen for a weighed product don't become packs, and the
+    other way round."""
+    if _get(p, "weighted"):
+        return order_quantity(p, q if q >= (_get(p, "min_qty") or 100) else (_get(p, "min_qty") or 100))
+    return order_quantity(p, q if q < 100 else 1)
 
 
 def build_draft(conn, draft_id: int, pcx, provider, store_id: str = "1092", workers: int = 6) -> None:
@@ -187,6 +240,9 @@ def _build(conn, draft_id, pcx, provider, store_id, workers):
     jobs = []
     for lid, item in rows:
         it = ListItem(**item)
+        if it.extra_id is not None:   # added by search: its own product; a substitute never becomes the pick
+            jobs.append((lid, it, (it.product_code, "user") if it.product_code else None, None, False, None))
+            continue
         found = find_pick(conn, it.key)
         pick = found[:2] if found else None
         if found and found[2] != it.key:
@@ -197,7 +253,8 @@ def _build(conn, draft_id, pcx, provider, store_id, workers):
                      usual.name if usual else None))
     errors, last_error = 0, None
     with ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix=f"draft{draft_id}") as pool:
-        futs = {pool.submit(_match, pcx, provider, it, pick, last, pinned, usual): (lid, it, pick)
+        futs = {(pool.submit(_match_extra, pcx, provider, it) if it.extra_id is not None else
+                 pool.submit(_match, pcx, provider, it, pick, last, pinned, usual)): (lid, it, pick)
                 for lid, it, pick, last, pinned, usual in jobs}
         for fut in as_completed(futs):
             lid, it, pick = futs[fut]
@@ -242,7 +299,7 @@ def fail_interrupted(conn) -> None:
 
 def _line_out(row) -> dict:
     (lid, item, key, name, qty, unit, product, code, pname, pbrand, psize, quantity, source, alts, removed, status,
-     note, pimage, pinned) = row
+     note, pimage, pinned, extra_id) = row
     item = item or {}
     if product is None and code:   # carts from before drafts only kept the product code
         product = {"code": code, "name": pname, "brand": pbrand, "package_size": psize, "price": None, "stock": None}
@@ -256,13 +313,13 @@ def _line_out(row) -> dict:
             "alternatives": alts or [], "removed": removed, "status": status,
             "packs_min": plan.packs_min if plan else None, "needs_check": bool(plan and plan.needs_check),
             "why": plan.why(quantity) if plan and not (product or {}).get("weighted") else None,
-            "pinned": bool(pinned), "note": note}
+            "pinned": bool(pinned), "note": note, "extra_id": extra_id}
 
 
 _LINE_SQL = ("SELECT l.id, l.item, l.item_key, l.item_name, l.need_qty, l.need_unit, l.product, l.product_code, "
              "p.name, p.brand, p.package_size, l.quantity, l.source, l.alternatives, l.removed, l.status, l.note, "
              "p.detail->>'image', EXISTS(SELECT 1 FROM picks k WHERE k.key = l.item_key "
-             "AND k.product_code = l.product_code AND k.pinned) "
+             "AND k.product_code = l.product_code AND k.pinned), l.extra_id "
              "FROM cart_lines l LEFT JOIN products p ON p.code = l.product_code ")
 
 
@@ -375,6 +432,9 @@ def update_line(conn, draft_id: int, line_id: int, product_code=_UNSET, quantity
             sets.append("quantity=%s"); vals.append(qty)
         if sets:
             conn.execute(f"UPDATE cart_lines SET {', '.join(sets)} WHERE id=%s", (*vals, line_id))
+        if line["extra_id"] is not None:
+            _mirror_extra(conn, draft_id, line, product, qty,
+                          line["removed"] if removed is _UNSET or removed is None else bool(removed))
         if pinned is not _UNSET and pinned is not None:
             code = _get(product, "code")
             if pinned and not code:
@@ -383,6 +443,22 @@ def update_line(conn, draft_id: int, line_id: int, product_code=_UNSET, quantity
                 db.set_pick(conn, line["item_key"], code, chosen_by="user")
             db.set_pinned(conn, line["item_key"], bool(pinned))
         return _get_line(conn, draft_id, line_id)
+
+
+def _mirror_extra(conn, draft_id, line, product, qty, removed: bool) -> None:
+    """Edits of an added item's line are the item's (`extras`): its product and quantity follow; removing the line
+    deletes the item, restoring the line adds it back (same id, the draft's first week)."""
+    eid = line["extra_id"]
+    if removed:
+        conn.execute("DELETE FROM extras WHERE id=%s", (eid,))
+        return
+    code = _get(product, "code")
+    if not code or not qty:
+        return
+    conn.execute("INSERT INTO extras(id, week, term, key, product_code, quantity) "
+                 "SELECT %s, c.weeks[1], %s, %s, %s, %s FROM carts c WHERE c.id=%s AND c.weeks[1] IS NOT NULL "
+                 "ON CONFLICT (id) DO UPDATE SET product_code=EXCLUDED.product_code, quantity=EXCLUDED.quantity",
+                 (eid, line["name"], line["item_key"], code, qty, draft_id))
 
 
 def search_line(conn, draft_id: int, line_id: int, term: str, pcx, store_id: str = "1092") -> list[dict]:
@@ -438,13 +514,7 @@ def send_draft(conn, draft_id: int, pcx) -> str:
 # --- the product chooser (0.12.0) -----------------------------------------------------------------------------
 
 GROUPS = ("current", "bought", "deal", "other", "out")
-# Words that name a pack, not a kind of product: "Old Cheddar Cheese Bar" is the same kind as "Old Cheddar Cheese".
-_PACK_WORDS = {"bar", "bars", "block", "blocks", "pack", "packs", "club", "size", "value", "family", "bag", "bags",
-               "box", "tub", "jar", "bottle", "can", "carton", "the", "and", "with", "of", "a"}
-
-
-def _kind(name: str | None) -> frozenset:
-    return frozenset(w for w in re.findall(r"[a-z]+", (name or "").lower()) if w not in _PACK_WORDS)
+_kind = bulk.kind
 
 
 def _out(p) -> bool:
@@ -507,21 +577,40 @@ def choices(conn, draft_id: int, line_id: int, pcx, term: str | None = None, pag
     product, then products sent in a cart before (most recent first), on sale or with a PC Optimum offer, the rest in
     Loblaws' order, and out-of-stock products last (shown, not selectable). With the default term, page 0 also
     brings the current, the pinned and up to MAX_BOUGHT products bought for this item before when the search lacks
-    them (fetched by code, so their price and stock are this week's)."""
+    them (fetched by code, so their price and stock are this week's), and the item's club packs when bigger packs
+    could matter (`bulk.wanted`)."""
     line = _get_line(conn, draft_id, line_id)
-    it = _line_item(line)
-    default = search_term(line["name"] or "")
+    return _choices(conn, pcx, _line_item(line), line["item_key"] or "", search_term(line["name"] or ""), term, page,
+                    size, store_id, current=(line["product"] or {}).get("code"), quantity=line["quantity"])
+
+
+def search_choices(conn, pcx, term: str, page: int = 0, size: int = CHOICES_PAGE, store_id: str = "1092") -> dict:
+    """The chooser for an item added by search (no list line): the same order and hints as a line's, with the
+    products bought before under this search's item key (`extras.extra_key`) on page 0."""
+    from .extras import extra_key
+    t = " ".join(term.split())
+    it = ListItem(key=extra_key(t), name=t)
+    return _choices(conn, pcx, it, it.key, t, t, page, size, store_id)
+
+
+def _choices(conn, pcx, it, key, default, term, page, size, store_id, current=None, quantity=None) -> dict:
     term = (term or "").strip() or default
     found, total = pcx.search_page(term, page, size)
-    current = (line["product"] or {}).get("code")
-    pin = db.pinned_code(conn, line["item_key"] or "")
+    pin = db.pinned_code(conn, key)
     seen = {p.code for p in found}
     extra: list[Product] = []
     if page == 0 and term == default:
-        want = [c for c in dict.fromkeys([pin, *db.bought_codes(conn, line["item_key"] or "", MAX_BOUGHT)])
+        want = [c for c in dict.fromkeys([pin, *db.bought_codes(conn, key, MAX_BOUGHT)])
                 if c and c not in seen and c != current]
         extra = _fetch_many(pcx, want)
         seen |= {p.code for p in extra}
+        if bulk.wanted(it, [p for p in [*found, *extra] if not _out(p)]):
+            try:
+                more = pcx.search(f"{search_term(it.name)} {bulk.BULK_WORDS}")
+            except httpx.HTTPError:
+                more = []
+            extra += [p for p in bulk.merge(search_term(it.name), [], more) if p.code not in seen and p.code != current]
+            seen |= {p.code for p in extra}
     if page == 0 and current and current not in seen:
         cur = _current_product(conn, current)
         if cur is not None:
@@ -529,7 +618,9 @@ def choices(conn, draft_id: int, line_id: int, pcx, term: str | None = None, pag
     db.record_products(conn, store_id, [*found, *(p for p in extra if p.code != current)])
     cands = list({p.code: p for p in [*extra, *found]}.values())
     bought = db.purchases(conn, [p.code for p in cands])
-    last = db.last_purchase(conn, line["item_key"] or "", current) if current else None
+    last = db.last_purchase(conn, key, current) if current else None
+    cur_p = next((p for p in cands if p.code == current), None)
+    cur_cover = bulk.cover(it, cur_p) if cur_p is not None else None
 
     def group(p):
         if _out(p):
@@ -551,14 +642,17 @@ def choices(conn, draft_id: int, line_id: int, pcx, term: str | None = None, pag
         b = bought.get(p.code)
         lb = {"date": b[0].isoformat() if b[0] else None, "price": b[1], "quantity": b[2]} if b else None
         bv = better_value(it, p, cands)
+        cov = bulk.cover(it, p)
         out.append({
             "product": p.model_dump(), "group": group(p), "current": p.code == current, "pinned": p.code == pin,
             "last_bought": lb,
             "price_change": round(p.price - b[1], 2) if b and b[1] is not None and p.price is not None else None,
             "better_value": bv.model_dump(include={"code", "name", "brand", "package_size", "price", "unit_price",
                                                    "unit_price_unit"}) if bv else None,
-            "suggested_quantity": (line["quantity"] if p.code == current and line["quantity"]
+            "suggested_quantity": (quantity if p.code == current and quantity
                                    else suggested_quantity(it, p, last if p.code == current else None)),
+            "cover": {"packs": cov[0], "cost": cov[1], "size": bulk.size_text(p)} if cov else None,
+            "bulk": bulk.is_bulk(p, cov, cur_cover) and p.code != current,
         })
     return {"term": term, "page": page, "total": total, "has_more": bool(found) and (page + 1) * size < total,
             "choices": out}
