@@ -45,7 +45,7 @@ class GardenContrastTest {
         Triple("advice (prep warnings)", s.onTertiaryContainer to s.tertiaryContainer, 4.5),
         Triple("photo placeholder icon", s.onSurfaceVariant to s.surfaceVariant, 3.0),
         Triple("chooser: current pick tag", s.onPrimary to s.primary, 4.5),
-        Triple("chooser: Ad tag in cards", s.onSecondaryContainer to s.secondaryContainer, 4.5),
+        Triple("chooser: Ad tag edge in cards", s.outline to s.surfaceContainerHighest, 3.0),
         Triple("chooser: out of stock in cards", s.error to s.surfaceContainerHighest, 4.5),
         Triple("chooser: better value in cards", s.primary to s.surfaceContainerHighest, 4.5),
     )

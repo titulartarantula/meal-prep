@@ -1,6 +1,7 @@
 package dev.mealprep.app.ui.cart
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -151,10 +152,10 @@ internal fun countText(s: ChooserState): String {
     }
 }
 
-/** A small label on a coloured tile ("Ad", "SAVE $0.99 · ends Oct 21"). */
+/** A small label on a coloured tile ("SAVE $0.99 · ends Oct 21"), or outlined ("Ad"). */
 @Composable
-private fun Tag(text: String, container: Color, content: Color, modifier: Modifier = Modifier) {
-    Surface(modifier, color = container, contentColor = content, shape = MaterialTheme.shapes.small) {
+private fun Tag(text: String, container: Color, content: Color, modifier: Modifier = Modifier, border: BorderStroke? = null) {
+    Surface(modifier, color = container, contentColor = content, shape = MaterialTheme.shapes.small, border = border) {
         Text(text, Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium)
     }
 }
@@ -175,7 +176,9 @@ private fun Labels(c: Choice) {
             Icon(painterResource(R.drawable.ic_pin), contentDescription = null, Modifier.size(16.dp), tint = cs.primary)
             Text(ALWAYS_BOUGHT, style = MaterialTheme.typography.labelMedium, color = cs.primary)
         }
-        if (p.sponsored) Tag("Ad", cs.secondaryContainer, cs.onSecondaryContainer, Modifier.semantics { contentDescription = "Ad, sponsored by the brand" })
+        // Outlined: a paid placement must stand out from the card, not only by a tint close to it.
+        if (p.sponsored) Tag("Ad", cs.surface, cs.onSurface, Modifier.semantics { contentDescription = "Ad, sponsored by the brand" },
+            border = BorderStroke(1.dp, cs.outline))
         ChooserText.deal(p)?.let { Tag(it, cs.tertiaryContainer, cs.onTertiaryContainer) }
         ChooserText.optimum(p)?.let { Tag(it, accent.container, accent.onContainer) }
     }
