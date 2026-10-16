@@ -224,6 +224,7 @@ class LinePatch(BaseModel):   # partial update: omitted fields are left unchange
     product_code: str | None = None
     quantity: int | None = Field(None, ge=0)
     removed: bool | None = None
+    pinned: bool | None = None   # "Always buy this" for the line's item (with product_code: that product)
 
 
 class SearchIn(BaseModel):
@@ -712,6 +713,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             raise HTTPException(409, str(e))
         except drafts.UnknownProduct as e:
             raise HTTPException(422, f"unknown product {e} — search for it first")
+        except ValueError as e:
+            raise HTTPException(422, str(e))
 
     @app.patch("/drafts/{draft_id}/lines/{line_id}", dependencies=A)
     def patch_line(draft_id: int, line_id: int, body: LinePatch, c=Depends(get_conn)):
@@ -721,6 +724,16 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     def search_line(draft_id: int, line_id: int, body: SearchIn, c=Depends(get_conn)):
         try:
             return _draft_call(drafts.search_line, c, draft_id, line_id, body.term, shop, store_id=settings.store_id)
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"PC Express search failed: {type(e).__name__}")
+
+    @app.get("/drafts/{draft_id}/lines/{line_id}/choices", dependencies=A)
+    def line_choices(draft_id: int, line_id: int, term: str | None = Query(None, max_length=200),
+                     page: int = Query(0, ge=0, le=50), c=Depends(get_conn)):
+        """Products to choose from for a line, one Loblaws page at a time (see drafts.choices)."""
+        try:
+            return _draft_call(drafts.choices, c, draft_id, line_id, shop, term=term, page=page,
+                               store_id=settings.store_id)
         except httpx.HTTPError as e:
             raise HTTPException(502, f"PC Express search failed: {type(e).__name__}")
 

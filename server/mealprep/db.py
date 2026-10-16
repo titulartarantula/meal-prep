@@ -150,8 +150,38 @@ def all_picks(conn) -> list[tuple[str, str, str]]:
 
 def copy_pick(conn, old_key: str, new_key: str) -> None:
     """Carry a remembered pick over to a list key renamed by better name clean-up (not a new choice: no history)."""
-    conn.execute("INSERT INTO picks(key, product_code, chosen_by, updated_at) SELECT %s, product_code, chosen_by, "
-                 "updated_at FROM picks WHERE key=%s ON CONFLICT(key) DO NOTHING", (new_key, old_key))
+    conn.execute("INSERT INTO picks(key, product_code, chosen_by, updated_at, pinned) SELECT %s, product_code, "
+                 "chosen_by, updated_at, pinned FROM picks WHERE key=%s ON CONFLICT(key) DO NOTHING", (new_key, old_key))
+
+
+def pinned_code(conn, key: str) -> str | None:
+    """The product "always bought" for this list key, or None."""
+    row = conn.execute("SELECT product_code FROM picks WHERE key=%s AND pinned", (key,)).fetchone()
+    return row[0] if row else None
+
+
+def set_pinned(conn, key: str, pinned: bool) -> None:
+    conn.execute("UPDATE picks SET pinned=%s WHERE key=%s", (pinned, key))
+
+
+def purchases(conn, codes) -> dict[str, tuple]:
+    """{code: (sent_at, price_at_add, quantity)} of each product's newest line in a sent cart (any list key)."""
+    if not codes:
+        return {}
+    rows = conn.execute(
+        "SELECT DISTINCT ON (l.product_code) l.product_code, c.sent_at, l.price_at_add::float, l.quantity "
+        "FROM cart_lines l JOIN carts c ON c.id = l.cart_id WHERE c.status='sent' AND l.status='added' "
+        "AND NOT l.removed AND l.product_code = ANY(%s) ORDER BY l.product_code, c.sent_at DESC NULLS LAST, l.id DESC",
+        (list(codes),)).fetchall()
+    return {r[0]: r[1:] for r in rows}
+
+
+def bought_codes(conn, key: str, limit: int = 5) -> list[str]:
+    """Products sent to a cart for this list key, most recent first."""
+    return [r[0] for r in conn.execute(
+        "SELECT l.product_code FROM cart_lines l JOIN carts c ON c.id = l.cart_id WHERE l.item_key=%s "
+        "AND c.status='sent' AND l.status='added' AND NOT l.removed AND l.product_code IS NOT NULL "
+        "GROUP BY l.product_code ORDER BY max(c.sent_at) DESC NULLS LAST, max(l.id) DESC LIMIT %s", (key, limit))]
 
 
 def last_purchase(conn, key: str, code: str) -> tuple[float | None, int, str | None] | None:
@@ -162,9 +192,11 @@ def last_purchase(conn, key: str, code: str) -> tuple[float | None, int, str | N
 
 def set_pick(conn, key: str, code: str, chosen_by: str = "ai") -> None:
     with conn.transaction():
+        # A pin belongs to its product: another product for the key unpins.
         conn.execute(
             "INSERT INTO picks(key, product_code, chosen_by) VALUES(%s,%s,%s) ON CONFLICT(key) DO UPDATE "
-            "SET product_code=excluded.product_code, chosen_by=excluded.chosen_by, updated_at=now()",
+            "SET product_code=excluded.product_code, chosen_by=excluded.chosen_by, updated_at=now(), "
+            "pinned = picks.pinned AND picks.product_code = excluded.product_code",
             (key, code, chosen_by))
         conn.execute("INSERT INTO pick_history(key, product_code, chosen_by) VALUES(%s,%s,%s)", (key, code, chosen_by))
 
@@ -217,10 +249,12 @@ def record_products(conn, store_id: str, products) -> None:
         return
     with conn.transaction():
         for p in products:
+            detail = p.model_dump(exclude={"price", "stock"})
             conn.execute(
-                "INSERT INTO products(code, name, brand, package_size) VALUES(%s,%s,%s,%s) ON CONFLICT(code) DO UPDATE "
-                "SET name=excluded.name, brand=excluded.brand, package_size=excluded.package_size, last_seen=now()",
-                (p.code, p.name, p.brand, p.package_size))
+                "INSERT INTO products(code, name, brand, package_size, detail) VALUES(%s,%s,%s,%s,%s) "
+                "ON CONFLICT(code) DO UPDATE SET name=excluded.name, brand=excluded.brand, "
+                "package_size=excluded.package_size, detail=excluded.detail, last_seen=now()",
+                (p.code, p.name, p.brand, p.package_size, Jsonb(detail)))
             conn.execute("INSERT INTO price_observations(code, store_id, price, stock) VALUES(%s,%s,%s,%s)",
                          (p.code, store_id, p.price, p.stock))
 

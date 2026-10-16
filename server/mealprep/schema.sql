@@ -291,3 +291,10 @@ CREATE TABLE IF NOT EXISTS document_reads(
   warnings jsonb NOT NULL DEFAULT '[]',
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Product chooser (0.12.0): the latest full product snapshot from a search (photos, description, offers, order
+-- limits; price and stock stay in price_observations), "Always buy this" pins on a remembered pick (a pin follows
+-- its product: picking another product for the key unpins), and a line's note (why the usual product wasn't used).
+ALTER TABLE products ADD COLUMN IF NOT EXISTS detail jsonb;
+ALTER TABLE picks ADD COLUMN IF NOT EXISTS pinned boolean NOT NULL DEFAULT false;
+ALTER TABLE cart_lines ADD COLUMN IF NOT EXISTS note text;

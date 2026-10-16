@@ -360,3 +360,20 @@ def min_packs(it, cands) -> dict[str, int]:
         p = plan(it, c)
         out[_get(c, "code")] = p.packs_min if p and p.enforce else 1
     return out
+
+
+def need_grams(it) -> float | None:
+    """The need as grams (a weight, or a volume with a known density), for products sold by weight; else None."""
+    if it.qty is None or it.qty <= 0 or it.unit not in BASE:
+        return None
+    fam, need = _to_base(it.qty, it.unit)
+    if fam == "mass":
+        return need
+    d = density(it)
+    return need * d if d else None
+
+
+def pack_amount(product) -> tuple[str | None, float | None]:
+    """(family, amount in the family's base) of one pack, or (None, None) when unreadable or sold by weight."""
+    pack = parse_pack(_get(product, "package_size"), _get(product, "sold_by"))
+    return (pack.family, pack.total) if pack.family and not pack.by_weight else (None, None)
