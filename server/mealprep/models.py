@@ -89,6 +89,27 @@ class Product(BaseModel):
     price: float | None = None
     stock: str | None = None
     sold_by: str | None = None   # PC Express pricing type: "SOLD_BY_EACH", "SOLD_BY_EACH_PRICED_BY_WEIGHT", …
+    # Since 0.12.0 (product chooser). All optional: snapshots stored before then still load.
+    image: str | None = None             # front photo, 250 px
+    images: list[str] = []               # every photo, 800 px
+    description: str | None = None       # plain text; list items as "• " lines
+    unit_price: float | None = None      # comparison price: unit_price per unit_price_unit ("100 g", "1 kg")
+    unit_price_unit: str | None = None
+    regular_price: float | None = None   # the price without the sale (= price when not on sale)
+    was_price: float | None = None
+    sale_ends: str | None = None         # ISO date the sale price ends
+    deal_text: str | None = None         # "SAVE $0.99"
+    deal_ends: str | None = None
+    optimum_text: str | None = None      # "PC Optimum Offer"
+    optimum_points: int | None = None
+    optimum_ends: str | None = None
+    sponsored: bool = False              # a paid placement in the search results
+    min_qty: int | None = None           # order limits; weighted products count grams
+    max_qty: int | None = None
+    interval: int | None = None
+    weighted: bool = False               # sold by weight: quantity = grams, price per price_quantity grams
+    price_quantity: float | None = None  # what `price` is for: 100 (g) for deli by weight; None/1 = per item
+    link: str | None = None              # path on loblaws.ca
 
 
 class CartLine(BaseModel):

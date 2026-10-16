@@ -1,0 +1,1186 @@
+{
+ "cheddar cheese": {
+  "pagination": {
+   "pageNumber": 0,
+   "pageSize": 20,
+   "totalResults": 308
+  },
+  "results": [
+   {
+    "code": "21208649_EA",
+    "name": "Old Cheddar Cheese Bar",
+    "description": "<p>Bring bold flavour to your favourite dishes with the stronger, sharper cheddar taste of our Black Diamond Old Cheddar Cheese Bar, a proud Canadian product. This mature orange cheddar cheese melts to perfection, so you can confidently create and share delicious meals with your loved ones. High in protein and a good source of calcium, this old cheddar cheese is great for any dish that requires that extra cheddar bite. This convenient 400g cheese block is made with the same commitment to quality that Black Diamond has been known for since 1933.</p><ul><li>Proud Product of Canada</li><li>Naturally aged with a stronger, sharper cheddar cheese flavour and a slightly nutty essence</li><li>Firm texture is ideal for slicing, shredding, and melting</li><li>High in protein</li><li>Good source of calcium</li><li>A trusted Canadian brand since 1933</li><li>400g</li></ul>",
+    "brand": "Black Diamond",
+    "link": "/old-cheddar-cheese-bar/p/21208649_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/1/21208649_en_front_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/1/21208649_en_front_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/1/21208649_en_front_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/1/21208649_en_front_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/1/21208649_en_front_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/2/21208649_en_angle_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/2/21208649_en_angle_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/2/21208649_en_angle_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/2/21208649_en_angle_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/2/21208649_en_angle_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/3/21208649_en_side_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/3/21208649_en_side_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/3/21208649_en_side_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/3/21208649_en_side_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21208649_EA/en/3/21208649_en_side_1200.png"
+     }
+    ],
+    "packageSize": "400 g",
+    "prices": {
+     "price": {
+      "value": 6.5,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 2,
+      "type": "SPECIAL",
+      "expiryDate": "2026-10-21T00:00"
+     },
+     "wasPrice": {
+      "value": 7.49,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": null,
+      "type": "WAS",
+      "expiryDate": null
+     },
+     "comparisonPrices": [
+      {
+       "value": 1.63,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": {
+      "type": "SALE",
+      "text": "SAVE $0.99",
+      "mopDealText": null,
+      "points": null,
+      "name": "SALE",
+      "expiryDate": "2026-10-21T00:00:00Z",
+      "promoType": null
+     },
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   },
+   {
+    "code": "20767493_EA",
+    "name": "2 Year Aged Cheddar Cheese",
+    "description": "<p>Balderson's 2 Year Old Cheddar Cheese is carefully aged to develop a robust, full-bodied flavour with a satisfying sharpness. Over two years of maturation give this cheddar a firmer texture and a slightly crumbly consistency, perfect for those who appreciate a more intense, extra old cheddar. With its pale yellow colour and rich, tangy taste, Balderson's 2 year cheddar is an excellent choice for cheese lovers seeking depth and character in every bite. Ideal for pairing with crackers, fruit, or adding complexity to cooked dishes, it delivers a truly elevated cheese experience. Since 1881, Balderson has been dedicated to aging premium cheese in Ontario. While the world has evolved, our commitment to quality and craftsmanship remains unchanged. Balderson cheese is a premium brand cherished by Canadians for over 140 years, known for its exceptional taste and meticulous attention to detail.</p><ul><li>Premium, sharp aged cheddar flavour</li><li>Firmer, slightly crumbly texture</li><li>Pale yellow colour</li><li>Aged 2 years</li><li>Crafted by Balderson with over 140 years of cheesemaking expertise</li><li>Premium brand with exceptional taste</li><li>280 g</li></ul>",
+    "brand": "Balderson",
+    "link": "/2-year-aged-cheddar-cheese/p/20767493_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/1/20767493_enfr_front_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/1/20767493_enfr_front_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/1/20767493_enfr_front_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/1/20767493_enfr_front_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/1/20767493_enfr_front_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/2/20767493_enfr_angle_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/2/20767493_enfr_angle_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/2/20767493_enfr_angle_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/2/20767493_enfr_angle_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/2/20767493_enfr_angle_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/3/20767493_enfr_side_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/3/20767493_enfr_side_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/3/20767493_enfr_side_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/3/20767493_enfr_side_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20767493_EA/en/3/20767493_enfr_side_1200.png"
+     }
+    ],
+    "packageSize": "280 g",
+    "prices": {
+     "price": {
+      "value": 15.79,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 5.64,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": true
+   },
+   {
+    "code": "20975873_EA",
+    "name": "Old Cheddar Cheese",
+    "description": "<p>A good source of calcium, Old Cheddar Cheese delivers a sharp, tangy flavour with a satisfyingly firm texture in every bite. Ideal for slicing, shredding, or snacking, it’s a versatile staple for cheese boards, sandwiches, baked dishes, and more.</p><br></br><p>The †Simple Check™ symbol appears on no name® products made without 10 ingredients such as synthetic colours*, artificial flavours and artificial sweeteners. *As defined in Canadian regulations. To learn more visit noname.ca/simplecheck</p>",
+    "brand": "No Name",
+    "link": "/old-cheddar-cheese/p/20975873_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20975873_EA/en/1/20975873_en_front_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20975873_EA/en/1/20975873_en_front_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20975873_EA/en/1/20975873_en_front_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20975873_EA/en/1/20975873_en_front_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20975873_EA/en/1/20975873_en_front_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20975873_EA/en/2/20975873_en_angle_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20975873_EA/en/2/20975873_en_angle_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20975873_EA/en/2/20975873_en_angle_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20975873_EA/en/2/20975873_en_angle_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20975873_EA/en/2/20975873_en_angle_1200.png"
+     }
+    ],
+    "packageSize": "700 g",
+    "prices": {
+     "price": {
+      "value": 10.99,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 1.57,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   },
+   {
+    "code": "21370317_EA",
+    "name": "Harvest Cheddar flavour Multigrain Snacks",
+    "description": "<p>Bring on vibes of cheesy goodness with SunChips Harvest Cheddar flavour multigrain snacks! Taste cheddar cheese flavour in every layer of these crunchy, wavy chips. They're a satisfying snack with 38 g of whole grains per 50 g portion, plus a high source of fibre. Made with no artificial flavours, colours, or preservatives. Grab a bag to share at your next party; it's also great with a sandwich or on the go; dip them in salsa or guacamole for a tasty snack upgrade. Made in Canada.</p><ul><li>The Big Cheese — SunChips Harvest Cheddar flavour multigrain snacks give you the flavour of real cheddar cheese layered onto a delicious, whole grain chip for a tasty and satisfying snack.</li><li>Quality Ingredients — Not only are these chips delicious, but they offer 38 g of whole grains per 50 g portion; a high source of fibre; and no artificial flavours, colours, or preservatives. Made in Canada from domestic and imported ingredients.</li><li>Catch the Wave — You'll love the crispy texture of these wavy chips; there's cheesy flavour rippling through every bite.</li><li>Perfect for Sharing — Bring a bag along for your next road trip or pour some into a bowl to share with guests at your next party; dip them in salsa or guacamole for a delicious twist.</li><li>What You'll Get — One 205 g bag of SunChips Harvest Cheddar Flavour Multigrain Snacks</li></ul>",
+    "brand": "Sunchips",
+    "link": "/harvest-cheddar-flavour-multigrain-snacks/p/21370317_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/1/21370317_en_front_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/1/21370317_en_front_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/1/21370317_en_front_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/1/21370317_en_front_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/1/21370317_en_front_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/2/21370317_en_angle_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/2/21370317_en_angle_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/2/21370317_en_angle_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/2/21370317_en_angle_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/2/21370317_en_angle_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/3/21370317_en_side_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/3/21370317_en_side_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/3/21370317_en_side_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/3/21370317_en_side_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21370317_EA/en/3/21370317_en_side_v1_1200.png"
+     }
+    ],
+    "packageSize": "205 g",
+    "prices": {
+     "price": {
+      "value": 5.49,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 2.68,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": {
+      "type": "MULTI",
+      "text": "$5.00 MIN 2",
+      "mopDealText": null,
+      "points": null,
+      "name": "MULTI",
+      "expiryDate": null,
+      "promoType": "ZRP3"
+     },
+     "loyaltyBadge": {
+      "type": "LOYALTY",
+      "text": "PC Optimum Offer",
+      "mopDealText": null,
+      "points": 4000,
+      "name": "LOYALTY",
+      "expiryDate": "2026-11-04T23:59:59Z",
+      "promoType": "0004"
+     }
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": true
+   },
+   {
+    "code": "21290257_EA",
+    "name": "Old Cheddar Cheese",
+    "description": "<p>Expertly aged Cracker Barrel Old Cheddar Cheese is a sharp yet sweet orange cheddar with a perfect creamy crumble. This versatile cheddar cheese is made with 100% Canadian milk, is a good source of calcium and contains no artificial preservatives, hormones or antibiotics. Sliced, cubed, shredded or melted, this block cheese is a convenient and delicious ingredient in many of your favourite recipes. Add it to your burger, cheese platter or mac and cheese—or simply enjoy it as a satisfying snack. With a great-tasting selection of blocks, shreds, slices and snacks, Cracker Barrel is proudly Canadian and has been crafting the delicious quality cheeses Canadians love since 1954.</p><ul><li>Product of Canada</li><li>Sharp yet sweet cheddar cheese with a creamy, crumbly texture</li><li>Good source of calcium</li><li>Contains 7 g of protein per serving</li><li>Made with 100% Canadian milk</li><li>No artificial preservatives, hormones or antibiotics</li><li>Crafted by Cracker Barrel with over 70 years of cheesemaking expertise</li><li>400 g</li></ul>",
+    "brand": "Cracker Barrel",
+    "link": "/old-cheddar-cheese/p/21290257_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/1/21290257_en_front_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/1/21290257_en_front_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/1/21290257_en_front_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/1/21290257_en_front_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/1/21290257_en_front_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/2/21290257_en_angle_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/2/21290257_en_angle_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/2/21290257_en_angle_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/2/21290257_en_angle_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/2/21290257_en_angle_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/3/21290257_en_side_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/3/21290257_en_side_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/3/21290257_en_side_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/3/21290257_en_side_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21290257_EA/en/3/21290257_en_side_v1_1200.png"
+     }
+    ],
+    "packageSize": "400 g",
+    "prices": {
+     "price": {
+      "value": 8.99,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 2.25,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   },
+   {
+    "code": "21060183_EA",
+    "name": "Triple Cheddar Shredded Cheese Blend",
+    "description": "<p>Add rich cheddar flavour to your favourite comfort foods with Triple Cheddar Shredded Cheese Blend. This shredded blend of old, medium, and mild cheddar cheeses melts smoothly over omelettes, casseroles, baked potatoes, and more. Pre-shredded for convenience and a good source of calcium, it's an easy way to add cheesy goodness to everyday meals.</p>",
+    "brand": "President's Choice",
+    "link": "/triple-cheddar-shredded-cheese-blend/p/21060183_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21060183_EA/en/1/21060183_en_front_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21060183_EA/en/1/21060183_en_front_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21060183_EA/en/1/21060183_en_front_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21060183_EA/en/1/21060183_en_front_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21060183_EA/en/1/21060183_en_front_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21060183_EA/en/2/21060183_en_angle_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21060183_EA/en/2/21060183_en_angle_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21060183_EA/en/2/21060183_en_angle_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21060183_EA/en/2/21060183_en_angle_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21060183_EA/en/2/21060183_en_angle_1200.png"
+     }
+    ],
+    "packageSize": "320 g",
+    "prices": {
+     "price": {
+      "value": 6.5,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 2,
+      "type": "SPECIAL",
+      "expiryDate": "2026-10-21T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 2.03,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   },
+   {
+    "code": "21289751_EA",
+    "name": "Old Cheddar Cheese",
+    "description": "<p>Old Cheddar Cheese has a tangy, slightly nutty flavour with a firm texture that slices clean and crumbles just right. Rich and full-bodied, it brings a sharper, more pronounced taste that stands out in every bite. Layer it into sandwiches, grate it over pastas and soups, or add it to your charcuterie boards with meats and crackers for serving guests.</p><br><br><p>The †Simple Check™ symbol appears on no name® products made without 10 ingredients such as synthetic colours*, artificial flavours and artificial sweeteners. *As defined in Canadian regulations. To learn more visit noname.ca/simplecheck</p>",
+    "brand": "No Name",
+    "link": "/old-cheddar-cheese/p/21289751_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/1/21289751_en_front_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/1/21289751_en_front_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/1/21289751_en_front_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/1/21289751_en_front_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/1/21289751_en_front_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/2/21289751_en_angle_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/2/21289751_en_angle_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/2/21289751_en_angle_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/2/21289751_en_angle_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/2/21289751_en_angle_1200.png"
+     }
+    ],
+    "packageSize": "400 g",
+    "prices": {
+     "price": {
+      "value": 4.88,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 1,
+      "type": "SPECIAL",
+      "expiryDate": "2026-10-21T00:00"
+     },
+     "wasPrice": {
+      "value": 6.0,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": null,
+      "type": "WAS",
+      "expiryDate": null
+     },
+     "comparisonPrices": [
+      {
+       "value": 1.22,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": {
+      "type": "SALE",
+      "text": "SAVE $1.12",
+      "mopDealText": null,
+      "points": null,
+      "name": "SALE",
+      "expiryDate": "2026-10-21T00:00:00Z",
+      "promoType": null
+     },
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   },
+   {
+    "code": "21290684_EA",
+    "name": "Medium Cheddar Cheese Slices",
+    "description": "<p>Cracker Barrel Medium Cheddar Cheese Slices have a deliciously rich-yet-mild cheddar cheese taste with a firm texture. These natural cheese slices are made with 100% Canadian milk, are a good source of calcium and come in a handy resealable package to help keep them fresh and flavourful for longer. Melt this versatile sliced cheese on burgers, layer it into the perfect sandwich, add it to some of your favourite recipes or simply enjoy it as an easy, cheesy midday snack. With a great-tasting selection of blocks, shreds, slices and snacks, Cracker Barrel is proudly Canadian and has been crafting the delicious quality cheeses Canadians love since 1954.</p><ul><li>Product of Canada</li><li>Medium cheddar cheese slices with a rich, mild taste and a firm texture</li><li>Convenient Peel and Reseal packaging helps keep sliced cheese fresh longer</li><li>Good source of calcium</li><li>5 g protein per serving</li><li>Made with 100% Canadian milk</li><li>No artificial preservatives, hormones or antibiotics</li><li>Crafted by Cracker Barrel with over 70 years of cheesemaking expertise</li><li>12 slices, 240 g</li></ul>",
+    "brand": "Cracker Barrel",
+    "link": "/medium-cheddar-cheese-slices/p/21290684_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/1/21290684_en_front_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/1/21290684_en_front_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/1/21290684_en_front_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/1/21290684_en_front_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/1/21290684_en_front_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/2/21290684_en_angle_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/2/21290684_en_angle_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/2/21290684_en_angle_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/2/21290684_en_angle_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/2/21290684_en_angle_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/3/21290684_en_side_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/3/21290684_en_side_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/3/21290684_en_side_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/3/21290684_en_side_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21290684_EA/en/3/21290684_en_side_v1_1200.png"
+     }
+    ],
+    "packageSize": "240 g",
+    "prices": {
+     "price": {
+      "value": 5.5,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 2,
+      "type": "SPECIAL",
+      "expiryDate": "2026-11-11T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 2.29,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   }
+  ]
+ },
+ "lean ground beef": {
+  "pagination": {
+   "pageNumber": 0,
+   "pageSize": 24,
+   "totalResults": 53
+  },
+  "results": [
+   {
+    "code": "21595183_EA",
+    "name": "Lean Ground Beef",
+    "description": null,
+    "brand": "Butcher's Choice",
+    "link": "/lean-ground-beef/p/21595183_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21595183_EA/en/1/21595183_en_front_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21595183_EA/en/1/21595183_en_front_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21595183_EA/en/1/21595183_en_front_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21595183_EA/en/1/21595183_en_front_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21595183_EA/en/1/21595183_en_front_1200.png"
+     }
+    ],
+    "packageSize": "450 g",
+    "prices": {
+     "price": {
+      "value": 11.0,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 2.44,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 25,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   },
+   {
+    "code": "21618300_EA",
+    "name": "Grass Fed Lean Ground Beef, 2-Pack",
+    "description": "Stock your kitchen for the week with this convenient two-pack of lean ground beef. Its rich flavour and firm texture make it an ideal base for many family meals. Shape it into hearty burgers for the grill or simmer it in a classic bolognese sauce for pasta night. The lean profile means less grease, making it a clean foundation for your favourite recipes.",
+    "brand": null,
+    "link": "/grass-fed-lean-ground-beef-2-pack/p/21618300_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21618300_EA/en/1/21618300_enfr_front_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21618300_EA/en/1/21618300_enfr_front_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21618300_EA/en/1/21618300_enfr_front_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21618300_EA/en/1/21618300_enfr_front_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21618300_EA/en/1/21618300_enfr_front_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21618300_EA/en/8/21618300_enfr_beauty_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21618300_EA/en/8/21618300_enfr_beauty_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21618300_EA/en/8/21618300_enfr_beauty_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21618300_EA/en/8/21618300_enfr_beauty_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21618300_EA/en/8/21618300_enfr_beauty_v1_1200.png"
+     }
+    ],
+    "packageSize": "900 g",
+    "prices": {
+     "price": {
+      "value": 19.5,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 2.17,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   },
+   {
+    "code": "21615428_EA",
+    "name": "Grass Fed Lean Ground Beef",
+    "description": "Brown this Grass Fed lean ground beef for a quick taco filling on busy weeknights. It also makes a solid base for a hearty, savoury chili con carne. The lean nature of this beef means it cooks into a fine crumble, making it a good choice for sauces and casseroles.",
+    "brand": null,
+    "link": "/grass-fed-lean-ground-beef/p/21615428_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21615428_EA/en/1/21615428_enfr_front_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21615428_EA/en/1/21615428_enfr_front_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21615428_EA/en/1/21615428_enfr_front_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21615428_EA/en/1/21615428_enfr_front_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21615428_EA/en/1/21615428_enfr_front_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21615428_EA/en/8/21615428_enfr_beauty_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21615428_EA/en/8/21615428_enfr_beauty_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21615428_EA/en/8/21615428_enfr_beauty_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21615428_EA/en/8/21615428_enfr_beauty_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21615428_EA/en/8/21615428_enfr_beauty_v1_1200.png"
+     }
+    ],
+    "packageSize": "450 g",
+    "prices": {
+     "price": {
+      "value": 10.5,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 2.33,
+       "unit": "g",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OUT",
+    "ingredients": null,
+    "sponsored": false
+   },
+   {
+    "code": "20357787_KG",
+    "name": "Lean Ground Beef, Club Pack",
+    "description": "Ground meat is finely chopped, boneless, and skinless with varying amounts of fat indicated by the name regular (no more than 30% fat), medium (no more than 23% fat), lean (no more than 17% fat), or extra lean (no more than 10% fat).  Use your favourite ground meat to make burgers and meatballs, or add to chili and pasta sauce.",
+    "brand": "Butcher's Choice",
+    "link": "/lean-ground-beef-club-pack/p/20357787_KG",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20357787_KG/en/1/20357787_en_front_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20357787_KG/en/1/20357787_en_front_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20357787_KG/en/1/20357787_en_front_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20357787_KG/en/1/20357787_en_front_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20357787_KG/en/1/20357787_en_front_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20357787_KG/en/2/20357787_en_angle_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20357787_KG/en/2/20357787_en_angle_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20357787_KG/en/2/20357787_en_angle_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20357787_KG/en/2/20357787_en_angle_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20357787_KG/en/2/20357787_en_angle_1200.png"
+     }
+    ],
+    "packageSize": "",
+    "prices": {
+     "price": {
+      "value": 42.46,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 24.22,
+       "unit": "kg",
+       "quantity": 1,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      },
+      {
+       "value": 10.99,
+       "unit": "lb",
+       "quantity": 1,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH_PRICED_BY_WEIGHT",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 25,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   }
+  ]
+ },
+ "deli sliced turkey": {
+  "pagination": {
+   "pageNumber": 0,
+   "pageSize": 8,
+   "totalResults": 111
+  },
+  "results": [
+   {
+    "code": "21361121_EA",
+    "name": "Turkey Snacksticks Sausage Snacks",
+    "description": null,
+    "brand": "Jack Links",
+    "link": "/turkey-snacksticks-sausage-snacks/p/21361121_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21361121_EA/en/1/1708289036_enfr_front_centre_marketing_A_1_GS1_Ecommerce_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21361121_EA/en/1/1708289036_enfr_front_centre_marketing_A_1_GS1_Ecommerce_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21361121_EA/en/1/1708289036_enfr_front_centre_marketing_A_1_GS1_Ecommerce_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21361121_EA/en/1/1708289036_enfr_front_centre_marketing_A_1_GS1_Ecommerce_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21361121_EA/en/1/1708289036_enfr_front_centre_marketing_A_1_GS1_Ecommerce_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/21361121_EA/en/8/1708289036_enfr_front_noPlunge_ecomm_A_1_GS1_Ecommerce_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/21361121_EA/en/8/1708289036_enfr_front_noPlunge_ecomm_A_1_GS1_Ecommerce_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/21361121_EA/en/8/1708289036_enfr_front_noPlunge_ecomm_A_1_GS1_Ecommerce_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/21361121_EA/en/8/1708289036_enfr_front_noPlunge_ecomm_A_1_GS1_Ecommerce_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/21361121_EA/en/8/1708289036_enfr_front_noPlunge_ecomm_A_1_GS1_Ecommerce_1200.png"
+     }
+    ],
+    "packageSize": "1 ea",
+    "prices": {
+     "price": {
+      "value": 12.99,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 12.99,
+       "unit": "ea",
+       "quantity": 1,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 25,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": true
+   },
+   {
+    "code": "20059548_KG",
+    "name": "Oven-Roasted Turkey Breast (Thin Sliced)",
+    "description": "<p>Oven-Roasted Turkey Breast is extra lean with a rich, savoury flavour that’s perfect for any occasion. Gluten-free and fully cooked, it’s great for family gatherings, easy weeknight dinners, or slicing for fresh sandwiches.</p><p><br></p><p>Allergen Alert : We cannot guarantee that any items have not come into contact with Peanuts, Tree nuts, Milk, Fish, Crustacean, Shellfish, Egg, Soy, Sesame, Wheat Mustard, Sulphites.</p><p><br></p><p><strong>Wholesale Clubs Disclaimer:</strong> Please note that this item is not available sliced and only sold as full chub at Wholesale Clubs. Please add 3000g to order a full chub. </p>",
+    "brand": "President's Choice",
+    "link": "/oven-roasted-turkey-breast-thin-sliced/p/20059548_KG",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/1/20059548_en_front_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/1/20059548_en_front_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/1/20059548_en_front_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/1/20059548_en_front_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/1/20059548_en_front_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/2/20059548_enfr_angle_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/2/20059548_enfr_angle_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/2/20059548_enfr_angle_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/2/20059548_enfr_angle_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/2/20059548_enfr_angle_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/2/20059548_en_angle_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/2/20059548_en_angle_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/2/20059548_en_angle_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/2/20059548_en_angle_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20059548_KG/en/2/20059548_en_angle_1200.png"
+     }
+    ],
+    "packageSize": "",
+    "prices": {
+     "price": {
+      "value": 4.5,
+      "unit": "g",
+      "quantity": 100,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 45.0,
+       "unit": "kg",
+       "quantity": 1,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      },
+      {
+       "value": 20.42,
+       "unit": "lb",
+       "quantity": 1,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_WEIGHT",
+     "unit": "g",
+     "interval": 100,
+     "minOrderQuantity": 100,
+     "maxOrderQuantity": 999,
+     "weighted": true
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   }
+  ]
+ },
+ "bananas": {
+  "pagination": {
+   "pageNumber": 0,
+   "pageSize": 8,
+   "totalResults": 150
+  },
+  "results": [
+   {
+    "code": "20876204_EA",
+    "name": "Organic Puree Cherry Banana & Spinach",
+    "description": "Baby Gourmet's organic fruit and veggie puree is made for little ones starting their food journey at 6 months and older. Baby Gourmet's organic Cherry Banana Spinach blend is made with bright ripe cherries, creamy banana and fresh green spinach. This organic baby puree will excite little one's on their food journey. Baby Gourmet does not add artificial ingredients, salt or sugar to their organic baby purees. Baby Gourmet’s pouch package allows for baby to hold and squeeze by themselves or for the pouch to be squeezed directly onto a spoon for mess-free eating. ",
+    "brand": "Baby Gourmet",
+    "link": "/organic-puree-cherry-banana-spinach/p/20876204_EA",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/1/20876204_enfr_front_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/1/20876204_enfr_front_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/1/20876204_enfr_front_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/1/20876204_enfr_front_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/1/20876204_enfr_front_v1_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/2/20876204_enfr_angle_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/2/20876204_enfr_angle_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/2/20876204_enfr_angle_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/2/20876204_enfr_angle_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/2/20876204_enfr_angle_1200.png"
+     },
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/2/20876204_en_angle_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/2/20876204_en_angle_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/2/20876204_en_angle_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/2/20876204_en_angle_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20876204_EA/en/2/20876204_en_angle_1200.png"
+     }
+    ],
+    "packageSize": "128 ml",
+    "prices": {
+     "price": {
+      "value": 2.29,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 1.79,
+       "unit": "ml",
+       "quantity": 100,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": {
+      "type": "MULTI",
+      "text": "$2.00 MIN 5",
+      "mopDealText": null,
+      "points": null,
+      "name": "MULTI",
+      "expiryDate": "2026-11-11T00:00:00Z",
+      "promoType": "ZRP3"
+     },
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": true
+   },
+   {
+    "code": "20175355001_KG",
+    "name": "Bananas, Bunch",
+    "description": "Bananas are a versatile addition to your kitchen. Slice them over your morning cereal for a nutritious start to the day or blend them into a smoothie for a quick, refreshing beverage. These bananas come in a convenient bunch, making it easy to keep your fruit bowl stocked. Their natural sweetness and soft texture make them a favourite for snacks and baking. Enjoy the convenience of having fresh bananas on hand for various uses throughout the week.",
+    "brand": null,
+    "link": "/bananas-bunch/p/20175355001_KG",
+    "imageAssets": [
+     {
+      "thumbnailUrl": "https://digital.loblaws.ca/PCX/20175355001_KG/en/1/20175355001_enfr_front_v1_120.png",
+      "smallUrl": "https://digital.loblaws.ca/PCX/20175355001_KG/en/1/20175355001_enfr_front_v1_250.png",
+      "mediumUrl": "https://digital.loblaws.ca/PCX/20175355001_KG/en/1/20175355001_enfr_front_v1_400.png",
+      "largeUrl": "https://digital.loblaws.ca/PCX/20175355001_KG/en/1/20175355001_enfr_front_v1_800.png",
+      "extraLargeUrl": "https://digital.loblaws.ca/PCX/20175355001_KG/en/1/20175355001_enfr_front_v1_1200.png"
+     }
+    ],
+    "packageSize": "",
+    "prices": {
+     "price": {
+      "value": 2.25,
+      "unit": "ea",
+      "quantity": 1,
+      "reasonCode": 4,
+      "type": "REGULAR",
+      "expiryDate": "9999-12-31T00:00"
+     },
+     "wasPrice": null,
+     "comparisonPrices": [
+      {
+       "value": 1.96,
+       "unit": "kg",
+       "quantity": 1,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      },
+      {
+       "value": 0.89,
+       "unit": "lb",
+       "quantity": 1,
+       "reasonCode": null,
+       "type": "REGULAR",
+       "expiryDate": null
+      }
+     ]
+    },
+    "pricingUnits": {
+     "type": "SOLD_BY_EACH_PRICED_BY_WEIGHT",
+     "unit": "ea",
+     "interval": 1,
+     "minOrderQuantity": 1,
+     "maxOrderQuantity": 24,
+     "weighted": false
+    },
+    "badges": {
+     "dealBadge": null,
+     "loyaltyBadge": null
+    },
+    "stockStatus": "OK",
+    "ingredients": null,
+    "sponsored": false
+   }
+  ]
+ },
+ "_detail": {
+  "code": "21289751_EA",
+  "name": "Old Cheddar Cheese",
+  "description": "<p>Old Cheddar Cheese has a tangy, slightly nutty flavour with a firm texture that slices clean and crumbles just right. Rich and full-bodied, it brings a sharper, more pronounced taste that stands out in every bite. Layer it into sandwiches, grate it over pastas and soups, or add it to your charcuterie boards with meats and crackers for serving guests.</p><br><br><p>The †Simple Check™ symbol appears on no name® products made without 10 ingredients such as synthetic colours*, artificial flavours and artificial sweeteners. *As defined in Canadian regulations. To learn more visit noname.ca/simplecheck</p>",
+  "brand": "No Name",
+  "link": "/old-cheddar-cheese/p/21289751_EA",
+  "packageSize": "400 g",
+  "pricingUnits": {
+   "type": "SOLD_BY_EACH",
+   "unit": "ea",
+   "interval": 1,
+   "minOrderQuantity": 1,
+   "maxOrderQuantity": 24,
+   "weighted": false
+  },
+  "imageAssets": [
+   {
+    "thumbnailUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/1/21289751_en_front_v1_120.png",
+    "smallUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/1/21289751_en_front_v1_250.png",
+    "mediumUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/1/21289751_en_front_v1_400.png",
+    "largeUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/1/21289751_en_front_v1_800.png",
+    "extraLargeUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/1/21289751_en_front_v1_1200.png"
+   },
+   {
+    "thumbnailUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/2/21289751_en_angle_120.png",
+    "smallUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/2/21289751_en_angle_250.png",
+    "mediumUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/2/21289751_en_angle_400.png",
+    "largeUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/2/21289751_en_angle_800.png",
+    "extraLargeUrl": "https://digital.loblaws.ca/PCX/21289751_EA/en/2/21289751_en_angle_1200.png"
+   }
+  ],
+  "offers": [
+   {
+    "price": {
+     "value": 4.88,
+     "unit": "ea",
+     "quantity": 1,
+     "reasonCode": 1,
+     "type": "SPECIAL",
+     "expiryDate": "2026-10-21T00:00"
+    },
+    "wasPrice": {
+     "value": 6.0,
+     "unit": "ea",
+     "quantity": 1,
+     "reasonCode": null,
+     "type": "WAS",
+     "expiryDate": null
+    },
+    "comparisonPrices": [
+     {
+      "value": 1.22,
+      "unit": "g",
+      "quantity": 100,
+      "reasonCode": null,
+      "type": "REGULAR",
+      "expiryDate": null
+     }
+    ],
+    "stockStatus": "OK",
+    "badges": {
+     "dealBadge": {
+      "type": "SALE",
+      "text": "SAVE $1.12",
+      "mopDealText": null,
+      "points": null,
+      "name": "SALE",
+      "expiryDate": "2026-10-21T00:00:00Z",
+      "promoType": null
+     },
+     "loyaltyBadge": null
+    }
+   }
+  ]
+ }
+}
