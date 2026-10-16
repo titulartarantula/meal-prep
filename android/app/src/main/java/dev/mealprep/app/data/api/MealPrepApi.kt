@@ -59,6 +59,12 @@ interface MealPrepApi {
     @POST("drafts/{id}/lines/{line}/search") suspend fun searchLine(@Path("id") id: Int, @Path("line") line: Int, @Body body: SearchIn): List<Product>
     @GET("drafts/{id}/lines/{line}/choices") suspend fun choices(@Path("id") id: Int, @Path("line") line: Int,
         @Query("term") term: String?, @Query("page") page: Int): Choices
+    @POST("drafts/{id}/lines") suspend fun addLine(@Path("id") id: Int, @Body body: AddLineIn): DraftLine
+    @GET("products/choices") suspend fun productChoices(@Query("term") term: String, @Query("page") page: Int): Choices
+    @GET("extras") suspend fun extras(@Query("week") weeks: List<String>): List<Extra>
+    @POST("extras") suspend fun addExtra(@Body body: ExtraIn): Extra
+    @PATCH("extras/{id}") suspend fun patchExtra(@Path("id") id: Int, @Body body: JsonObject): Extra
+    @DELETE("extras/{id}") suspend fun deleteExtra(@Path("id") id: Int)
     @POST("drafts/{id}/send") suspend fun sendDraft(@Path("id") id: Int): SentCart
 
     @POST("prep-plans") suspend fun startPrep(@Body body: PrepIn): JobStarted

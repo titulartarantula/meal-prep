@@ -69,6 +69,8 @@ class DraftActions(
     val onRebuild: (List<String>) -> Unit = {},
     val onReload: () -> Unit = {},
     val onBack: () -> Unit = {},
+    /** Opens the chooser to add an item by search to this cart. */
+    val onAddItem: () -> Unit = {},
 )
 
 @Composable
@@ -97,6 +99,12 @@ fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.no
                         LineRow(line, editable = s.editable, busy = s.busyLine == line.id,
                             onQty = { a.onQty(line, it) }, onRemove = { a.onRemove(line, !line.removed) }, onSwap = { a.onSwap(line) },
                             onPin = { a.onPin(line, it) })
+                    }
+                    if (s.editable) item(key = "add") {
+                        OutlinedButton(a.onAddItem, Modifier.fillMaxWidth().padding(vertical = 8.dp).heightIn(min = 48.dp)) {
+                            Icon(painterResource(R.drawable.ic_add), contentDescription = null)
+                            Text(ADD_AN_ITEM, Modifier.padding(start = 8.dp))
+                        }
                     }
                 }
             }
@@ -138,6 +146,7 @@ private fun StaleBanner(unsent: Boolean, onBuild: () -> Unit) {
 }
 
 const val STALE_CART = "The week has changed since this cart was built."
+const val ADD_AN_ITEM = "Add an item"
 const val STALE_UNSENT = "This older cart can't be changed or sent."
 
 /** The cart's weeks under its title: "This week (Oct 11)", "Oct 11 + Oct 18". */
@@ -244,7 +253,8 @@ private fun LineMenu(line: DraftLine, editable: Boolean, onSwap: () -> Unit, onR
 }
 
 @Composable
-fun DraftScreen(id: Int, onLoblaws: (String) -> Unit, onRebuild: (List<String>) -> Unit, onChoose: (Int) -> Unit, onBack: () -> Unit) {
+fun DraftScreen(id: Int, onLoblaws: (String) -> Unit, onRebuild: (List<String>) -> Unit, onChoose: (Int) -> Unit,
+                onAddItem: () -> Unit = {}, onBack: () -> Unit) {
     val vm = graphViewModel(key = "draft-$id") { g -> DraftViewModel(g.repo, id) }
     val s by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(s.sentCartId) { s.sentCartId?.let { vm.consumeSent(); onLoblaws(it) } }
@@ -253,5 +263,6 @@ fun DraftScreen(id: Int, onLoblaws: (String) -> Unit, onRebuild: (List<String>) 
     DraftContent(s, DraftActions(
         onQty = vm::setQuantity, onRemove = vm::setRemoved, onSwap = { if (s.editable) onChoose(it.id) }, onPin = vm::setPinned,
         onSend = vm::send, onLoblaws = onLoblaws, onRebuild = onRebuild, onReload = vm::reload, onBack = onBack,
+        onAddItem = { if (s.editable) onAddItem() },
     ))
 }

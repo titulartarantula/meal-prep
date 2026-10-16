@@ -8,11 +8,19 @@ import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.Choice
 import dev.mealprep.app.data.api.DraftLine
 import dev.mealprep.app.data.api.userMessage
+import java.time.LocalDate
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** What the chooser is for: a cart line's product, or an item added by search to a week's list or to a cart. */
+sealed interface ChooserMode {
+    data class Line(val draftId: Int, val lineId: Int) : ChooserMode
+    data class AddToList(val week: LocalDate) : ChooserMode
+    data class AddToCart(val draftId: Int) : ChooserMode
+}
 
 /** The product open in the chooser's detail view: how many to buy (packs, or grams by weight) and the pin. */
 data class ChoiceDetail(val choice: Choice, val quantity: Int, val pin: Boolean)
@@ -33,21 +41,51 @@ data class ChooserState(
     val filters: Set<ChoiceFilter> = emptySet(),
     val detail: ChoiceDetail? = null,
     val saving: Boolean = false,
-    /** The line changed (Use this): the screen goes back to the cart. */
+    /** The line changed (Use this), or the item was added: the screen goes back. */
     val done: Boolean = false,
+    /** Adding an item by search (no line): nothing is searched until something is typed. */
+    val adding: Boolean = false,
+    val toCart: Boolean = false,
 ) {
     val shown: List<Choice> get() = ChooserText.filtered(choices, filters)
+    /** Adding, before the first search. */
+    val blank: Boolean get() = adding && term == null
 }
 
-/** Choose a cart line's product: Loblaws' results a page at a time, the detail view, and Use this (one PATCH). */
-class ChooserViewModel(private val repo: Repository, private val draftId: Int, private val lineId: Int) : ViewModel() {
-    private val _state = MutableStateFlow(ChooserState())
+/** Choose a cart line's product, or an item to add by search: Loblaws' results a page at a time, the detail view,
+ *  and Use this (one PATCH) or Add (one POST). The order and hints are the same either way (the server's). */
+class ChooserViewModel(private val repo: Repository, private val mode: ChooserMode) : ViewModel() {
+    constructor(repo: Repository, draftId: Int, lineId: Int) : this(repo, ChooserMode.Line(draftId, lineId))
+
+    private val _state = MutableStateFlow(ChooserState(adding = mode !is ChooserMode.Line, toCart = mode is ChooserMode.AddToCart,
+        loading = mode !is ChooserMode.AddToList, editable = mode is ChooserMode.AddToList))
     val state = _state.asStateFlow()
     private var loading: Job? = null
 
     init { start() }
 
     fun start() {
+        when (mode) {
+            is ChooserMode.Line -> startLine(mode.draftId, mode.lineId)
+            is ChooserMode.AddToCart -> {
+                // The cart must still be open for changes.
+                _state.update { it.copy(loading = true, error = null) }
+                loading?.cancel()
+                loading = viewModelScope.launch {
+                    when (val r = repo.draft(mode.draftId)) {
+                        is ApiResult.Ok -> {
+                            _state.update { it.copy(editable = r.value.status == "ready" && !r.value.stale, loading = false) }
+                            _state.value.term?.let { page(0, it) }
+                        }
+                        is ApiResult.Err -> _state.update { it.copy(loading = false, error = r.error.userMessage()) }
+                    }
+                }
+            }
+            is ChooserMode.AddToList -> _state.value.term?.let { search(it) } ?: _state.update { it.copy(loading = false, error = null) }
+        }
+    }
+
+    private fun startLine(draftId: Int, lineId: Int) {
         _state.update { it.copy(loading = true, error = null) }
         loading?.cancel()
         loading = viewModelScope.launch {
@@ -64,7 +102,11 @@ class ChooserViewModel(private val repo: Repository, private val draftId: Int, p
     }
 
     private suspend fun page(n: Int, term: String?) {
-        when (val r = repo.choices(draftId, lineId, term, n)) {
+        val r = when (mode) {
+            is ChooserMode.Line -> repo.choices(mode.draftId, mode.lineId, term, n)
+            else -> repo.searchChoices(term ?: return, n)
+        }
+        when (r) {
             is ApiResult.Ok -> _state.update { s ->
                 s.copy(choices = if (n == 0) ChooserText.merge(emptyList(), r.value.choices) else ChooserText.merge(s.choices, r.value.choices),
                     page = n, hasMore = r.value.hasMore, shownTerm = r.value.term, loading = false, loadingMore = false, error = null)
@@ -73,9 +115,10 @@ class ChooserViewModel(private val repo: Repository, private val draftId: Int, p
         }
     }
 
-    /** A new search (blank = the item name again). */
+    /** A new search (blank = the item name again; adding, blank searches nothing). */
     fun search(term: String) {
         val t = term.trim().ifEmpty { null }
+        if (t == null && _state.value.adding) return
         _state.update { it.copy(term = t, choices = emptyList(), page = 0, hasMore = false, loading = true, error = null) }
         loading?.cancel()
         loading = viewModelScope.launch { page(0, t) }
@@ -103,11 +146,14 @@ class ChooserViewModel(private val repo: Repository, private val draftId: Int, p
     fun fewer() = _state.update { s -> s.detail?.let { d -> ChooserText.fewer(d.quantity, d.choice.product)?.let { s.copy(detail = d.copy(quantity = it)) } } ?: s }
     fun setPin(pin: Boolean) = _state.update { s -> s.detail?.let { s.copy(detail = it.copy(pin = pin)) } ?: s }
 
-    /** Use this: the product (only if it changes), the quantity and the pin (only if it changes) in one PATCH. */
+    /** Use this: the product (only if it changes), the quantity and the pin (only if it changes) in one PATCH.
+     *  Adding: Add to list / Add to cart with the search as the item's name. */
     fun use() {
         val s = _state.value
         val d = s.detail ?: return
         if (!s.editable || s.saving) return
+        if (mode !is ChooserMode.Line) return add(mode, d, s.shownTerm.ifBlank { d.choice.product.name })
+        val (draftId, lineId) = mode
         val line = s.line
         val sameProduct = d.choice.current || line?.product?.code == d.choice.product.code
         if (sameProduct && line?.quantity == d.quantity && d.pin == d.choice.pinned) {
@@ -123,6 +169,25 @@ class ChooserViewModel(private val repo: Repository, private val draftId: Int, p
                 is ApiResult.Err -> _state.update {
                     it.copy(saving = false, error = if ((r.error as? ApiError.Http)?.code == 409) DraftViewModel.CHANGED_HERE else r.error.userMessage(),
                         editable = it.editable && (r.error as? ApiError.Http)?.code != 409)
+                }
+            }
+        }
+    }
+
+    private fun add(mode: ChooserMode, d: ChoiceDetail, term: String) {
+        _state.update { it.copy(saving = true, error = null) }
+        viewModelScope.launch {
+            val r = when (mode) {
+                is ChooserMode.AddToList -> repo.addExtra(mode.week, term, d.choice.product.code, d.quantity)
+                is ChooserMode.AddToCart -> repo.addLine(mode.draftId, term, d.choice.product.code, d.quantity)
+                is ChooserMode.Line -> return@launch
+            }
+            when (r) {
+                is ApiResult.Ok -> _state.update { it.copy(saving = false, done = true) }
+                is ApiResult.Err -> _state.update {
+                    val conflict = (r.error as? ApiError.Http)?.code == 409
+                    it.copy(saving = false, error = if (conflict) DraftViewModel.CHANGED_HERE else r.error.userMessage(),
+                        editable = it.editable && !conflict)
                 }
             }
         }

@@ -137,8 +137,11 @@ import kotlinx.serialization.Serializable
     // couldn't confirm that, and its one-line explanation ("Need ⅚ cup → 1 × 1 L").
     val packsMin: Int? = null, val needsCheck: Boolean = false, val why: String? = null,
     val staple: Boolean = false, val staplePacks: Int? = null,
-    /** "Always buy this": the product is pinned for the item. [note] says why the usual product wasn't used. */
+    /** "Always buy this": the product is pinned for the item. [note] says why the usual product wasn't used, or that
+     *  a bigger pack was taken (or would cost less). */
     val pinned: Boolean = false, val note: String? = null,
+    /** An item added by search (since 0.13.0): its id in the week's added items. */
+    val extraId: Int? = null,
 )
 @Serializable data class Progress(val done: Int = 0, val total: Int = 0)
 @Serializable data class Draft(
@@ -162,7 +165,21 @@ import kotlinx.serialization.Serializable
     val product: Product, val group: String = "other", val current: Boolean = false, val pinned: Boolean = false,
     val lastBought: LastBought? = null, val priceChange: Double? = null, val betterValue: BetterValue? = null,
     val suggestedQuantity: Int = 1,
+    /** Since 0.13.0: what covering the line's need with this product takes ([Cover]); null without an amount to
+     *  compare. [bulk] = a bigger pack (fewer packs than the current product, or a club / family pack). */
+    val cover: Cover? = null, val bulk: Boolean = false,
 )
+/** [packs] of this product cover the need, for [cost]; [size] = one pack ("450 g", or "≈ 1.75 kg" for a club pack
+ *  priced by weight). */
+@Serializable data class Cover(val packs: Int, val cost: Double, val size: String = "")
+
+/** An item added by search for a week (0.13.0): a product and how many, outside the recipes and staples. */
+@Serializable data class Extra(
+    val id: Int, val week: String, val term: String, val key: String = "", val product: Product? = null,
+    val quantity: Int = 1, val createdAt: String? = null,
+)
+@Serializable data class ExtraIn(val week: String, val term: String, val productCode: String, val quantity: Int)
+@Serializable data class AddLineIn(val term: String, val productCode: String, val quantity: Int)
 /** The newest sent cart that had this product: when ([date], ISO timestamp), at what price, how many. */
 @Serializable data class LastBought(val date: String? = null, val price: Double? = null, val quantity: Int? = null)
 @Serializable data class BetterValue(

@@ -83,6 +83,12 @@ class ChooserActions(
 )
 
 const val SHOW_MORE = "Show more"
+const val ADD_TO_LIST_TITLE = "Add an item"
+const val ADD_TO_CART_TITLE = "Add an item to the cart"
+const val ADD_PLACEHOLDER = "Paper towels, coffee, snacks…"
+const val ADD_HINT = "Search Loblaws for anything the recipes don't cover. Products you bought before, deals and bigger packs show first, as for recipe items."
+const val ADD_TO_LIST = "Add to list"
+const val ADD_TO_CART = "Add to cart"
 const val USE_THIS = "Use this"
 const val ALWAYS_BUY = "Always buy this"
 const val OUT_THIS_WEEK = "Out of stock this week"
@@ -103,13 +109,16 @@ fun ChooserContent(s: ChooserState, a: ChooserActions) {
 private fun ChoiceList(s: ChooserState, a: ChooserActions) {
     val line = s.line
     Column(Modifier.fillMaxSize()) {
-        BackTopBar(if (line?.product == null) "Find ${line?.name ?: "a product"}" else "Choose ${line.name}", a.onBack,
-            subtitle = line?.let { needText(it) })
+        BackTopBar(when {
+            s.adding -> if (s.toCart) ADD_TO_CART_TITLE else ADD_TO_LIST_TITLE
+            line?.product == null -> "Find ${line?.name ?: "a product"}"
+            else -> "Choose ${line.name}"
+        }, a.onBack, subtitle = line?.let { needText(it) })
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             var term by remember { mutableStateOf(s.term ?: "") }
             val canSearch = !s.loading
             OutlinedTextField(term, { term = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                label = { Text(SEARCH_LOBLAWS) }, placeholder = { Text(line?.name ?: "") },
+                label = { Text(SEARCH_LOBLAWS) }, placeholder = { Text(if (s.adding) ADD_PLACEHOLDER else line?.name ?: "") },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { if (canSearch) a.onSearch(term) }),
                 trailingIcon = {
@@ -123,9 +132,11 @@ private fun ChoiceList(s: ChooserState, a: ChooserActions) {
                 }
             }
             if (s.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (s.blank) Text(ADD_HINT, Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             MessageText(s.error)
             if (s.error != null && s.choices.isEmpty() && !s.loading) OutlinedButton(a.onRetry, Modifier.heightIn(min = 48.dp)) { Text("Try again") }
-            if (!s.loading && s.error == null) Text(countText(s), Modifier.padding(vertical = 4.dp).announced(),
+            if (!s.loading && s.error == null && !s.blank) Text(countText(s), Modifier.padding(vertical = 4.dp).announced(),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn(Modifier.weight(1f)) {
                 items(s.shown, key = { it.product.code }) { c -> ChoiceCard(c) { a.onOpen(c) } }
@@ -167,7 +178,7 @@ private fun Labels(c: Choice) {
     val cs = MaterialTheme.colorScheme
     val accent = GardenAccent.current
     val tags = listOfNotNull(
-        "current".takeIf { c.current }, "pinned".takeIf { c.pinned }, "ad".takeIf { p.sponsored },
+        "current".takeIf { c.current }, "pinned".takeIf { c.pinned }, "ad".takeIf { p.sponsored }, "bulk".takeIf { c.bulk },
         ChooserText.deal(p)?.let { "deal" to it }, ChooserText.optimum(p)?.let { "opt" to it })
     if (tags.isEmpty()) return
     FlowRow(Modifier.padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -179,12 +190,15 @@ private fun Labels(c: Choice) {
         // Outlined: a paid placement must stand out from the card, not only by a tint close to it.
         if (p.sponsored) Tag("Ad", cs.surface, cs.onSurface, Modifier.semantics { contentDescription = "Ad, sponsored by the brand" },
             border = BorderStroke(1.dp, cs.outline))
+        // Outlined in the primary colour: a tint would vanish into the card.
+        if (c.bulk) Tag(BIGGER_PACK, cs.surface, cs.primary, border = BorderStroke(1.dp, cs.primary))
         ChooserText.deal(p)?.let { Tag(it, cs.tertiaryContainer, cs.onTertiaryContainer) }
         ChooserText.optimum(p)?.let { Tag(it, accent.container, accent.onContainer) }
     }
 }
 
 const val ALWAYS_BOUGHT = "Always bought"
+const val BIGGER_PACK = "Bigger pack"
 
 @Composable
 private fun ChoiceCard(c: Choice, onOpen: () -> Unit) {
@@ -204,6 +218,7 @@ private fun ChoiceCard(c: Choice, onOpen: () -> Unit) {
                 }
                 if (out) Text(OUT_THIS_WEEK, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = cs.error)
                 else ChooserText.priceLine(p).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
+                if (!out) ChooserText.cover(c)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 ChooserText.lastTime(c)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant) }
                 if (!out) ChooserText.betterValue(c)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary) }
             }
@@ -223,9 +238,10 @@ private fun ChoiceDetailContent(s: ChooserState, d: ChoiceDetail, a: ChooserActi
             Photos(p)
             Labels(c)
             ChooserText.priceLine(p).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
+            ChooserText.cover(c)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             ChooserText.lastTime(c)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant) }
             ChooserText.betterValue(c)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = cs.primary) }
-            if (s.editable) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(top = 8.dp)
+            if (s.editable && !s.adding) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(top = 8.dp)
                 .toggleable(d.pin, role = Role.Checkbox, onValueChange = a.onPin), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(d.pin, onCheckedChange = null)
                 Column(Modifier.padding(start = 8.dp)) {
@@ -242,7 +258,12 @@ private fun ChoiceDetailContent(s: ChooserState, d: ChoiceDetail, a: ChooserActi
         MessageText(s.error)
         BottomActionBar(above = { if (s.editable) Stepper(s, d, a) }) {
             Button(a.onUse, enabled = s.editable && !s.saving, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Text(if (s.saving) "Saving…" else if (s.editable) USE_THIS else "This cart can't be changed")
+                Text(when {
+                    s.saving -> "Saving…"
+                    !s.editable -> "This cart can't be changed"
+                    s.adding -> if (s.toCart) ADD_TO_CART else ADD_TO_LIST
+                    else -> USE_THIS
+                })
             }
         }
     }
@@ -292,8 +313,13 @@ private fun Photos(p: Product) {
 }
 
 @Composable
-fun ChooserScreen(draftId: Int, lineId: Int, onDone: () -> Unit, onBack: () -> Unit) {
-    val vm = graphViewModel(key = "chooser-$draftId-$lineId") { g -> ChooserViewModel(g.repo, draftId, lineId) }
+fun ChooserScreen(draftId: Int, lineId: Int, onDone: () -> Unit, onBack: () -> Unit) =
+    ChooserScreen(ChooserMode.Line(draftId, lineId), onDone, onBack)
+
+/** The chooser for [mode]: a line's product, or an item added by search (to a week's list or a cart). */
+@Composable
+fun ChooserScreen(mode: ChooserMode, onDone: () -> Unit, onBack: () -> Unit) {
+    val vm = graphViewModel(key = "chooser-$mode") { g -> ChooserViewModel(g.repo, mode) }
     val s by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(s.done) { if (s.done) onDone() }
     BackHandler(enabled = s.detail != null) { vm.closeDetail() }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,6 +20,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,9 +44,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.R
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.Draft
+import dev.mealprep.app.data.api.Extra
 import dev.mealprep.app.data.api.ListItem
 import dev.mealprep.app.ui.common.BottomAction
 import dev.mealprep.app.ui.common.MessageText
+import dev.mealprep.app.ui.common.ProductImage
 import dev.mealprep.app.ui.common.TabHeader
 import dev.mealprep.app.ui.common.WeekOption
 import dev.mealprep.app.ui.common.graphViewModel
@@ -55,6 +59,7 @@ import java.util.Locale
 fun ListContent(
     state: ListState, onWeek: (LocalDate) -> Unit, onToggle: (String) -> Unit, onBuild: () -> Unit, onRetry: () -> Unit = {},
     onStaple: (Int) -> Unit = {}, onEditStaples: () -> Unit = {}, onOpenDraft: (Int) -> Unit = {},
+    onAddItem: () -> Unit = {}, onRemoveExtra: (Int) -> Unit = {},
     today: LocalDate = LocalDate.now(),
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -90,6 +95,19 @@ fun ListContent(
                         modifier = Modifier.padding(top = 8.dp).semantics { heading() })
                 }
                 items(state.probablyHave, key = { it.key }) { ItemRow(it, onToggle) }
+                item(key = "added-head") {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(ADDED_ITEMS, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).semantics { heading() })
+                        TextButton(onAddItem, Modifier.heightIn(min = 48.dp), enabled = !state.building && state.draftId == null) {
+                            Icon(painterResource(R.drawable.ic_add), contentDescription = null)
+                            Text(ADD_AN_ITEM, Modifier.padding(start = 4.dp))
+                        }
+                    }
+                    if (state.extras.isEmpty()) Text(ADDED_HINT, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    MessageText(state.extraError)
+                }
+                items(state.extras, key = { "extra-${it.id}" }) { e -> ExtraRow(e, enabled = !state.building && state.draftId == null) { onRemoveExtra(e.id) } }
             }
         }
         BottomAction(if (state.building) "Starting…" else "Build cart (${state.neededCount} items)", onBuild, enabled = state.canBuild)
@@ -156,6 +174,33 @@ internal fun existingCartText(d: Draft): String = when {
     else -> "A cart for this week is ready to review."
 }
 
+const val ADDED_ITEMS = "Added items"
+const val ADDED_HINT = "Anything the recipes don't cover — search Loblaws and it goes in the cart with them."
+
+/** An item added by search: photo, product, how many; × takes it off. */
+@Composable
+private fun ExtraRow(e: Extra, enabled: Boolean, onRemove: () -> Unit) {
+    val p = e.product
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        ProductImage(p?.image, null, Modifier.size(48.dp))
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(extraTitle(e), style = MaterialTheme.typography.bodyLarge)
+            Text(extraDetail(e), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        IconButton(onRemove, enabled = enabled) {
+            Icon(painterResource(R.drawable.ic_close), contentDescription = "Remove ${p?.name ?: e.term}")
+        }
+    }
+}
+
+/** "PC · Paper Towels · 6 rolls". */
+internal fun extraTitle(e: Extra): String =
+    e.product?.let { p -> listOfNotNull(p.brand, p.name, p.packageSize?.ifBlank { null }).joinToString(" · ") } ?: e.term
+
+/** "2 · about $17.98", "300 g · about $7.47" (sold by weight). */
+internal fun extraDetail(e: Extra): String =
+    listOfNotNull(ChooserText.quantity(e.quantity, e.product), e.product?.cost(e.quantity)?.let { "about ${price(it)}" }).joinToString(" · ")
+
 /** A whole-row checkbox (48 dp tall at least; TalkBack reads it as one checkbox with its text). */
 @Composable
 private fun CheckRow(checked: Boolean, enabled: Boolean = true, onToggle: () -> Unit, title: String, lines: List<String>) {
@@ -199,15 +244,18 @@ internal fun qty(q: Double): String {
 @Composable
 fun ListScreen(
     weeks: List<LocalDate>, onDraft: (Int) -> Unit, onOpenDraft: (Int) -> Unit, onEditStaples: () -> Unit,
-    menu: List<Pair<String, Any>> = emptyList(), onOpen: (Any) -> Unit = {},
+    onAddItem: (LocalDate) -> Unit = {}, menu: List<Pair<String, Any>> = emptyList(), onOpen: (Any) -> Unit = {},
 ) {
     val vm = graphViewModel(key = "list-$weeks") { g -> ListViewModel(g.repo, g.jobs, weeks) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.draftId) { state.draftId?.let(onDraft) }
     // Back from the Staples screen: pick up added/removed/edited staples.
-    LifecycleResumeEffect(Unit) { vm.refreshStaples(); onPauseOrDispose { } }
+    LifecycleResumeEffect(Unit) { vm.refreshStaples(); vm.refreshExtras(); onPauseOrDispose { } }
     Column(Modifier.fillMaxSize()) {
         TabHeader("Shopping list", menu, onOpen)
-        Box(Modifier.weight(1f)) { ListContent(state, vm::toggleWeek, vm::toggle, vm::buildCart, vm::retry, vm::toggleStaple, onEditStaples, onOpenDraft) }
+        Box(Modifier.weight(1f)) {
+            ListContent(state, vm::toggleWeek, vm::toggle, vm::buildCart, vm::retry, vm::toggleStaple, onEditStaples, onOpenDraft,
+                onAddItem = { state.addWeek?.let(onAddItem) }, onRemoveExtra = vm::removeExtra)
+        }
     }
 }

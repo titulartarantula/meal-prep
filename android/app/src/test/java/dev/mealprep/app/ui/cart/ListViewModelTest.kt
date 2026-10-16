@@ -239,4 +239,34 @@ class ListViewModelTest {
         assertEquals("1¼ lb", amountText(1.25, "lb"))
         assertEquals(null, amountText(null, "cup"))
     }
+
+    @Test fun `added items load for the chosen weeks, count, and can be removed`() = runTest {
+        env.on("GET", "/extras", body = """[{"id":4,"week":"2026-10-11","term":"paper towels","quantity":2,
+            "product":{"code":"TOW","name":"Paper Towels","price":8.99}}]""")
+        env.on("DELETE", "/extras/4", code = 204)
+        val vm = vm(listOf("2026-10-11"))
+        val s = vm.state.await { !it.loading && it.extras.isNotEmpty() }
+        assertEquals("2026-10-11", env.requests.first { it.url.encodedPath == "/extras" }.url.queryParameter("week"))
+        assertEquals(listOf("paper towels"), s.extras.map { it.term })
+        assertEquals(2, s.neededCount)                                            // onion + the added item
+        assertEquals(LocalDate.parse("2026-10-11"), s.addWeek)
+        vm.removeExtra(4)
+        assertTrue(vm.state.value.extras.isEmpty())
+        env.awaitBody("DELETE", "/extras/4")
+    }
+
+    @Test fun `a week with only added items can still build a cart`() = runTest {
+        env.on("POST", "/list", body = "[]")
+        env.on("GET", "/extras", body = """[{"id":4,"week":"2026-11-01","term":"paper towels","quantity":1}]""")
+        val s = vm(listOf("2026-11-01")).state.await { !it.loading }
+        assertNull(s.error)
+        assertTrue(s.canBuild)
+        assertEquals(1, s.neededCount)
+    }
+
+    @Test fun `a server without added items shows no error`() = runTest {
+        val s = vm(listOf("2026-10-11")).state.await { !it.loading }
+        assertTrue(s.extras.isEmpty())
+        assertNull(s.extraError)
+    }
 }

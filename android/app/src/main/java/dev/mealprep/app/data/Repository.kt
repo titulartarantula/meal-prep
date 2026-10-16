@@ -4,6 +4,7 @@ import dev.mealprep.app.core.ExportFile
 import dev.mealprep.app.core.ExportFiles
 import dev.mealprep.app.core.Sources
 import dev.mealprep.app.core.Weeks
+import dev.mealprep.app.data.api.AddLineIn
 import dev.mealprep.app.data.api.ApiError
 import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.Bodies
@@ -14,6 +15,8 @@ import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.data.api.DraftIn
 import dev.mealprep.app.data.api.DraftLine
 import dev.mealprep.app.data.api.EntryIn
+import dev.mealprep.app.data.api.Extra
+import dev.mealprep.app.data.api.ExtraIn
 import dev.mealprep.app.data.api.Health
 import dev.mealprep.app.data.api.ImportReport
 import dev.mealprep.app.data.api.Http
@@ -225,6 +228,18 @@ class Repository(
     /** "Use this" in the chooser: the product (when it changes), the quantity and the pin in one PATCH. */
     suspend fun useProduct(draftId: Int, lineId: Int, code: String?, quantity: Int, pinned: Boolean?): ApiResult<DraftLine> =
         call { it.patchLine(draftId, lineId, Bodies.linePatch(productCode = code, quantity = quantity, pinned = pinned)) }
+    /** The chooser for an item added by search (no line): one page for [term]. Live, never saved. */
+    suspend fun searchChoices(term: String, page: Int): ApiResult<Choices> = call { it.productChoices(term, page) }
+    /** "Add an item" on a cart under review: the line (the server also keeps it as an added item of the week). */
+    suspend fun addLine(draftId: Int, term: String, code: String, quantity: Int): ApiResult<DraftLine> =
+        call { it.addLine(draftId, AddLineIn(term.trim(), code, quantity)) }
+    /** Items added by search for [weeks] (live: they change from either phone). */
+    suspend fun extras(weeks: List<LocalDate>): ApiResult<List<Extra>> = call { it.extras(weeks.map(::wk)) }
+    suspend fun addExtra(week: LocalDate, term: String, code: String, quantity: Int): ApiResult<Extra> =
+        call { it.addExtra(ExtraIn(wk(week), term.trim(), code, quantity)) }
+    suspend fun setExtraQuantity(id: Int, quantity: Int): ApiResult<Extra> =
+        call { it.patchExtra(id, Bodies.extraPatch(quantity = quantity)) }
+    suspend fun deleteExtra(id: Int): ApiResult<Unit> = call { it.deleteExtra(id) }
     suspend fun setPinned(draftId: Int, lineId: Int, pinned: Boolean): ApiResult<DraftLine> =
         call { it.patchLine(draftId, lineId, Bodies.linePatch(pinned = pinned)) }
     suspend fun sendDraft(draftId: Int): ApiResult<String> = call { it.sendDraft(draftId).pcxCartId }

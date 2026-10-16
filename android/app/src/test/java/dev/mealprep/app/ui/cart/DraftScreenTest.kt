@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import dev.mealprep.app.data.api.Http
 import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.fixture
@@ -226,5 +227,20 @@ class DraftScreenTest {
         compose.setContent { DraftContent(DraftState(ready.copy(lines = listOf(line)), loading = false), DraftActions(onQty = { _, q -> qty += q })) }
         compose.onNodeWithContentDescription("100 g less").performClick()
         assertEquals(listOf(0), qty)
+    }
+
+    @Test fun `a cart under review offers Add an item, an older one doesn't`() {
+        var added = 0
+        compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(onAddItem = { added++ }), today = today) }
+        compose.onNode(androidx.compose.ui.test.hasScrollAction())
+            .performScrollToNode(androidx.compose.ui.test.hasText(ADD_AN_ITEM))
+        compose.onNodeWithText(ADD_AN_ITEM).assertHeightIsAtLeast(48.dp).performClick()
+        assertEquals(1, added)
+    }
+
+    @Test fun `a sent cart has no Add an item`() {
+        val sent = ready.copy(status = "sent", pcxCartId = "c1")
+        compose.setContent { DraftContent(DraftState(sent, loading = false), DraftActions(), today = today) }
+        compose.onNodeWithText(ADD_AN_ITEM).assertDoesNotExist()
     }
 }

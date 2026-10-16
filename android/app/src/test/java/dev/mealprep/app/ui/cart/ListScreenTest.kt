@@ -115,4 +115,32 @@ class ListScreenTest {
         assertEquals("Oct 11 + Oct 18", weeksLabel(setOf(oct18, oct11), options))
         assertEquals("3 weeks", weeksLabel(setOf(oct4, oct11, oct18), options))
     }
+
+    @Test fun `added items are listed with what they cost, Add an item and remove`() {
+        var added = 0
+        var removed = listOf<Int>()
+        val towels = dev.mealprep.app.data.api.Extra(4, "2026-10-11", "paper towels",
+            product = dev.mealprep.app.data.api.Product("TOW", "Paper Towels", brand = "Bounty", packageSize = "6 rolls", price = 8.99), quantity = 2)
+        compose.setContent {
+            ListContent(ListState(weeks = setOf(oct11), options = options, loading = false,
+                items = listOf(ListItem("onion|count", "onion", qty = 3.0)), extras = listOf(towels)),
+                onWeek = {}, onToggle = {}, onBuild = {}, onAddItem = { added++ }, onRemoveExtra = { removed += it })
+        }
+        compose.onNodeWithText(ADDED_ITEMS).assertExists()
+        compose.onNodeWithText("Bounty · Paper Towels · 6 rolls").assertExists()
+        compose.onNodeWithText("2 · about $17.98").assertExists()
+        compose.onNodeWithText("Build cart (2 items)").assertExists()
+        compose.onNodeWithText(ADD_AN_ITEM).performClick()
+        compose.onNode(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Remove Paper Towels"))).performClick()
+        assertEquals(1, added)
+        assertEquals(listOf(4), removed)
+    }
+
+    @Test fun `no added items yet says what the section is for`() {
+        compose.setContent {
+            ListContent(ListState(weeks = setOf(oct11), options = options, loading = false,
+                items = listOf(ListItem("onion|count", "onion", qty = 3.0))), onWeek = {}, onToggle = {}, onBuild = {})
+        }
+        compose.onNodeWithText(ADDED_HINT).assertExists()
+    }
 }

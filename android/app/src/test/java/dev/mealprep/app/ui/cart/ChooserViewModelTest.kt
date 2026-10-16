@@ -157,4 +157,65 @@ class ChooserViewModelTest {
         val vm = ChooserViewModel(env.repo, 7, 99)
         assertEquals(ChooserViewModel.GONE, vm.state.await { !it.loading }.error)
     }
+    // --- adding an item by search (0.13.0) ------------------------------------------------------------------------
+
+    private fun searches() = env.requests.filter { it.url.encodedPath == "/products/choices" }
+        .map { it.url.queryParameter("term") to it.url.queryParameter("page") }
+
+    @Test fun `Add an item starts blank and searches nothing until something is typed`() = runTest {
+        env.on("GET", "/products/choices", body = fixture("choices.json"))
+        val vm = ChooserViewModel(env.repo, ChooserMode.AddToList(java.time.LocalDate.parse("2026-10-11")))
+        val s0 = vm.state.value
+        assertTrue(s0.adding && s0.blank && s0.editable && !s0.loading)
+        vm.search("  ")
+        assertTrue(searches().isEmpty())
+        vm.search(" paper towels ")
+        val s = vm.state.await { !it.loading && it.choices.isNotEmpty() }
+        assertEquals(listOf("paper towels" to "0"), searches())
+        assertFalse(s.blank)
+        assertEquals(6, s.choices.size)
+    }
+
+    @Test fun `Add to list posts the week, the search, the product and how many`() = runTest {
+        env.on("GET", "/products/choices", body = fixture("choices.json").replace("\"term\": \"old cheddar\"", "\"term\": \"cheddar\""))
+        env.on("POST", "/extras", code = 201, body = """{"id":4,"week":"2026-10-11","term":"cheddar","quantity":2}""")
+        val vm = ChooserViewModel(env.repo, ChooserMode.AddToList(java.time.LocalDate.parse("2026-10-14")))
+        vm.search("cheddar")
+        vm.state.await { !it.loading && it.choices.isNotEmpty() }
+        vm.open(vm.state.value.choices.first { it.product.code == "21289751_EA" })
+        vm.more()
+        vm.use()
+        vm.state.await { it.done }
+        // the week the list chose (any day of it → its Sunday), the search as the item's name, the stepper's 3
+        assertEquals("""{"week":"2026-10-11","term":"cheddar","product_code":"21289751_EA","quantity":3}""",
+            env.bodies("POST", "/extras").single())
+    }
+
+    @Test fun `Add to cart checks the cart is open and posts a line`() = runTest {
+        env.on("GET", "/drafts/7", body = fixture("draft_ready.json"))
+        env.on("GET", "/products/choices", body = fixture("choices.json"))
+        env.on("POST", "/drafts/7/lines", code = 201, body = """{"id":40,"name":"old cheddar","quantity":1,"extra_id":4}""")
+        val vm = ChooserViewModel(env.repo, ChooserMode.AddToCart(7))
+        assertTrue(vm.state.await { !it.loading }.editable)
+        vm.search("old cheddar")
+        vm.state.await { !it.loading && it.choices.isNotEmpty() }
+        vm.open(vm.state.value.choices.first { it.product.code == "21289751_EA" })
+        vm.use()
+        vm.state.await { it.done }
+        assertEquals("""{"term":"old cheddar","product_code":"21289751_EA","quantity":2}""", env.bodies("POST", "/drafts/7/lines").single())
+        assertEquals(0, env.count("PATCH", "/drafts/7/lines/31"))
+    }
+
+    @Test fun `Add to cart on a sent cart can't add`() = runTest {
+        env.on("GET", "/drafts/7", body = fixture("draft_ready.json").replace("\"status\": \"ready\"", "\"status\": \"sent\""))
+        env.on("GET", "/products/choices", body = fixture("choices.json"))
+        val vm = ChooserViewModel(env.repo, ChooserMode.AddToCart(7))
+        assertFalse(vm.state.await { !it.loading }.editable)
+        vm.search("cheddar")
+        vm.state.await { !it.loading && it.choices.isNotEmpty() }
+        vm.open(vm.state.value.choices[2])
+        vm.use()
+        assertFalse(vm.state.value.done)
+        assertEquals(0, env.count("POST", "/drafts/7/lines"))
+    }
 }

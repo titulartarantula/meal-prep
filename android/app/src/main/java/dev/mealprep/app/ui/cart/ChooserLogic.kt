@@ -12,12 +12,13 @@ import kotlin.math.abs
 
 /** The chooser's filter chips; several on = all of them must hold. */
 enum class ChoiceFilter(val label: String) {
-    BOUGHT("Bought before"), SALE("On sale"), OPTIMUM("Optimum");
+    BOUGHT("Bought before"), SALE("On sale"), OPTIMUM("Optimum"), BULK("Bigger packs");
 
     fun matches(c: Choice): Boolean = when (this) {
         BOUGHT -> c.lastBought != null
         SALE -> c.product.onSale
         OPTIMUM -> c.product.optimumText != null
+        BULK -> c.bulk
     }
 }
 
@@ -104,6 +105,14 @@ object ChooserText {
         val what = b.packageSize ?: b.name
         val at = unitPrice(b.unitPrice, b.unitPriceUnit)
         return "Better value: $what" + (at?.let { " at $it" } ?: "")
+    }
+
+    /** "Covers it: 1 × ≈ 1.75 kg · $42.46", "Covers it: 4 × 450 g · $44.00"; null without a need to compare. */
+    fun cover(c: Choice): String? {
+        val v = c.cover ?: return null
+        val size = v.size.ifBlank { c.product.packageSize ?: "" }
+        val packs = if (size.isBlank()) "${v.packs} ${if (v.packs == 1) "pack" else "packs"}" else "${v.packs} × $size"
+        return "Covers it: $packs · ${price(v.cost)}"
     }
 
     /** Grams as "300 g" or "1.2 kg". */

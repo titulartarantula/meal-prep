@@ -7,6 +7,7 @@ import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.ApiError
 import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.Draft
+import dev.mealprep.app.data.api.Extra
 import dev.mealprep.app.data.api.ListItem
 import dev.mealprep.app.data.api.Staple
 import dev.mealprep.app.data.api.userMessage
@@ -35,13 +36,18 @@ data class ListState(
     val stapleError: String? = null,
     /** A cart already made for the first chosen week (ready to review or sent), so the list can lead back to it. */
     val existing: Draft? = null,
+    /** Items added by search for the chosen weeks (always in the cart; delete to leave one out). */
+    val extras: List<Extra> = emptyList(),
+    val extraError: String? = null,
 ) {
     /** Likely-on-hand items (oil, spices…) start unticked, in their own group (DESIGN Flow §4). A line that is only
      *  a staple is shown by its staple row instead. */
     val toBuy: List<ListItem> get() = items.filter { !it.likelyOnHand && !it.onlyStaple }
     val probablyHave: List<ListItem> get() = items.filter { it.likelyOnHand && !it.onlyStaple }
-    val neededCount: Int get() = items.count { it.needed }
-    val canBuild: Boolean get() = !loading && !building && draftId == null && items.any { it.needed }
+    val neededCount: Int get() = items.count { it.needed } + extras.size
+    val canBuild: Boolean get() = !loading && !building && draftId == null && neededCount > 0
+    /** Added items go to the earliest chosen week. */
+    val addWeek: LocalDate? get() = weeks.minOrNull()
     /** The list has staples but no recipe lines. */
     val onlyStaples: Boolean get() = !loading && items.isNotEmpty() && items.all { it.onlyStaple }
 }
@@ -151,16 +157,48 @@ class ListViewModel(
             val weeks = s.weeks.sorted()
             val staples = s.staples.filter { it.id in s.ticked }.map { it.id }
             val existing = repo.weekDraft(weeks.first()).value?.takeIf { it.status in setOf("building", "ready", "sent") }
+            loadExtras(weeks)
             when (val r = repo.shoppingList(weeks, staples)) {
                 is ApiResult.Ok -> _state.update { it.copy(items = r.value.map { i -> overrides[i.key]?.let { n -> i.copy(needed = n) } ?: i },
                     loading = false, existing = existing,
-                    error = if (r.value.isEmpty()) "Nothing planned for that week yet." else null) }
+                    error = if (r.value.isEmpty() && it.extras.isEmpty()) "Nothing planned for that week yet." else null) }
                 is ApiResult.Err -> _state.update { it.copy(items = emptyList(), loading = false, existing = existing, error = r.error.userMessage()) }
             }
         }
     }
 
     fun retry() = load()
+
+    private suspend fun loadExtras(weeks: List<LocalDate>) {
+        when (val r = repo.extras(weeks)) {
+            is ApiResult.Ok -> _state.update { it.copy(extras = r.value, extraError = null) }
+            // A server without added items (404) just has none.
+            is ApiResult.Err -> _state.update {
+                it.copy(extras = emptyList(), extraError = if ((r.error as? ApiError.Http)?.code == 404) null
+                    else "Couldn't load the added items: ${r.error.userMessage()}")
+            }
+        }
+    }
+
+    /** Back from Add an item: the added items again (either phone may have added some). */
+    fun refreshExtras() {
+        if (!started) return
+        viewModelScope.launch {
+            loadExtras(_state.value.weeks.sorted())
+            _state.update { if (it.error == "Nothing planned for that week yet." && it.extras.isNotEmpty()) it.copy(error = null) else it }
+        }
+    }
+
+    /** Takes an added item off the list (and out of a cart still under review). */
+    fun removeExtra(id: Int) {
+        val before = _state.value.extras
+        _state.update { s -> s.copy(extras = s.extras.filter { it.id != id }, extraError = null) }
+        viewModelScope.launch {
+            (repo.deleteExtra(id) as? ApiResult.Err)?.let { e ->
+                _state.update { it.copy(extras = before, extraError = "Couldn't remove it: ${e.error.userMessage()}") }
+            }
+        }
+    }
 
     fun toggle(key: String) = _state.update { s ->
         s.copy(items = s.items.map { if (it.key == key) it.copy(needed = !it.needed).also { n -> overrides[key] = n.needed } else it })

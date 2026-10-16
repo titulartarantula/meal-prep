@@ -121,4 +121,31 @@ class ChooserScreenTest {
         compose.onNodeWithText(ALWAYS_BUY).assertDoesNotExist()
         compose.onNodeWithContentDescription("Quantity 2").assertDoesNotExist()
     }
+
+    @Test fun `bigger packs carry a tag, what covering the need costs, and their own filter`() {
+        val cs = page.choices.mapIndexed { i, c -> if (i == 3) c.copy(bulk = true, cover = dev.mealprep.app.data.api.Cover(1, 42.46, "≈ 1.75 kg")) else c }
+        var filters = listOf<ChoiceFilter>()
+        compose.setContent { ChooserContent(state.copy(choices = cs), ChooserActions(onFilter = { filters += it })) }
+        scrollTo("Covers it: 1 × ≈ 1.75 kg · $42.46")
+        compose.onNodeWithText(BIGGER_PACK).assertExists()
+        compose.onNodeWithText("Bigger packs").performClick()
+        assertEquals(listOf(ChoiceFilter.BULK), filters)
+    }
+
+    @Test fun `Add an item - blank, a hint, no count, and Add to list in the detail without Always buy this`() {
+        val blank = ChooserState(adding = true, editable = true, loading = false)
+        compose.setContent { ChooserContent(blank, ChooserActions()) }
+        compose.onNodeWithText(ADD_TO_LIST_TITLE).assertExists()
+        compose.onNodeWithText(ADD_HINT).assertExists()
+        compose.onNodeWithText("Nothing found", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun `Add an item detail says Add to cart and has no pin`() {
+        val s = ChooserState(adding = true, toCart = true, editable = true, loading = false, term = "cheddar", shownTerm = "cheddar",
+            choices = page.choices, detail = ChoiceDetail(page.choices[2], 2, false))
+        compose.setContent { ChooserContent(s, ChooserActions()) }
+        compose.onNodeWithText(ADD_TO_CART).assertExists()
+        compose.onNodeWithText(ALWAYS_BUY).assertDoesNotExist()
+        compose.onNodeWithContentDescription("Quantity 2").assertExists()
+    }
 }

@@ -109,4 +109,20 @@ class ChooserLogicTest {
         assertNull(d.lines[0].note)
         assertEquals(3.99, p.cost(1)!!, 0.001)
     }
+
+    @Test fun `cover text and the Bigger packs filter`() {
+        val club = Choice(Product("C", "Lean Ground Beef, Club Pack"), bulk = true, cover = dev.mealprep.app.data.api.Cover(1, 42.46, "≈ 1.75 kg"))
+        val tray = Choice(Product("T", "Lean Ground Beef", packageSize = "450 g"), cover = dev.mealprep.app.data.api.Cover(4, 44.0))
+        assertEquals("Covers it: 1 × ≈ 1.75 kg · $42.46", ChooserText.cover(club))
+        assertEquals("Covers it: 4 × 450 g · $44.00", ChooserText.cover(tray))
+        assertEquals("Covers it: 2 packs · $9.00", ChooserText.cover(Choice(Product("X"), cover = dev.mealprep.app.data.api.Cover(2, 9.0))))
+        assertNull(ChooserText.cover(c("N")))
+        assertEquals(listOf("C"), ChooserText.filtered(listOf(club, tray), setOf(ChoiceFilter.BULK)).map { it.product.code })
+    }
+
+    @Test fun `choices from an older server decode without cover or bulk`() {
+        val c = Http.json.decodeFromString(Choice.serializer(), """{"product":{"code":"A"},"group":"other"}""")
+        assertNull(c.cover)
+        assertFalse(c.bulk)
+    }
 }

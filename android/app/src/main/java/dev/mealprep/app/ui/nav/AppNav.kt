@@ -22,6 +22,7 @@ import dev.mealprep.app.core.ShareInput
 import dev.mealprep.app.ui.camera.CameraScreen
 import dev.mealprep.app.ui.card.CardScreen
 import dev.mealprep.app.ui.camera.CameraViewModel
+import dev.mealprep.app.ui.cart.ChooserMode
 import dev.mealprep.app.ui.cart.ChooserScreen
 import dev.mealprep.app.ui.cart.DraftScreen
 import dev.mealprep.app.ui.common.graphViewModel
@@ -82,6 +83,7 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
                 .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
             ListScreen(weeks, onDraft = { id -> nav.navigate(DraftRoute(id)) { popUpTo<ListRoute> { inclusive = true } } },
                 onOpenDraft = { id -> nav.navigate(DraftRoute(id)) }, onEditStaples = { nav.navigate(StaplesRoute) },
+                onAddItem = { week -> nav.navigate(AddItemRoute(week = week.toString())) },
                 menu = mainMenu(), onOpen = open)
         }
         composable<LibraryRoute> {
@@ -101,11 +103,17 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
                 onLoblaws = { cart -> nav.navigate(LoblawsRoute(cart)) },
                 onRebuild = { weeks -> nav.navigate(ListRoute(weeks.joinToString(","))) { popUpTo<DraftRoute> { inclusive = true } } },
                 onChoose = { line -> nav.navigate(ChooserRoute(id, line)) },
+                onAddItem = { nav.navigate(AddItemRoute(draftId = id)) },
                 onBack = up)
         }
         composable<ChooserRoute> { back ->
             val r = back.toRoute<ChooserRoute>()
             ChooserScreen(r.draftId, r.lineId, onDone = up, onBack = up)
+        }
+        composable<AddItemRoute> { back ->
+            val r = back.toRoute<AddItemRoute>()
+            val mode = if (r.draftId > 0) ChooserMode.AddToCart(r.draftId) else ChooserMode.AddToList(LocalDate.parse(r.week))
+            ChooserScreen(mode, onDone = up, onBack = up)
         }
         composable<LoblawsRoute> { back ->
             val prefs by graph.settings.collectAsStateWithLifecycle()
