@@ -29,9 +29,10 @@ object Bodies {
             .forEach { (k, v) -> if (v != null) put(k, v) else put(k, JsonNull) }
     }
 
-    fun linePatch(productCode: String? = null, quantity: Int? = null, removed: Boolean? = null): JsonObject = buildJsonObject {
+    fun linePatch(productCode: String? = null, quantity: Int? = null, removed: Boolean? = null, pinned: Boolean? = null): JsonObject = buildJsonObject {
         if (productCode != null) put("product_code", productCode)
         if (quantity != null) put("quantity", quantity)
         if (removed != null) put("removed", removed)
+        if (pinned != null) put("pinned", pinned)
     }
 }

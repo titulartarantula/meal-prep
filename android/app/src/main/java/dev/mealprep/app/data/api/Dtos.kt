@@ -104,7 +104,29 @@ import kotlinx.serialization.Serializable
 @Serializable data class Product(
     val code: String, val name: String = "", val brand: String? = null, val packageSize: String? = null,
     val price: Double? = null, val stock: String? = null,
-)
+    // Since 0.12.0 (the product chooser); absent from carts built before, so all optional.
+    val soldBy: String? = null,
+    /** Front photo (250 px) and every photo (800 px). */
+    val image: String? = null, val images: List<String> = emptyList(),
+    /** Plain text; list items are "• " lines. */
+    val description: String? = null,
+    /** The comparison price: [unitPrice] per [unitPriceUnit] ("100 g", "1 kg"). */
+    val unitPrice: Double? = null, val unitPriceUnit: String? = null,
+    val regularPrice: Double? = null, val wasPrice: Double? = null,
+    /** ISO dates: when the sale price, the deal badge and the PC Optimum offer end. */
+    val saleEnds: String? = null, val dealText: String? = null, val dealEnds: String? = null,
+    val optimumText: String? = null, val optimumPoints: Int? = null, val optimumEnds: String? = null,
+    /** A paid placement in Loblaws' results ("Ad"). */
+    val sponsored: Boolean = false,
+    /** Order limits; a product sold by weight ([weighted]) counts grams and its price is per [priceQuantity] g. */
+    val minQty: Int? = null, val maxQty: Int? = null, val interval: Int? = null,
+    val weighted: Boolean = false, val priceQuantity: Double? = null,
+    val link: String? = null,
+) {
+    val outOfStock: Boolean get() = stock == "OUT" || stock == "OUT_OF_STOCK"
+    /** What [quantity] of it costs (a price per 100 g counts grams). */
+    fun cost(quantity: Int): Double? = price?.let { it * quantity / (priceQuantity ?: 1.0) }
+}
 @Serializable data class DraftLine(
     val id: Int, val itemKey: String = "", val name: String = "", val qty: Double? = null, val unit: String? = null,
     val prep: String? = null, val recipes: List<String> = emptyList(), val product: Product? = null,
@@ -115,6 +137,8 @@ import kotlinx.serialization.Serializable
     // couldn't confirm that, and its one-line explanation ("Need ⅚ cup → 1 × 1 L").
     val packsMin: Int? = null, val needsCheck: Boolean = false, val why: String? = null,
     val staple: Boolean = false, val staplePacks: Int? = null,
+    /** "Always buy this": the product is pinned for the item. [note] says why the usual product wasn't used. */
+    val pinned: Boolean = false, val note: String? = null,
 )
 @Serializable data class Progress(val done: Int = 0, val total: Int = 0)
 @Serializable data class Draft(
@@ -127,6 +151,24 @@ import kotlinx.serialization.Serializable
 )
 @Serializable data class DraftIn(val items: List<ListItem>, val weeks: List<String>)
 @Serializable data class SearchIn(val term: String)
+
+/** One page of the product chooser (GET /drafts/{id}/lines/{line}/choices). */
+@Serializable data class Choices(
+    val term: String = "", val page: Int = 0, val total: Int = 0, val hasMore: Boolean = false,
+    val choices: List<Choice> = emptyList(),
+)
+/** A product to choose, in the server's order: [group] current, bought, deal, other, out (out of stock). */
+@Serializable data class Choice(
+    val product: Product, val group: String = "other", val current: Boolean = false, val pinned: Boolean = false,
+    val lastBought: LastBought? = null, val priceChange: Double? = null, val betterValue: BetterValue? = null,
+    val suggestedQuantity: Int = 1,
+)
+/** The newest sent cart that had this product: when ([date], ISO timestamp), at what price, how many. */
+@Serializable data class LastBought(val date: String? = null, val price: Double? = null, val quantity: Int? = null)
+@Serializable data class BetterValue(
+    val code: String, val name: String = "", val brand: String? = null, val packageSize: String? = null,
+    val price: Double? = null, val unitPrice: Double? = null, val unitPriceUnit: String? = null,
+)
 @Serializable data class SentCart(val pcxCartId: String)
 @Serializable data class JobStarted(val id: Int, val status: String)
 

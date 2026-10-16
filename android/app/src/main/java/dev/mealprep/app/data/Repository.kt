@@ -7,6 +7,7 @@ import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.ApiError
 import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.Bodies
+import dev.mealprep.app.data.api.Choices
 import dev.mealprep.app.data.api.BookHit
 import dev.mealprep.app.data.api.CookCard
 import dev.mealprep.app.data.api.Draft
@@ -218,6 +219,14 @@ class Repository(
         call { it.patchLine(draftId, lineId, Bodies.linePatch(productCode = code)) }
     suspend fun searchLine(draftId: Int, lineId: Int, term: String): ApiResult<List<Product>> =
         call { it.searchLine(draftId, lineId, SearchIn(term)) }
+    /** Product chooser: one page of products for a line; [term] null = the line's item name. Live, never saved. */
+    suspend fun choices(draftId: Int, lineId: Int, term: String?, page: Int): ApiResult<Choices> =
+        call { it.choices(draftId, lineId, term, page) }
+    /** "Use this" in the chooser: the product (when it changes), the quantity and the pin in one PATCH. */
+    suspend fun useProduct(draftId: Int, lineId: Int, code: String?, quantity: Int, pinned: Boolean?): ApiResult<DraftLine> =
+        call { it.patchLine(draftId, lineId, Bodies.linePatch(productCode = code, quantity = quantity, pinned = pinned)) }
+    suspend fun setPinned(draftId: Int, lineId: Int, pinned: Boolean): ApiResult<DraftLine> =
+        call { it.patchLine(draftId, lineId, Bodies.linePatch(pinned = pinned)) }
     suspend fun sendDraft(draftId: Int): ApiResult<String> = call { it.sendDraft(draftId).pcxCartId }
     suspend fun addStaple(name: String, qty: Double?, unit: String?, weekly: Boolean): ApiResult<Staple> =
         call { it.addStaple(StapleIn(name.trim(), qty, unit?.trim()?.ifBlank { null }, weekly)) }

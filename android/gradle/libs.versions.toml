@@ -15,6 +15,7 @@ room = "2.8.5"
 work = "2.12.0"
 datastore = "1.2.1"
 camerax = "1.6.2"
+coil = "3.5.0"   # 3.6.x needs compileSdk 37 (Compose 1.12)
 junit = "4.13.2"
 robolectric = "4.17"
 androidxTestCore = "1.7.0"
@@ -50,6 +51,8 @@ camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" 
 camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
 camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
 camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTestCore" }
