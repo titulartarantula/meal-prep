@@ -43,6 +43,11 @@ class GardenContrastTest {
         Triple("field & chip outlines", s.outline to s.surface, 3.0),
         Triple("field outlines in dialogs", s.outline to s.surfaceContainerHigh, 3.0),
         Triple("advice (prep warnings)", s.onTertiaryContainer to s.tertiaryContainer, 4.5),
+        Triple("photo placeholder icon", s.onSurfaceVariant to s.surfaceVariant, 3.0),
+        Triple("chooser: current pick tag", s.onPrimary to s.primary, 4.5),
+        Triple("chooser: Ad tag in cards", s.onSecondaryContainer to s.secondaryContainer, 4.5),
+        Triple("chooser: out of stock in cards", s.error to s.surfaceContainerHighest, 4.5),
+        Triple("chooser: better value in cards", s.primary to s.surfaceContainerHighest, 4.5),
     )
 
     private fun check(name: String, s: ColorScheme, a: Accent) = pairs(s, a).forEach { (what, fb, need) ->

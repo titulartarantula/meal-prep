@@ -66,36 +66,22 @@ class DraftViewModelTest {
         assertEquals("""{"removed":false}""", env.bodies("PATCH", "/drafts/7/lines/31").single())
     }
 
-    @Test fun `free-text search then swap`() = runTest {
+    @Test fun `Always buy this pins the line's product`() = runTest {
         val vm = ready()
-        val beef = vm.state.value.draft!!.lines[1]
-        env.on("POST", "/drafts/7/lines/32/search", body = """[{"code":"B1","name":"Lean Ground Beef","price":11.0,"stock":"OK"}]""")
-        env.on("PATCH", "/drafts/7/lines/32", body = """{"id":32,"item_key":"ground beef|g","name":"ground beef","quantity":1,"source":"user",
-            "product":{"code":"B1","name":"Lean Ground Beef","price":11.0}}""")
-        vm.openSwap(beef)
-        assertEquals("ground beef", vm.state.value.swap!!.term)
-        vm.search("lean ground beef")
-        val results = vm.state.await { it.swap?.results?.isNotEmpty() == true }.swap!!.results
-        assertEquals("""{"term":"lean ground beef"}""", env.bodies("POST", "/drafts/7/lines/32/search").single())
-        vm.choose(results.single())
-        val s = vm.state.await { it.draft!!.lines[1].product?.code == "B1" }
-        assertEquals("""{"product_code":"B1"}""", env.bodies("PATCH", "/drafts/7/lines/32").single())
-        assertEquals(14.99, s.total, 0.001)
-        assertEquals(null, s.swap)
+        env.on("PATCH", "/drafts/7/lines/31", body = """{"id":31,"name":"onion","quantity":1,"pinned":true,
+            "product":{"code":"20600927001_KG","name":"Yellow Onions","price":3.99}}""")
+        vm.setPinned(vm.state.value.draft!!.lines[0], true)
+        val s = vm.state.await { it.draft!!.lines[0].pinned }
+        assertEquals("""{"pinned":true}""", env.bodies("PATCH", "/drafts/7/lines/31").single())
+        assertNull(s.busyLine)
     }
 
-    @Test fun `swap opens with the line's alternatives`() = runTest {
+    @Test fun `refresh after the chooser picks up the changed line`() = runTest {
         val vm = ready()
-        vm.openSwap(vm.state.value.draft!!.lines[0])
-        assertEquals(listOf("20107500001_KG"), vm.state.value.swap!!.results.map { it.code })
-    }
-
-    @Test fun `a search with no results says so`() = runTest {
-        val vm = ready()
-        env.on("POST", "/drafts/7/lines/32/search", body = "[]")
-        vm.openSwap(vm.state.value.draft!!.lines[1])
-        vm.search("unicorn steak")
-        assertEquals("Nothing in stock for that — try other words.", vm.state.await { it.swap?.error != null }.swap!!.error)
+        env.on("GET", "/drafts/7", body = fixture("draft_ready.json").replace("\"quantity\": 1,", "\"quantity\": 4,"))
+        vm.refresh()
+        assertEquals(4, vm.state.await { it.draft!!.lines[0].quantity == 4 }.draft!!.lines[0].quantity)
+        assertFalse(vm.state.value.loading)
     }
 
     @Test fun `send gives the cart id`() = runTest {

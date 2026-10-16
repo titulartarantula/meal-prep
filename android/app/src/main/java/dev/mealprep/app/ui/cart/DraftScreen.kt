@@ -1,6 +1,5 @@
 package dev.mealprep.app.ui.cart
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -21,14 +20,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,13 +36,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.input.ImeAction
 import dev.mealprep.app.R
 import dev.mealprep.app.ui.common.announced
 import androidx.compose.ui.semantics.semantics
@@ -54,24 +47,23 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.data.api.DraftLine
-import dev.mealprep.app.data.api.Product
 import dev.mealprep.app.ui.common.MessageText
+import dev.mealprep.app.ui.common.AdviceText
+import dev.mealprep.app.ui.common.ProductImage
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import dev.mealprep.app.ui.common.graphViewModel
 import java.util.Locale
 
 internal fun price(p: Double?) = p?.let { String.format(Locale.US, "$%.2f", it) } ?: ""
-internal fun productLine(p: Product) =
-    listOfNotNull(p.brand, p.name, p.packageSize).joinToString(" · ") + (p.price?.let { "  " + price(it) } ?: "")
 private val SOURCE = mapOf("user" to "Your pick", "memory" to "Remembered", "ai" to "Suggested", "none" to "No match")
 
 /** Callbacks of the draft screen (one object so the stateless content stays readable). */
 class DraftActions(
     val onQty: (DraftLine, Int) -> Unit = { _, _ -> },
     val onRemove: (DraftLine, Boolean) -> Unit = { _, _ -> },
+    /** Opens the product chooser for the line (Swap product, Search Loblaws). */
     val onSwap: (DraftLine) -> Unit = {},
-    val onSearch: (String) -> Unit = {},
-    val onChoose: (Product) -> Unit = {},
-    val onCloseSwap: () -> Unit = {},
+    val onPin: (DraftLine, Boolean) -> Unit = { _, _ -> },
     val onSend: () -> Unit = {},
     val onLoblaws: (String) -> Unit = {},
     val onRebuild: (List<String>) -> Unit = {},
@@ -103,7 +95,8 @@ fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.no
                 LazyColumn(Modifier.weight(1f)) {
                     items(d.lines, key = { it.id }) { line ->
                         LineRow(line, editable = s.editable, busy = s.busyLine == line.id,
-                            onQty = { a.onQty(line, it) }, onRemove = { a.onRemove(line, !line.removed) }, onSwap = { a.onSwap(line) })
+                            onQty = { a.onQty(line, it) }, onRemove = { a.onRemove(line, !line.removed) }, onSwap = { a.onSwap(line) },
+                            onPin = { a.onPin(line, it) })
                     }
                 }
             }
@@ -129,7 +122,6 @@ fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.no
             }
         }
     }
-    s.swap?.let { swap -> SwapDialog(swap, a.onSearch, a.onChoose, a.onCloseSwap) }
 }
 
 /** On an older cart (the week's recipes changed since it was built): say so, and lead to a new cart. */
@@ -165,7 +157,7 @@ internal fun needText(line: DraftLine): String? =
 /** The quiet line under the product: "onion · need 4 · diced · 3 recipes" (one recipe by name). */
 internal fun lineDetail(line: DraftLine): String {
     val n = line.recipes.size
-    val each = line.product?.price?.takeIf { (line.quantity ?: 0) > 1 }?.let { "${price(it)} each" }
+    val each = line.product?.takeIf { !it.weighted }?.price?.takeIf { (line.quantity ?: 0) > 1 }?.let { "${price(it)} each" }
     return listOfNotNull(line.name, needText(line)?.replaceFirstChar(Char::lowercase),
         if (n == 1) line.recipes[0] else if (n > 1) "$n recipes" else null, each).joinToString(" · ")
 }
@@ -175,22 +167,32 @@ internal fun productTitle(line: DraftLine): String =
     line.product?.let { p -> listOfNotNull(p.brand, p.name, p.packageSize).joinToString(" · ") } ?: "No product found for ${line.name}"
 
 /**
- * One cart line: the product and its price lead (that's what is being checked), one quiet line says what the list
- * asked for, then big −/+ buttons and ⋮ (why this amount, which recipes, Swap, Remove). A line without a product
- * offers Search Loblaws directly.
+ * One cart line: a small photo, the product and its price lead (that's what is being checked), one quiet line says
+ * what the list asked for (and, when the usual product wasn't used, why), then big −/+ buttons and ⋮ (why this
+ * amount, which recipes, Swap, Always buy this, Remove). A line without a product offers Search Loblaws directly.
+ * A product sold by weight steps by its interval and shows grams ("300 g").
  */
 @Composable
-private fun LineRow(line: DraftLine, editable: Boolean, busy: Boolean, onQty: (Int) -> Unit, onRemove: () -> Unit, onSwap: () -> Unit) {
+private fun LineRow(line: DraftLine, editable: Boolean, busy: Boolean, onQty: (Int) -> Unit, onRemove: () -> Unit,
+                    onSwap: () -> Unit, onPin: (Boolean) -> Unit) {
     val q = line.quantity ?: 0
     val p = line.product
     val strike = if (line.removed) TextDecoration.LineThrough else null
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Row(verticalAlignment = Alignment.Top) {
-            Text(productTitle(line), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, textDecoration = strike,
-                color = if (p == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-            p?.price?.let { Text(price(it * maxOf(q, 1)), Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodyLarge, textDecoration = strike) }
+            if (p != null) ProductImage(p.image, null, Modifier.size(48.dp), dim = line.removed)
+            Column(Modifier.weight(1f).padding(start = if (p != null) 12.dp else 0.dp)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    if (line.pinned) Icon(painterResource(R.drawable.ic_pin), contentDescription = ALWAYS_BOUGHT,
+                        Modifier.padding(end = 4.dp, top = 2.dp).size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    Text(productTitle(line), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, textDecoration = strike,
+                        color = if (p == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    p?.cost(maxOf(q, 1))?.let { Text(price(it), Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodyLarge, textDecoration = strike) }
+                }
+                Text(lineDetail(line), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                line.note?.let { AdviceText(it, Modifier.padding(top = 2.dp)) }
+            }
         }
-        Text(lineDetail(line), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             when {
@@ -198,87 +200,58 @@ private fun LineRow(line: DraftLine, editable: Boolean, busy: Boolean, onQty: (I
                 p == null -> TextButton(onSwap, enabled = editable) { Text(SEARCH_LOBLAWS) }
                 else -> {
                     // TalkBack: "One fewer onion", "Quantity 2" (said again when it changes), not "minus" / "2".
-                    OutlinedIconButton({ onQty(q - 1) }, Modifier.size(48.dp), enabled = editable && q > 0) {
-                        Icon(painterResource(R.drawable.ic_remove), contentDescription = "One fewer ${line.name}")
+                    // Below the product's minimum, − removes the line (as 0 always did).
+                    OutlinedIconButton({ onQty(ChooserText.fewer(q, p) ?: 0) }, Modifier.size(48.dp), enabled = editable && q > 0) {
+                        Icon(painterResource(R.drawable.ic_remove), contentDescription = ChooserText.fewerLabel(p, line.name))
                     }
-                    Text("$q", Modifier.padding(horizontal = 12.dp).semantics { contentDescription = "Quantity $q" }.announced(),
+                    val shown = ChooserText.quantity(q, p)
+                    Text(shown, Modifier.padding(horizontal = 12.dp).semantics { contentDescription = "Quantity $shown" }.announced(),
                         style = MaterialTheme.typography.titleMedium)
-                    OutlinedIconButton({ onQty(q + 1) }, Modifier.size(48.dp), enabled = editable) {
-                        Icon(painterResource(R.drawable.ic_add), contentDescription = "One more ${line.name}")
+                    val up = ChooserText.more(q, p)
+                    OutlinedIconButton({ up?.let(onQty) }, Modifier.size(48.dp), enabled = editable && up != null) {
+                        Icon(painterResource(R.drawable.ic_add), contentDescription = ChooserText.moreLabel(p, line.name))
                     }
                 }
             }
-            LineMenu(line, editable, onSwap, onRemove)
+            LineMenu(line, editable, onSwap, onRemove, onPin)
         }
         HorizontalDivider(Modifier.padding(top = 4.dp))
     }
 }
 
 const val SEARCH_LOBLAWS = "Search Loblaws"
+const val STOP_ALWAYS_BUY = "Stop always buying this"
 
-/** ⋮ on a cart line: why this amount and which recipes (read-only text), then Swap and Remove / Put back. */
+/** ⋮ on a cart line: why this amount and which recipes (read-only text), then Swap, Always buy this and Remove / Put back. */
 @Composable
-private fun LineMenu(line: DraftLine, editable: Boolean, onSwap: () -> Unit, onRemove: () -> Unit) {
+private fun LineMenu(line: DraftLine, editable: Boolean, onSwap: () -> Unit, onRemove: () -> Unit, onPin: (Boolean) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton({ open = true }) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More for ${line.name}") }
         DropdownMenu(open, { open = false }) {
             val info = listOfNotNull(line.why, line.recipes.takeIf { it.isNotEmpty() }?.let { "For " + it.joinToString(", ") },
-                SOURCE[line.source]?.let { "Product: $it" })
+                (if (line.pinned) ALWAYS_BOUGHT else SOURCE[line.source])?.let { "Product: $it" })
             Column(Modifier.widthIn(max = 280.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
                 info.forEach { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             HorizontalDivider()
             DropdownMenuItem({ Text(if (line.product == null) SEARCH_LOBLAWS else "Swap product") }, { open = false; onSwap() }, enabled = editable)
+            if (line.product != null && !line.removed) DropdownMenuItem({ Text(if (line.pinned) STOP_ALWAYS_BUY else ALWAYS_BUY) },
+                { open = false; onPin(!line.pinned) }, enabled = editable)
             DropdownMenuItem({ Text(if (line.removed) "Put back" else "Remove from cart") }, { open = false; onRemove() }, enabled = editable)
         }
     }
 }
 
 @Composable
-private fun SwapDialog(swap: SwapState, onSearch: (String) -> Unit, onChoose: (Product) -> Unit, onClose: () -> Unit) {
-    var term by remember(swap.lineId) { mutableStateOf(swap.term) }
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text("Swap ${swap.term}") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                // Search is the keyboard's action and an icon in the field: a button beside it left the field too
-                // narrow for its label at large text.
-                val canSearch = !swap.searching && term.isNotBlank()
-                OutlinedTextField(term, { term = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text("Search Loblaws") },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { if (canSearch) onSearch(term) }),
-                    trailingIcon = {
-                        IconButton({ onSearch(term) }, enabled = canSearch) {
-                            Icon(painterResource(R.drawable.ic_search), contentDescription = "Search")
-                        }
-                    })
-                if (swap.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
-                MessageText(swap.error)
-                if (swap.results.isEmpty() && !swap.searching && swap.error == null) {
-                    Text("No other suggestions — search for something.", style = MaterialTheme.typography.bodySmall)
-                }
-                LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                    items(swap.results, key = { it.code }) { p ->
-                        Text(productLine(p), Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                            .clickable(role = Role.Button, onClickLabel = "Choose") { onChoose(p) }.padding(vertical = 12.dp))
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClose) { Text("Cancel") } },
-    )
-}
-
-@Composable
-fun DraftScreen(id: Int, onLoblaws: (String) -> Unit, onRebuild: (List<String>) -> Unit, onBack: () -> Unit) {
+fun DraftScreen(id: Int, onLoblaws: (String) -> Unit, onRebuild: (List<String>) -> Unit, onChoose: (Int) -> Unit, onBack: () -> Unit) {
     val vm = graphViewModel(key = "draft-$id") { g -> DraftViewModel(g.repo, id) }
     val s by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(s.sentCartId) { s.sentCartId?.let { vm.consumeSent(); onLoblaws(it) } }
+    // Back from the chooser: the line it changed (and anything the other phone changed).
+    LifecycleResumeEffect(vm) { vm.refresh(); onPauseOrDispose { } }
     DraftContent(s, DraftActions(
-        onQty = vm::setQuantity, onRemove = vm::setRemoved, onSwap = vm::openSwap,
-        onSearch = vm::search, onChoose = vm::choose, onCloseSwap = vm::closeSwap,
+        onQty = vm::setQuantity, onRemove = vm::setRemoved, onSwap = { if (s.editable) onChoose(it.id) }, onPin = vm::setPinned,
         onSend = vm::send, onLoblaws = onLoblaws, onRebuild = onRebuild, onReload = vm::reload, onBack = onBack,
     ))
 }

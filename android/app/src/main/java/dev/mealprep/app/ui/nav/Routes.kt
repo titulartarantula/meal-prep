@@ -11,6 +11,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class CameraRoute(val purpose: String = "recipe", val recipeId: Int = 0, val forLine: Int = -1, val page: Int = 0)
 @Serializable data class ListRoute(val weeks: String)
 @Serializable data class DraftRoute(val id: Int)
+/** The product chooser for one line of a cart draft. */
+@Serializable data class ChooserRoute(val draftId: Int, val lineId: Int)
 @Serializable data class LoblawsRoute(val cartId: String)
 @Serializable data class PrepRoute(val week: String)
 @Serializable data class CardRoute(val entryId: Int)

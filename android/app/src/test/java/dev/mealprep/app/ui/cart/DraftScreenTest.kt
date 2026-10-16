@@ -181,4 +181,50 @@ class DraftScreenTest {
         assertEquals("finely grated", needText(line.copy(qty = null, unit = null, prep = "finely grated")))
         assertEquals(null, needText(line.copy(qty = null, unit = null, prep = null)))
     }
+
+    @Test fun `a pinned line shows the pin, its note, and the menu unpins`() {
+        val pins = mutableListOf<Boolean>()
+        val onion = ready.lines[0].copy(pinned = true, note = "Your usual Yellow Onions is out of stock this week — matched another.")
+        compose.setContent { DraftContent(DraftState(ready.copy(lines = listOf(onion, ready.lines[1])), loading = false),
+            DraftActions(onPin = { _, p -> pins += p })) }
+        compose.onNodeWithContentDescription(ALWAYS_BOUGHT).assertExists()
+        compose.onNodeWithText("Your usual Yellow Onions is out of stock this week — matched another.").assertExists()
+        compose.onNodeWithContentDescription("More for onion").performClick()
+        compose.onNodeWithText("Product: $ALWAYS_BOUGHT").assertExists()
+        compose.onNodeWithText(STOP_ALWAYS_BUY).performClick()
+        assertEquals(listOf(false), pins)
+    }
+
+    @Test fun `the line menu offers Always buy this for a matched line only`() {
+        val pins = mutableListOf<Boolean>()
+        compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions(onPin = { _, p -> pins += p })) }
+        compose.onNodeWithContentDescription("More for onion").performClick()
+        compose.onNodeWithText(ALWAYS_BUY).performClick()
+        assertEquals(listOf(true), pins)
+        compose.onNodeWithContentDescription("More for ground beef").performClick()
+        compose.onNodeWithText(ALWAYS_BUY).assertDoesNotExist()
+    }
+
+    @Test fun `a line sold by weight shows grams and steps by its interval`() {
+        val qty = mutableListOf<Int>()
+        val deli = dev.mealprep.app.data.api.Product("T", "Oven Roasted Turkey Breast", price = 4.5, weighted = true,
+            priceQuantity = 100.0, minQty = 100, maxQty = 999, interval = 100)
+        val line = ready.lines[0].copy(name = "turkey", product = deli, quantity = 300)
+        compose.setContent { DraftContent(DraftState(ready.copy(lines = listOf(line)), loading = false), DraftActions(onQty = { _, q -> qty += q })) }
+        compose.onNodeWithContentDescription("Quantity 300 g").assertExists()
+        compose.onNodeWithText("$13.50").assertExists()
+        compose.onNodeWithText("About $13.50 · 1 item").assertExists()
+        compose.onNodeWithContentDescription("100 g more").performClick()
+        compose.onNodeWithContentDescription("100 g less").performClick()
+        assertEquals(listOf(400, 200), qty)
+    }
+
+    @Test fun `at the product's minimum, minus removes the line`() {
+        val qty = mutableListOf<Int>()
+        val deli = dev.mealprep.app.data.api.Product("T", "Turkey", price = 4.5, weighted = true, priceQuantity = 100.0, minQty = 100, interval = 100)
+        val line = ready.lines[0].copy(name = "turkey", product = deli, quantity = 100)
+        compose.setContent { DraftContent(DraftState(ready.copy(lines = listOf(line)), loading = false), DraftActions(onQty = { _, q -> qty += q })) }
+        compose.onNodeWithContentDescription("100 g less").performClick()
+        assertEquals(listOf(0), qty)
+    }
 }

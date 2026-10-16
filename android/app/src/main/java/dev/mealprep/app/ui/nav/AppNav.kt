@@ -22,6 +22,7 @@ import dev.mealprep.app.core.ShareInput
 import dev.mealprep.app.ui.camera.CameraScreen
 import dev.mealprep.app.ui.card.CardScreen
 import dev.mealprep.app.ui.camera.CameraViewModel
+import dev.mealprep.app.ui.cart.ChooserScreen
 import dev.mealprep.app.ui.cart.DraftScreen
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.cart.ListScreen
@@ -95,10 +96,16 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
                 onBack = up)
         }
         composable<DraftRoute> { back ->
-            DraftScreen(back.toRoute<DraftRoute>().id,
+            val id = back.toRoute<DraftRoute>().id
+            DraftScreen(id,
                 onLoblaws = { cart -> nav.navigate(LoblawsRoute(cart)) },
                 onRebuild = { weeks -> nav.navigate(ListRoute(weeks.joinToString(","))) { popUpTo<DraftRoute> { inclusive = true } } },
+                onChoose = { line -> nav.navigate(ChooserRoute(id, line)) },
                 onBack = up)
+        }
+        composable<ChooserRoute> { back ->
+            val r = back.toRoute<ChooserRoute>()
+            ChooserScreen(r.draftId, r.lineId, onDone = up, onBack = up)
         }
         composable<LoblawsRoute> { back ->
             val prefs by graph.settings.collectAsStateWithLifecycle()

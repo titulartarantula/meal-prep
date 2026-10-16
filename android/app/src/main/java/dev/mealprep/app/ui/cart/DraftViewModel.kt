@@ -7,7 +7,6 @@ import dev.mealprep.app.data.api.ApiError
 import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.data.api.DraftLine
-import dev.mealprep.app.data.api.Product
 import dev.mealprep.app.data.api.userMessage
 import kotlin.math.round
 import kotlinx.coroutines.Job
@@ -20,18 +19,15 @@ import kotlinx.coroutines.launch
 /** A line that goes into the Loblaws cart on Send: kept, matched to a product, quantity > 0 (as the server counts). */
 fun DraftLine.inCart(): Boolean = !removed && product != null && (quantity ?: 0) > 0
 
-/** The server's estimated_total is from build time; recompute after edits. */
+/** The server's estimated_total is from build time; recompute after edits (a price per 100 g counts grams). */
 fun estimatedTotal(lines: List<DraftLine>): Double =
-    round(lines.filter { it.inCart() }.sumOf { (it.product!!.price ?: 0.0) * it.quantity!! } * 100) / 100
-
-data class SwapState(val lineId: Int, val term: String, val results: List<Product>, val searching: Boolean = false, val error: String? = null)
+    round(lines.filter { it.inCart() }.sumOf { it.product!!.cost(it.quantity!!) ?: 0.0 } * 100) / 100
 
 data class DraftState(
     val draft: Draft? = null,
     val loading: Boolean = true,
     val error: String? = null,
     val busyLine: Int? = null,
-    val swap: SwapState? = null,
     val sending: Boolean = false,
     val sentCartId: String? = null,
 ) {
@@ -75,37 +71,19 @@ class DraftViewModel(private val repo: Repository, private val id: Int, private 
         polling = viewModelScope.launch { poll() }
     }
 
+    /** [q] = packs, or grams for a product sold by weight (the row steps by the product's interval). */
     fun setQuantity(line: DraftLine, q: Int) = edit(line.id) { repo.setLineQuantity(id, line.id, q.coerceAtLeast(0)) }
     fun setRemoved(line: DraftLine, removed: Boolean) = edit(line.id) { repo.setLineRemoved(id, line.id, removed) }
+    /** Always buy this (or stop) for the line's product. */
+    fun setPinned(line: DraftLine, pinned: Boolean) = edit(line.id) { repo.setPinned(id, line.id, pinned) }
 
-    fun openSwap(line: DraftLine) {
-        if (!_state.value.editable) return
-        _state.update { it.copy(swap = SwapState(line.id, line.name, line.alternatives)) }
-    }
-    fun closeSwap() = _state.update { it.copy(swap = null) }
-
-    fun search(term: String) {
-        val swap = _state.value.swap ?: return
-        if (term.isBlank() || swap.searching) return
-        _state.update { it.copy(swap = swap.copy(term = term.trim(), searching = true, error = null)) }
+    /** Back from the chooser (or the app resumed): load the draft again without a spinner; a build still being
+     *  polled is left to its poll. */
+    fun refresh() {
+        if (polling?.isActive == true) return
         viewModelScope.launch {
-            val r = repo.searchLine(id, swap.lineId, term.trim())
-            _state.update { s ->
-                val cur = s.swap?.takeIf { it.lineId == swap.lineId } ?: return@update s
-                when (r) {
-                    is ApiResult.Ok -> s.copy(swap = cur.copy(results = r.value, searching = false,
-                        error = if (r.value.isEmpty()) "Nothing in stock for that — try other words." else null))
-                    is ApiResult.Err -> s.copy(swap = cur.copy(searching = false, error = r.error.userMessage()))
-                }
-            }
-            if (r.isConflict()) refreshAfterConflict()
+            (repo.draft(id) as? ApiResult.Ok)?.let { r -> _state.update { it.copy(draft = r.value, loading = false) } }
         }
-    }
-
-    fun choose(product: Product) {
-        val lineId = _state.value.swap?.lineId ?: return
-        closeSwap()
-        edit(lineId) { repo.chooseProduct(id, lineId, product.code) }
     }
 
     fun send() {
@@ -145,7 +123,7 @@ class DraftViewModel(private val repo: Repository, private val id: Int, private 
     /** 409: the draft is no longer "ready" (sent from the other phone, or a server restart failed it), or the week's
      *  recipes changed since it was built (the server won't send a stale cart; the reload shows the banner). */
     private suspend fun refreshAfterConflict() {
-        _state.update { it.copy(swap = null, error = CHANGED) }
+        _state.update { it.copy(error = CHANGED) }
         (repo.draft(id) as? ApiResult.Ok)?.let { d ->
             _state.update { it.copy(draft = d.value, error = if (d.value.stale) null else it.error) }
         }
@@ -155,6 +133,7 @@ class DraftViewModel(private val repo: Repository, private val id: Int, private 
 
     companion object {
         const val CHANGED = "This cart changed on the server — reloaded."
+        const val CHANGED_HERE = "This cart was sent or changed on the server — go back to see it."
         fun sendMessage(e: ApiError): String =
             if (e is ApiError.Http && e.code == 502) "Loblaws didn't take the cart just now. Try Send again in a minute."
             else e.userMessage()
