@@ -1,6 +1,6 @@
 import math
 
-from .fridge import amount_in_base
+from . import fridge as _fridge   # module import: fridge also uses this module (scale_factor)
 from .ingredients import BASE as _BASE, clean_ingredient, item_key, unit_dim
 from .models import Ingredient, ListItem
 from .staples import STAPLES, buy_name, name_key
@@ -100,7 +100,7 @@ def _fridge_cover(items: dict[str, ListItem], base_qty: dict, fridge) -> dict[st
         if f.qty is not None and f.qty <= 1e-9:
             continue                                    # used up: nothing there
         lines = [k for k, it in items.items() if name_key(it.name) == f.key]
-        have = amount_in_base(f.qty, f.unit)
+        have = _fridge.amount_in_base(f.qty, f.unit)
         for k in lines:
             covered, ids = out.get(k, (0.0, []))
             dim = k.rpartition("|")[2]

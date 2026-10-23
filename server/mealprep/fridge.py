@@ -10,11 +10,12 @@
 import json
 import logging
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 import psycopg
 
+from . import db, shopping
 from .ingredients import BASE, clean_ingredient
 from .models import FridgeItem, Ingredient, Recipe
 from .planner import _plural, _qty_text
@@ -44,10 +45,10 @@ def rule_key(name: str) -> str:
 
 
 def amount_text(qty: float | None, unit: str | None, name: str) -> str:
-    """"6 eggs", "2 cups milk", "½ cup cream", "some cilantro" (no amount)."""
+    """"6 eggs", "2 cups milk", "½ cup cream", "250 ml cream", "some cilantro" (no amount)."""
     if qty is None:
         return f"some {name}"
-    q = _qty_text(qty, unit)
+    q = _qty_text(round(qty) if unit in ("g", "ml") and qty >= 10 else qty, unit)
     return f"{q} {_plural(unit, qty)} {name}" if unit else f"{q} {name}"
 
 
@@ -297,3 +298,152 @@ def uses(lines: list[Line], items: list[FridgeItem], have: dict[int, float | Non
         out.append(Use(it.id, it.name, (from_base(need, it.unit), it.unit), True,
                        (from_base(min(need, hb[1]), it.unit), it.unit)))
     return out
+
+
+# --- suggestions: a greedy set of dinners that uses the fridge ------------------------------------------------------
+#
+# Each round picks the candidate with the best gain = Σ weight × the share of an item's remaining amount it uses
+# (an item without a convertible amount counts 0.5 × weight, once across the set) − EXTRA_COST × the extra
+# ingredients it adds (lines not matching a fridge item, not likely on hand, not already needed by a planned recipe or
+# an earlier pick), then takes what it used off the remaining fridge. It stops early when no candidate uses anything,
+# so a pick never comes from extras alone. Ties: average family rating (unrated last), Good for company, cooked
+# longest ago (never cooked first), recipe id. No AI: fast and the same input gives the same answer.
+
+WEIGHT_SOON = 2.0        # use soon / use-by within 3 days
+WEIGHT_TYPED = 1.5       # an amount someone typed (not a photo's estimate) is surer
+WEIGHT_CHECK = 0.5       # an item used without a convertible amount, counted once
+EXTRA_COST = 0.35        # each new distinct extra ingredient
+STILL_NEED_SHOWN = 8
+
+
+@dataclass
+class Candidate:
+    recipe_id: int
+    title: str
+    lines: list[Line]
+    avg_family: float | None = None
+    company: str | None = None
+    last_cooked: date | None = None
+    ratings: dict = field(default_factory=dict)
+
+
+def weight(it: FridgeItem) -> float:
+    return (WEIGHT_SOON if it.soon else 1.0) * (1.0 if it.qty_estimated else WEIGHT_TYPED)
+
+
+def _stale_text(it: FridgeItem) -> str:
+    return f"{it.name}: last checked {it.days_since_checked} days ago"
+
+
+def select(cands: list[Candidate], items: list[FridgeItem], nights: int, planned: list[list[Line]] = ()) -> dict:
+    """The greedy pick (see above) over `cands`; `planned` = the lines of recipes already on the week (scaled), whose
+    uses come off the fridge first and whose extras are already needed."""
+    items = [it for it in items if it.qty is None or it.qty > 1e-9]
+    by_id = {it.id: it for it in items}
+    left: dict[int, float | None] = {it.id: it.qty for it in items}
+    spent: set[int] = set()                         # items without a convertible amount, already counted
+    keys = {it.key for it in items}
+    needed: set[str] = set()
+
+    def extras(lines: list[Line]) -> list[Line]:
+        out, seen = [], set()
+        for ln in lines:
+            if ln.key and ln.key not in keys and not ln.likely_on_hand and ln.key not in seen:
+                seen.add(ln.key)
+                out.append(ln)
+        return out
+
+    def take(us: list[Use]) -> None:
+        for u in us:
+            if u.convertible:
+                left[u.item_id] = max(0.0, left[u.item_id] - u.used[0])
+            else:
+                spent.add(u.item_id)
+
+    for lines in planned:
+        take(uses(lines, items, have=left))
+        needed |= {ln.key for ln in extras(lines)}
+
+    def gain(c: Candidate):
+        us = uses(c.lines, items, have=left)
+        g = 0.0
+        for u in us:
+            w = weight(by_id[u.item_id])
+            if u.convertible:
+                if left[u.item_id] and u.used[0] > 0:
+                    g += w * u.used[0] / left[u.item_id]
+            elif u.item_id not in spent:
+                g += WEIGHT_CHECK * w
+        new = [ln for ln in extras(c.lines) if ln.key not in needed]
+        return g, g - EXTRA_COST * len(new), us
+
+    def order(c: Candidate, total: float):
+        return (-round(total, 9), c.avg_family is None, -(c.avg_family or 0), c.company != "yes",
+                c.last_cooked or date.min, c.recipe_id)
+
+    pool = sorted({c.recipe_id: c for c in cands}.values(), key=lambda c: c.recipe_id)
+    usable = sum(1 for c in pool if gain(c)[0] > 0)
+    picks = []
+    while pool and len(picks) < nights:
+        scored = [(c, *gain(c)) for c in pool]
+        scored = [x for x in scored if x[1] > 0]
+        if not scored:
+            break
+        c, _, total, us = min(scored, key=lambda x: order(x[0], x[2]))
+        pool.remove(c)
+        mine = extras(c.lines)
+        picks.append({
+            "recipe_id": c.recipe_id, "title": c.title, "score": round(total, 3), "ratings": c.ratings,
+            "uses": [{"item_id": u.item_id, "name": u.name,
+                      "amount": amount_text(u.used[0], u.used[1], u.name) if u.convertible else u.name,
+                      "qty": u.used[0] if u.convertible else None, "unit": u.used[1] if u.convertible else None,
+                      "convertible": u.convertible, "stale": by_id[u.item_id].days_since_checked > STALE_DAYS}
+                     for u in us],
+            "still_need": [ln.name for ln in mine[:STILL_NEED_SHOWN]],
+            "still_need_more": max(0, len(mine) - STILL_NEED_SHOWN),
+        })
+        take(us)
+        needed |= {ln.key for ln in mine}
+    used_ids = [u["item_id"] for p in picks for u in p["uses"]]
+    stale = [_stale_text(by_id[i]) for i in dict.fromkeys(used_ids) if by_id[i].days_since_checked > STALE_DAYS]
+    fridge_left = []
+    for it in items:
+        q = left[it.id]
+        if q is None:
+            if it.id not in spent:
+                fridge_left.append({"item_id": it.id, "name": it.name, "amount": it.name})
+        elif q > 1e-9:
+            fridge_left.append({"item_id": it.id, "name": it.name, "amount": amount_text(q, it.unit, it.name)})
+    return {"picks": picks, "fridge_left": fridge_left, "stale": stale, "thin_library": usable < nights}
+
+
+def _last_cooked(conn, today: date) -> dict[int, date]:
+    rows = conn.execute("SELECT recipe_id, max(d) FROM (SELECT recipe_id, week + day::int AS d FROM plan "
+                        "WHERE day IS NOT NULL AND week + day::int < %(t)s UNION ALL SELECT recipe_id, cooked_on FROM "
+                        "imported_ratings WHERE cooked_on IS NOT NULL) x GROUP BY recipe_id", {"t": today})
+    return dict(rows.fetchall())
+
+
+def suggest(conn, today: date, nights: int, people: int = 4, week: date | None = None, exclude=()) -> dict:
+    """POST /fridge/suggest: library recipes (with ingredient lines; not excluded, not already on `week`) picked by
+    `select`, scaled to `people`; the week's planned recipes use the fridge first."""
+    items = list_items(conn, today)
+    planned_entries = db.get_week(conn, week) if week else []
+    planned_ids = {e.recipe_id for e in planned_entries}
+    recipes = {r.id: r for r in db.list_recipes(conn)}
+    planned = [recipe_lines(recipes[e.recipe_id], shopping.scale_factor(recipes[e.recipe_id].servings, e.multiplier,
+                                                                        people))
+               for e in planned_entries if e.recipe_id in recipes]
+    summaries, last = db.rating_summaries(conn, today), _last_cooked(conn, today)
+    skip = planned_ids | set(exclude)
+    cands = []
+    for r in recipes.values():
+        if r.id in skip:
+            continue
+        lines = recipe_lines(r, shopping.scale_factor(r.servings, 1, people))
+        if not lines:
+            continue
+        s = summaries.get(r.id, {})
+        cands.append(Candidate(recipe_id=r.id, title=r.title, lines=lines, avg_family=s.get("avg_family"),
+                               company=s.get("company"), last_cooked=last.get(r.id), ratings=s))
+    return select(cands, items, nights, planned)

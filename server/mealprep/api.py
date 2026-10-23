@@ -256,6 +256,13 @@ class FridgePatch(BaseModel):   # partial update: omitted fields are left unchan
         return staples.normalise_unit(v)
 
 
+class SuggestIn(BaseModel):
+    nights: Annotated[int, Field(strict=True, ge=1, le=7)]
+    people: Annotated[int, Field(strict=True, ge=1, le=20)] = 4
+    week: date | None = None          # recipes already on this week are left out and use the fridge first
+    exclude: Annotated[list[int], Field(max_length=1000)] = []   # "Suggest others": the picks not wanted
+
+
 class CartIn(BaseModel):
     items: list[ListItem]
     weeks: list[date] = []
@@ -774,6 +781,12 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                 raise HTTPException(422, f"{f} can't be null")
         _use_by(fields.get("use_by"))
         return _fridge_call(fridge.update_item, c, fridge_ai, item_id, today=today(), **fields)
+
+    @app.post("/fridge/suggest", dependencies=A)
+    def fridge_suggest(body: SuggestIn, c=Depends(get_conn)):
+        """Dinners from the library that use what's in the fridge (use soon first) with the fewest extra ingredients
+        (fridge.select): {picks, fridge_left, stale, thin_library}. Read-only, no AI."""
+        return fridge.suggest(c, today(), body.nights, body.people, body.week, body.exclude)
 
     @app.delete("/fridge/{item_id}", status_code=204, dependencies=A)
     def remove_fridge(item_id: int, c=Depends(get_conn)):
