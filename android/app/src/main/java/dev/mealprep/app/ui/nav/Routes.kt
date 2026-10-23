@@ -20,6 +20,11 @@ import kotlinx.serialization.Serializable
 @Serializable data class CardRoute(val entryId: Int)
 @Serializable data class RatingRoute(val entryId: Int, val week: String)
 @Serializable object StaplesRoute
+/** Fridge cleaner (0.14.0): the fridge list, dinner suggestions that use it for [FridgeSuggestRoute.week], and the review
+ *  of a photo read. */
+@Serializable object FridgeRoute
+@Serializable data class FridgeSuggestRoute(val week: String)
+@Serializable data class FridgeReviewRoute(val readId: Int)
 @Serializable object LibraryRoute
 /** [addToWeek]: open with the "Add to a week" picker showing (from an import card or notification). */
 @Serializable data class RecipeRoute(val id: Int, val addToWeek: Boolean = false)
@@ -45,6 +50,8 @@ object Nav {
     fun list() = "list"
     fun recipe(id: Int, addToWeek: Boolean = false) = "recipe/$id" + if (addToWeek) "/week" else ""
     fun importJob(id: Int) = "import/$id"
+    fun fridge() = "fridge"
+    fun fridgeReview(readId: Int) = "fridge-review/$readId"
 
     fun parse(s: String?): Any? {
         val p = s?.split("/") ?: return null
@@ -59,6 +66,8 @@ object Nav {
                 "list" -> ListRoute("")
                 "recipe" -> RecipeRoute(p[1].toInt(), p.getOrNull(2) == "week")
                 "import" -> ImportRoute(jobId = p[1].toInt())
+                "fridge" -> FridgeRoute
+                "fridge-review" -> FridgeReviewRoute(p[1].toInt())
                 else -> null
             }
         }.getOrNull()

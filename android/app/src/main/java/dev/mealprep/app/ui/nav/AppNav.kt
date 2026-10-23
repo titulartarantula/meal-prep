@@ -28,6 +28,8 @@ import dev.mealprep.app.ui.cart.DraftScreen
 import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.cart.ListScreen
 import dev.mealprep.app.ui.cart.StaplesScreen
+import dev.mealprep.app.ui.fridge.FridgeScreen
+import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.ui.setup.NotifSettings
 import dev.mealprep.app.ui.rating.RatingScreen
 import dev.mealprep.app.work.SyncWorker
@@ -66,6 +68,10 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
             SettingsScreen(graph, onDone = up) { NotifSettings(graph); LoblawsSettings(graph) }
         }
         composable<StaplesRoute> { StaplesScreen(onBack = up) }
+        composable<FridgeRoute> {
+            FridgeScreen(onBack = up, onSuggest = { open(FridgeSuggestRoute(Weeks.weekStart(LocalDate.now()).toString())) },
+                onPhoto = { open(CameraRoute("fridge")) }, onReview = { id -> open(FridgeReviewRoute(id)) })
+        }
         composable<HomeRoute> { back ->
             HomeScreen(graph, back.toRoute<HomeRoute>().week?.let(LocalDate::parse),
                 onAction = { a ->
@@ -187,7 +193,7 @@ const val LATER = "That arrives in a later update."
 
 /** The ⋮ menu on the main screens (label to route); the bottom bar has This week, Shopping and Recipes, and
  *  adding recipes lives on Recipes (Add recipe). */
-fun mainMenu(): List<Pair<String, Any>> = listOf("Staples" to StaplesRoute, "Settings" to SettingsRoute)
+fun mainMenu(): List<Pair<String, Any>> = listOf("Fridge" to FridgeRoute, "Staples" to StaplesRoute, "Settings" to SettingsRoute)
 
 /** A link from a notification: a tab opens as that tab (no second copy); anything else goes on top. */
 fun NavController.openLink(route: Any) {

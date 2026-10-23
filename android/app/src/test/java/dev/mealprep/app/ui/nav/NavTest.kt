@@ -22,6 +22,8 @@ class NavTest {
         assertEquals(RecipeRoute(4), Nav.parse(Nav.recipe(4)))
         assertEquals(RecipeRoute(4, addToWeek = true), Nav.parse(Nav.recipe(4, addToWeek = true)))
         assertEquals(ImportRoute(jobId = 7), Nav.parse(Nav.importJob(7)))
+        assertEquals(FridgeRoute, Nav.parse(Nav.fridge()))
+        assertEquals(FridgeReviewRoute(12), Nav.parse(Nav.fridgeReview(12)))
     }
 
     @Test fun `a copied file or a copy error becomes the import route`() {
@@ -32,7 +34,7 @@ class NavTest {
     }
 
     @Test fun `the overflow menu keeps the extras, the bottom bar the main screens`() {
-        assertEquals(listOf("Staples" to StaplesRoute, "Settings" to SettingsRoute), mainMenu())   // adding recipes is on Recipes
+        assertEquals(listOf("Fridge" to FridgeRoute, "Staples" to StaplesRoute, "Settings" to SettingsRoute), mainMenu())   // adding recipes is on Recipes
         assertEquals(listOf("This week", "Shopping", "Recipes"), Tab.entries.map { it.label })   // "Shopping list" wrapped at 200 %
         assertEquals(listOf(HomeRoute(), ListRoute(""), LibraryRoute), Tab.entries.map { it.route })
     }
