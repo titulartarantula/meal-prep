@@ -19,16 +19,19 @@ class CameraViewModel(
     private val store: PageStore,
     private val scale: suspend (File, File) -> Unit,
     private val copy: suspend (Uri, File) -> Unit,
+    /** How many photos it takes: a recipe's pages (10) or one fridge read (6). */
+    private val max: Int = PagesState.MAX_PAGES,
 ) : ViewModel() {
     companion object {
         const val SAVE_FAILED = "Couldn't save that photo. Try again."
         const val PICK_FAILED = "Couldn't open one of those photos."
         const val CAMERA_FAILED = "The camera didn't take the photo. Try again."
         const val ONLY_TEN = "A recipe can have up to ${PagesState.MAX_PAGES} pages — the extra photos were left out."
+        const val ONLY_SIX = "Up to ${PagesState.FRIDGE_MAX} photos — the extra ones were left out."
     }
 
     val dir: File = store.newBatch()
-    private val _state = MutableStateFlow(PagesState())
+    private val _state = MutableStateFlow(PagesState(max = max))
     val state = _state.asStateFlow()
     private val _busy = MutableStateFlow(false)
     val busy = _busy.asStateFlow()
@@ -81,7 +84,7 @@ class CameraViewModel(
                     out.delete(); failed++
                 }
             }
-            _error.value = when { failed > 0 -> PICK_FAILED; skipped > 0 -> ONLY_TEN; else -> null }
+            _error.value = when { failed > 0 -> PICK_FAILED; skipped > 0 -> if (max == PagesState.MAX_PAGES) ONLY_TEN else ONLY_SIX; else -> null }
             _busy.value = false
         }
     }
@@ -90,7 +93,7 @@ class CameraViewModel(
     fun cancelRetake() = _state.update { it.cancelRetake() }
     fun remove(i: Int) = _state.update { it.remove(i) }
     /** Undo a delete (the file stays in the folder until Done). Not past the limit: a photo may have been added since. */
-    fun restore(i: Int, f: File) = _state.update { if (it.pages.size < PagesState.MAX_PAGES) it.restore(i, f) else it }
+    fun restore(i: Int, f: File) = _state.update { if (it.pages.size < it.max) it.restore(i, f) else it }
     fun move(i: Int, by: Int) = _state.update { it.move(i, by) }
 
     /** Numbers the pages in the chosen order; the folder then belongs to the import (or the share screen). */

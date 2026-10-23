@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -60,11 +61,17 @@ fun ListContent(
     state: ListState, onWeek: (LocalDate) -> Unit, onToggle: (String) -> Unit, onBuild: () -> Unit, onRetry: () -> Unit = {},
     onStaple: (Int) -> Unit = {}, onEditStaples: () -> Unit = {}, onOpenDraft: (Int) -> Unit = {},
     onAddItem: () -> Unit = {}, onRemoveExtra: (Int) -> Unit = {},
-    today: LocalDate = LocalDate.now(),
+    today: LocalDate = LocalDate.now(), onFridge: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             WeekSelector(state.options, state.weeks, onWeek)
+            if (state.fridgeCount > 0) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                .toggleable(state.useFridge, enabled = !state.building && state.draftId == null, role = Role.Switch) { onFridge() },
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(USE_FRIDGE, Modifier.weight(1f))
+                Switch(state.useFridge, onCheckedChange = null)
+            }
             if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             MessageText(state.error)
             if (!state.loading && state.items.isEmpty() && state.error != null) TextButton(onRetry) { Text("Try again") }
@@ -174,6 +181,7 @@ internal fun existingCartText(d: Draft): String = when {
     else -> "A cart for this week is ready to review."
 }
 
+const val USE_FRIDGE = "Use what's in the fridge"
 const val ADDED_ITEMS = "Added items"
 const val ADDED_HINT = "Anything the recipes don't cover — search Loblaws and it goes in the cart with them."
 
@@ -217,7 +225,19 @@ private fun CheckRow(checked: Boolean, enabled: Boolean = true, onToggle: () -> 
 @Composable
 private fun ItemRow(item: ListItem, onToggle: (String) -> Unit) =
     CheckRow(item.needed, onToggle = { onToggle(item.key) }, title = itemText(item),
-        lines = listOfNotNull(item.prep, item.recipes.joinToString(", ").takeIf { item.recipes.isNotEmpty() }))
+        lines = listOfNotNull(fridgeText(item), item.prep, item.recipes.joinToString(", ").takeIf { item.recipes.isNotEmpty() }))
+
+/** What the fridge covers, in words: "Need 6 more · 6 from the fridge", "From the fridge", "From the fridge — check you
+ *  have enough"; null for a line the fridge has nothing for. */
+internal fun fridgeText(item: ListItem): String? = when (item.fridge) {
+    "partial" -> "Need ${amountText(item.qty, item.unit) ?: "some"} more · ${amountText(item.fridgeQty, item.unit) ?: "some"} from the fridge"
+    "covered" -> "From the fridge"
+    "check" -> "From the fridge — check you have enough"
+    else -> null
+}
+
+/** Covered and check lines aren't bought unless ticked: they sit in Probably have. */
+internal fun fromFridge(item: ListItem): Boolean = item.fridge == "covered" || item.fridge == "check"
 
 /** "3 onion", "⅚ cup whole milk" — the prep note ("diced") is shown on its own line under it. */
 internal fun itemText(item: ListItem): String = listOfNotNull(amountText(item.qty, item.unit), item.name).joinToString(" ")
@@ -255,7 +275,7 @@ fun ListScreen(
         TabHeader("Shopping list", menu, onOpen)
         Box(Modifier.weight(1f)) {
             ListContent(state, vm::toggleWeek, vm::toggle, vm::buildCart, vm::retry, vm::toggleStaple, onEditStaples, onOpenDraft,
-                onAddItem = { state.addWeek?.let(onAddItem) }, onRemoveExtra = vm::removeExtra)
+                onAddItem = { state.addWeek?.let(onAddItem) }, onRemoveExtra = vm::removeExtra, onFridge = vm::toggleFridge)
         }
     }
 }

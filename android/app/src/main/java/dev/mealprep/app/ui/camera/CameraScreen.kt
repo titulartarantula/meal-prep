@@ -87,12 +87,25 @@ import kotlinx.coroutines.withContext
 /** What the camera part of the screen can do right now. */
 enum class CameraMode { Ready, NoPermission, Unavailable }
 
+/** What the screen is photographing: a recipe's pages, or the fridge for a read (0.14.0). */
+data class CameraKind(
+    /** "page" or "photo". */
+    val noun: String, val hint: String?, val done: String, val limit: String, val counter: String,
+) {
+    companion object {
+        val RECIPE = CameraKind("page", null, "Done", "That's the most a recipe can have (${PagesState.MAX_PAGES} pages).",
+            "pages, in reading order")
+        val FRIDGE = CameraKind("photo", "Photograph each shelf, drawer and the door.", "Read my fridge",
+            "That's the most for one read (${PagesState.FRIDGE_MAX} photos).", "photos")
+    }
+}
+
 /** The label of the main (shoot) button. */
-fun shootLabel(s: PagesState, busy: Boolean): String = when {
+fun shootLabel(s: PagesState, busy: Boolean, kind: CameraKind = CameraKind.RECIPE): String = when {
     busy -> "Saving…"
-    s.retaking != null -> "Retake page ${s.retaking + 1}"
-    s.pages.isEmpty() -> "Snap page"
-    else -> "Add page"
+    s.retaking != null -> "Retake ${kind.noun} ${s.retaking + 1}"
+    s.pages.isEmpty() -> "Snap ${kind.noun}"
+    else -> "Add ${kind.noun}"
 }
 
 /**
@@ -118,12 +131,13 @@ fun CameraContent(
     onDone: () -> Unit,
     onBack: () -> Unit,
     onRestore: (Int, File) -> Unit = { _, _ -> },
+    kind: CameraKind = CameraKind.RECIPE,
 ) {
     val snackbar = remember { SnackbarHostState() }
-    val delete = rememberDeleteWithUndo(pages, snackbar, onRemove, onRestore)
+    val delete = rememberDeleteWithUndo(pages, snackbar, onRemove, onRestore, kind.noun)
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            BackTopBar(title, onBack)
+            BackTopBar(title, onBack, subtitle = kind.hint)
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 when (mode) {
                     CameraMode.Ready -> preview()
@@ -140,14 +154,15 @@ fun CameraContent(
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             MessageText(error)
             if (pages.pages.isNotEmpty()) {
-                Text("${pages.pages.size} of ${PagesState.MAX_PAGES} pages, in reading order" +
-                    if (mode != CameraMode.NoPermission) " · tap a page to retake it" else "",
+                Text("${pages.pages.size} of ${pages.max} ${kind.counter}" +
+                    if (mode != CameraMode.NoPermission) " · tap a ${kind.noun} to retake it" else "",
                     Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodySmall)
-                PageStrip(pages, retakeEnabled = mode != CameraMode.NoPermission, onRetake = onRetake, onRemove = delete, onMove = onMove)
+                PageStrip(pages, retakeEnabled = mode != CameraMode.NoPermission, onRetake = onRetake, onRemove = delete, onMove = onMove,
+                    noun = kind.noun)
             }
             if (pages.retaking != null) {
                 Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Retaking page ${pages.retaking + 1}", Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                    Text("Retaking ${kind.noun} ${pages.retaking + 1}", Modifier.weight(1f), fontWeight = FontWeight.Bold)
                     TextButton(onClick = onCancelRetake) { Text("Keep the old one") }
                 }
             }
@@ -156,14 +171,14 @@ fun CameraContent(
             }
             Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onShoot, enabled = mode == CameraMode.Ready && pages.canShoot && !busy, modifier = Modifier.weight(1f)) {
-                    Text(shootLabel(pages, busy))
+                    Text(shootLabel(pages, busy, kind))
                 }
                 Button(onClick = onDone, enabled = pages.pages.isNotEmpty() && !busy, modifier = Modifier.weight(1f)) {
-                    Text("Done (${pages.pages.size})")
+                    Text("${kind.done} (${pages.pages.size})")
                 }
             }
             if (!pages.canShoot && pages.retaking == null) {
-                Text("That's the most a recipe can have (${PagesState.MAX_PAGES} pages).", Modifier.padding(horizontal = 12.dp),
+                Text(kind.limit, Modifier.padding(horizontal = 12.dp),
                     style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -177,7 +192,7 @@ fun CameraContent(
  */
 @Composable
 fun rememberDeleteWithUndo(
-    pages: PagesState, snackbar: SnackbarHostState, onRemove: (Int) -> Unit, onRestore: (Int, File) -> Unit,
+    pages: PagesState, snackbar: SnackbarHostState, onRemove: (Int) -> Unit, onRestore: (Int, File) -> Unit, noun: String = "page",
 ): (Int) -> Unit {
     val scope = rememberCoroutineScope()
     val current by rememberUpdatedState(pages)
@@ -189,7 +204,7 @@ fun rememberDeleteWithUndo(
                 remove(i)
                 scope.launch {
                     snackbar.currentSnackbarData?.dismiss()
-                    val r = snackbar.showSnackbar("Deleted page ${i + 1}", actionLabel = "Undo", withDismissAction = true,
+                    val r = snackbar.showSnackbar("Deleted $noun ${i + 1}", actionLabel = "Undo", withDismissAction = true,
                         duration = SnackbarDuration.Short)
                     if (r == SnackbarResult.ActionPerformed) restore(i, f)
                 }
@@ -205,27 +220,29 @@ fun rememberDeleteWithUndo(
 @Composable
 fun PageStrip(
     pages: PagesState, retakeEnabled: Boolean, onRetake: ((Int) -> Unit)?, onRemove: (Int) -> Unit, onMove: (Int, Int) -> Unit,
+    noun: String = "page",
 ) {
+    val label = noun.replaceFirstChar { it.uppercase() }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
         itemsIndexed(pages.pages, key = { _, f -> f.path }) { i, f ->
             val n = i + 1
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box {
-                    Thumbnail(f, "Page $n", highlighted = pages.retaking == i,
-                        onClick = onRetake?.takeIf { retakeEnabled }?.let { r -> { r(i) } }, clickLabel = "Retake page $n",
+                    Thumbnail(f, "$label $n", highlighted = pages.retaking == i,
+                        onClick = onRetake?.takeIf { retakeEnabled }?.let { r -> { r(i) } }, clickLabel = "Retake $noun $n",
                         modifier = Modifier.padding(top = 8.dp, end = 8.dp))
                     FilledTonalIconButton({ onRemove(i) }, Modifier.align(Alignment.TopEnd)) {
-                        Icon(painterResource(R.drawable.ic_close), contentDescription = "Delete page $n")
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = "Delete $noun $n")
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton({ onMove(i, -1) }, enabled = i > 0) {
-                        Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Move page $n earlier")
+                        Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Move $noun $n earlier")
                     }
                     // The thumbnail already says "Page 2" to TalkBack.
                     Text("$n", Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.labelLarge)
                     IconButton({ onMove(i, 1) }, enabled = i < pages.pages.lastIndex) {
-                        Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Move page $n later")
+                        Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Move $noun $n later")
                     }
                 }
             }
@@ -250,7 +267,7 @@ fun Thumbnail(
 }
 
 @Composable
-fun CameraScreen(vm: CameraViewModel, title: String, onDone: (File) -> Unit, onBack: () -> Unit) {
+fun CameraScreen(vm: CameraViewModel, title: String, onDone: (File) -> Unit, onBack: () -> Unit, kind: CameraKind = CameraKind.RECIPE) {
     val ctx = LocalContext.current
     val owner = LocalLifecycleOwner.current
     fun hasPermission() = ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
@@ -290,7 +307,7 @@ fun CameraScreen(vm: CameraViewModel, title: String, onDone: (File) -> Unit, onB
         systemRaw = null
     }
     val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(PagesState.MAX_PAGES)) { uris: List<Uri> ->
+        ActivityResultContracts.PickMultipleVisualMedia(state.max)) { uris: List<Uri> ->
         vm.onPicked(uris)
     }
 
@@ -329,7 +346,7 @@ fun CameraScreen(vm: CameraViewModel, title: String, onDone: (File) -> Unit, onB
             else ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ctx.packageName, null)))
         },
         onRetake = vm::retake, onCancelRetake = vm::cancelRetake, onRemove = vm::remove, onMove = vm::move,
-        onDone = { onDone(vm.done()) }, onBack = onBack, onRestore = vm::restore,
+        onDone = { onDone(vm.done()) }, onBack = onBack, onRestore = vm::restore, kind = kind,
     )
 }
 

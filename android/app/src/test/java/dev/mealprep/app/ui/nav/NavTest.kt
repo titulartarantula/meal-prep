@@ -55,5 +55,6 @@ class NavTest {
         assertEquals("Photograph the recipe, page by page", cameraTitle(CameraRoute()))
         assertEquals("Photograph page 191 (the part this recipe refers to)", cameraTitle(CameraRoute("ref", 3, 1, 191)))
         assertEquals("Photograph the page this recipe refers to", cameraTitle(CameraRoute("ref", 3, 1)))
+        assertEquals("Photograph your fridge", cameraTitle(CameraRoute("fridge")))
     }
 }

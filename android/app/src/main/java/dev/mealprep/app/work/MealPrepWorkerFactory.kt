@@ -13,7 +13,7 @@ import dev.mealprep.app.notify.Reminders
 /** Builds workers with their dependencies. Each worker task adds its line. */
 class MealPrepWorkerFactory(private val g: AppGraph) : WorkerFactory() {
     override fun createWorker(ctx: Context, name: String, params: WorkerParameters): ListenableWorker? = when (name) {
-        ImportWorker::class.java.name -> ImportWorker(ctx, params, g.repo, g.notifier)
+        ImportWorker::class.java.name -> ImportWorker(ctx, params, g.repo, g.notifier, onFridgeRead = { id -> g.jobs.watchFridge(id) })
         JobWatchWorker::class.java.name -> JobWatchWorker(ctx, params, g.repo, g.notifier, ::inForeground,
             afterDone = { kind -> if (kind == JobWatchWorker.PREP) SyncWorker.now(g.workManager) })
         ReminderWorker::class.java.name -> ReminderWorker(ctx, params, g.notifier) { r -> Reminders.stillWanted(r, g.repo, g.settings.value.notif) }

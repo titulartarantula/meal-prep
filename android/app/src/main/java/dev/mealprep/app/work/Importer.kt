@@ -16,6 +16,10 @@ interface Importer {
     suspend fun importPhotos(pages: List<File>, week: LocalDate?, title: String?, book: String? = null, page: String? = null,
                              author: String? = null, isbn: String? = null, kind: String? = null): ApiResult<ShareResult>
     suspend fun attachPages(recipeId: Int, pages: List<File>, forLine: Int): ApiResult<Recipe>
+    /** Fridge photos up for a background read (202); the same photos again return the same read. */
+    suspend fun uploadFridgePhotos(photos: List<File>): ApiResult<dev.mealprep.app.data.api.FridgeRead>
+    /** Remembers which photo folder a read came from (Try again re-sends it; saving or discarding deletes it). */
+    suspend fun rememberFridgeBatch(readId: Int, dir: File) {}
     /** The recipe as the server has it now (no saved copy). */
     suspend fun fetchRecipe(id: Int): ApiResult<Recipe>
 

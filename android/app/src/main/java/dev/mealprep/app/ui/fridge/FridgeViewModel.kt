@@ -17,6 +17,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import androidx.work.WorkInfo
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -38,6 +42,8 @@ data class FridgeState(
     val exists: ApiError.Exists? = null,
     /** Names the shopping list uses that contain what is typed. */
     val names: List<String> = emptyList(),
+    /** Fridge photos on their way up from this phone ("Sending your fridge photos…"), or null. */
+    val sending: String? = null,
 ) {
     val shown: List<FridgeItem> get() = items.filter { it.id != removing?.id }
 }
@@ -48,15 +54,37 @@ class FridgeViewModel(
     /** Outlives this ViewModel: a removal still waiting for its Undo snackbar is made final there. */
     private val later: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val debounceMs: Long = DEBOUNCE_MS,
+    /** This phone's fridge photo uploads (ImportQueue.fridge), as the card's text. */
+    sending: Flow<String?> = flowOf(null),
 ) : ViewModel() {
-    companion object { const val DEBOUNCE_MS = 300L }
+    companion object {
+        const val DEBOUNCE_MS = 300L
+        const val SENDING = "Sending your fridge photos…"
+        const val WAITING = "Your fridge photos will go up when the phone is on the home network (or WireGuard)."
+
+        /** The card's text for this phone's uploads: running → sending, waiting → the network, none → null. */
+        fun sendingText(infos: List<WorkInfo>): String? = when {
+            infos.any { it.state == WorkInfo.State.RUNNING } -> SENDING
+            infos.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED } -> WAITING
+            else -> null
+        }
+    }
 
     private val _state = MutableStateFlow(FridgeState())
     val state = _state.asStateFlow()
     private var lookup: Job? = null
     private var asked: String? = null
 
-    init { load() }
+    init {
+        load()
+        viewModelScope.launch {
+            sending.distinctUntilChanged().collect { t ->
+                val was = _state.value.sending
+                _state.update { it.copy(sending = t) }
+                if (was != null && t == null) load()   // sent: the server's read card takes over
+            }
+        }
+    }
 
     fun today(): LocalDate = today.invoke()
 

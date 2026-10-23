@@ -32,6 +32,8 @@ class JobWatchWorker(
 
     companion object {
         const val KIND = "kind"; const val DRAFT = "draft"; const val PREP = "prep"; const val IMPORT = "import"
+        /** A fridge photo read (0.14.0): polled every 5 s while it reads. */
+        const val FRIDGE = "fridge"
         const val ID = "id"; const val WEEK = "week"; const val POLL_MS = "poll_ms"; const val MAX_POLLS = "max_polls"
         const val OUT_STATUS = "status"
         /** 3 × ~9 min of polling (WorkManager stops a worker after 10 min). The prep plan takes ~4 min. */
@@ -45,17 +47,21 @@ class JobWatchWorker(
     }
 
     override suspend fun doWork(): Result {
-        val kind = inputData.getString(KIND)?.takeIf { it == DRAFT || it == PREP || it == IMPORT } ?: return Result.failure()
+        val kind = inputData.getString(KIND)?.takeIf { it == DRAFT || it == PREP || it == IMPORT || it == FRIDGE } ?: return Result.failure()
         val id = inputData.getInt(ID, 0)
         val week = runCatching { LocalDate.parse(inputData.getString(WEEK)) }.getOrNull()
-        if (week == null && kind != IMPORT) return Result.failure()
+        if (week == null && kind != IMPORT && kind != FRIDGE) return Result.failure()
         val pollMs = inputData.getLong(POLL_MS, 10_000)
         repeat(inputData.getInt(MAX_POLLS, 54)) { i ->
             if (i > 0) delay(pollMs)
             when (val r = status(kind, id)) {
-                is ApiResult.Ok -> if (r.value.first != "building" && r.value.first != "running") {
+                is ApiResult.Ok -> if (r.value.first != "building" && r.value.first != "running" && r.value.first != "reading") {
                     afterDone(kind)
-                    if (kind == IMPORT) announceImport(id) else announce(kind, id, week!!, r.value.first, r.value.second)
+                    when (kind) {
+                        IMPORT -> announceImport(id)
+                        FRIDGE -> announceFridge(id)
+                        else -> announce(kind, id, week!!, r.value.first, r.value.second)
+                    }
                     return Result.success(workDataOf(OUT_STATUS to r.value.first))
                 }
                 is ApiResult.Err -> when (r.error) {
@@ -66,12 +72,17 @@ class JobWatchWorker(
         }
         if (runAttemptCount < (if (kind == IMPORT) IMPORT_ATTEMPTS else MAX_ATTEMPTS) - 1) return Result.retry()
         if (repo.markOnce("$kind-done:$id") && !inForeground()) {
-            if (kind == IMPORT) notifier.importGaveUp(id, IMPORT_GAVE_UP) else notifier.jobDone(kind, id, week!!, ok = false, error = GAVE_UP)
+            when (kind) {
+                IMPORT -> notifier.importGaveUp(id, IMPORT_GAVE_UP)
+                FRIDGE -> Unit   // the Fridge screen still shows "Reading your fridge photos…"
+                else -> notifier.jobDone(kind, id, week!!, ok = false, error = GAVE_UP)
+            }
         }
         return Result.failure()
     }
 
     private var lastImport: ImportReport? = null
+    private var lastRead: dev.mealprep.app.data.api.FridgeRead? = null
 
     private suspend fun status(kind: String, id: Int): ApiResult<Pair<String, String?>> = when (kind) {
         IMPORT -> {
@@ -84,6 +95,12 @@ class JobWatchWorker(
                 ApiResult.Ok((job.status ?: "running") to job.error)
             }
         }
+        FRIDGE -> {
+            val l = repo.fridgeRead(id)
+            val read = l.value
+            if (l.error != null || read == null) ApiResult.Err(l.error ?: ApiError.Other("no read"))
+            else { lastRead = read; ApiResult.Ok(read.status to read.error) }
+        }
         DRAFT -> when (val r = repo.draft(id)) { is ApiResult.Ok -> ApiResult.Ok(r.value.status to r.value.error); is ApiResult.Err -> r }
         else -> when (val r = repo.prepPlan(id)) { is ApiResult.Ok -> ApiResult.Ok(r.value.status to r.value.error); is ApiResult.Err -> r }
     }
@@ -92,6 +109,13 @@ class JobWatchWorker(
         if (!repo.markOnce("$IMPORT-done:$id")) return
         if (inForeground()) return                       // the import screen or the Recipes card shows it
         lastImport?.let { notifier.importDone(id, it) }
+    }
+
+    /** Once per read, on this phone, only when the app is in the background (the Fridge screen shows it otherwise). */
+    private suspend fun announceFridge(id: Int) {
+        if (!repo.markOnce("$FRIDGE-done:$id")) return
+        if (inForeground()) return
+        lastRead?.takeIf { it.status == "ready" || it.status == "failed" }?.let { notifier.fridgeRead(it) }
     }
 
     private suspend fun announce(kind: String, id: Int, week: LocalDate, status: String, error: String?) {
@@ -108,6 +132,15 @@ class JobWatcher(private val wm: WorkManager) {
     }
 
     fun watchDraft(id: Int, week: LocalDate) = watch(JobWatchWorker.DRAFT, id, week)
+
+    /** A fridge photo read: polled every 5 s (up to ~9 min a run), a notification when done if the app is in the background. */
+    fun watchFridge(id: Int) {
+        wm.enqueueUniqueWork("watch-${JobWatchWorker.FRIDGE}-$id", ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<JobWatchWorker>()
+                .setInputData(workDataOf(JobWatchWorker.KIND to JobWatchWorker.FRIDGE, JobWatchWorker.ID to id,
+                    JobWatchWorker.POLL_MS to 5_000L, JobWatchWorker.MAX_POLLS to 108))
+                .build())
+    }
     fun watchPrep(id: Int, week: LocalDate) = watch(JobWatchWorker.PREP, id, week)
 
     /** A recipe import: polled every 5 s (progress for the Recipes tab), a notification when done if the app is closed. */

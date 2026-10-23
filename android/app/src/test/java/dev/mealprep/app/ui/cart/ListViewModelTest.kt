@@ -55,7 +55,7 @@ class ListViewModelTest {
         env.on("GET", "/cart/default-week", body = """{"week":"2026-10-18"}""")
         val s = vm(emptyList()).state.await { !it.loading }
         assertEquals(setOf(LocalDate.parse("2026-10-18")), s.weeks)
-        assertEquals("""{"weeks":["2026-10-18"],"people":4,"staples":[]}""", env.bodies("POST", "/list").single())
+        assertEquals("""{"weeks":["2026-10-18"],"people":4,"staples":[],"fridge":false}""", env.bodies("POST", "/list").single())
         assertEquals(listOf("onion"), s.toBuy.map { it.name })
         assertEquals(listOf("olive oil"), s.probablyHave.map { it.name })
         assertEquals(1, s.neededCount)
@@ -80,7 +80,7 @@ class ListViewModelTest {
         vm.state.await { !it.loading }
         vm.toggleWeek(LocalDate.parse("2026-10-11"))
         vm.state.await { !it.loading && it.weeks.size == 2 }
-        assertEquals("""{"weeks":["2026-10-11","2026-10-18"],"people":4,"staples":[]}""", env.bodies("POST", "/list").last())
+        assertEquals("""{"weeks":["2026-10-11","2026-10-18"],"people":4,"staples":[],"fridge":false}""", env.bodies("POST", "/list").last())
     }
 
     @Test fun `the last week can't be unticked`() = runTest {
@@ -125,7 +125,7 @@ class ListViewModelTest {
         val s = vm(listOf("2026-10-11")).state.await { !it.loading && it.items.isNotEmpty() }
         assertEquals(listOf("2% milk", "eggs", "lemonade"), s.staples.map { it.name })
         assertEquals(setOf(1, 2), s.ticked)                                        // lemonade isn't weekly
-        assertEquals("""{"weeks":["2026-10-11"],"people":4,"staples":[1,2]}""", env.bodies("POST", "/list").single())
+        assertEquals("""{"weeks":["2026-10-11"],"people":4,"staples":[1,2],"fridge":false}""", env.bodies("POST", "/list").single())
         // eggs is only a staple: its staple row stands for it. Milk is in a recipe too, so it stays in "To buy".
         assertEquals(listOf("onion", "2% milk"), s.toBuy.map { it.name })
         assertEquals(listOf("olive oil"), s.probablyHave.map { it.name })
@@ -143,7 +143,7 @@ class ListViewModelTest {
         vm.toggleStaple(2)
         vm.toggleStaple(1)
         val s = vm.state.await { !it.loading && it.ticked.isEmpty() && it.items.size == 2 }
-        assertEquals("""{"weeks":["2026-10-11"],"people":4,"staples":[]}""", env.bodies("POST", "/list").last())
+        assertEquals("""{"weeks":["2026-10-11"],"people":4,"staples":[],"fridge":false}""", env.bodies("POST", "/list").last())
         assertTrue(s.items.single { it.key == "olive oil|vol" }.needed)
     }
 

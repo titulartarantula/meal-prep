@@ -48,10 +48,13 @@ class ImportWorkerTest {
     }
     @After fun tearDown() = env.close()
 
+    private val watched = mutableListOf<Int>()
+
     private fun worker(input: Data, attempt: Int = 0, id: UUID = UUID.randomUUID()) = TestListenableWorkerBuilder<ImportWorker>(env.context)
         .setInputData(input).setRunAttemptCount(attempt).setId(id)
         .setWorkerFactory(object : WorkerFactory() {
-            override fun createWorker(c: Context, n: String, p: WorkerParameters) = ImportWorker(c, p, env.repo, Notifier(c))
+            override fun createWorker(c: Context, n: String, p: WorkerParameters) = ImportWorker(c, p, env.repo, Notifier(c),
+                onFridgeRead = { watched += it })
         }).build()
 
     private fun notificationText() =
@@ -224,6 +227,41 @@ class ImportWorkerTest {
         val r = worker(ImportQueue.photoInput(dir, null)).doWork() as Result.Failure
         assertEquals(ImportWorker.PAGES_GONE, r.outputData.getString(ImportWorker.ERROR))
         assertEquals(0, env.count("POST", "/recipes/photo"))
+    }
+
+    @Test fun `fridge photos go up once, the read is watched and the photos kept for Try again`() = runTest {
+        env.on("POST", "/fridge/photos", code = 202, body = """{"id":12,"status":"reading","photo_count":2,"existing":false}""")
+        val dir = batch("fridge1", "shelf", "door")
+        val id = UUID.randomUUID()
+        val r = worker(ImportQueue.fridgeInput(dir), id = id).doWork() as Result.Success
+        assertEquals(12, r.outputData.getInt(ImportWorker.OUT_READ_ID, 0))
+        assertEquals(listOf(12), watched)
+        val body = env.bodies("POST", "/fridge/photos").single()
+        assertTrue(body.indexOf("shelf") in 0 until body.indexOf("door"))
+        assertTrue(File(dir, "page01.jpg").exists())                     // kept until the review is saved or discarded
+        assertEquals(dir, env.repo.fridgeBatch(12))
+        assertTrue(notifications().isEmpty())
+        // WorkManager ran it again after an interruption: never sent twice
+        val again = worker(ImportQueue.fridgeInput(dir), id = id).doWork()
+        assertTrue(again is Result.Failure); assertEquals(1, env.count("POST", "/fridge/photos"))
+    }
+
+    @Test fun `fridge photos wait for the home network`() = runTest {
+        env.offline = true
+        val dir = batch("fridge2", "x")
+        assertTrue(worker(ImportQueue.fridgeInput(dir)).doWork() is Result.Retry)
+        assertTrue(File(dir, "page01.jpg").exists())
+        assertTrue(watched.isEmpty())
+    }
+
+    @Test fun `refused fridge photos say why and point to the Fridge`() = runTest {
+        env.on("POST", "/fridge/photos", code = 422, body = """{"detail":"That isn't a photo the server can read (JPEG, PNG, WebP or GIF)."}""")
+        val r = worker(ImportQueue.fridgeInput(batch("fridge3", "x"))).doWork()
+        assertTrue(r is Result.Failure)
+        val n = notifications().single()
+        assertEquals("Couldn't send the fridge photos", n.extras.getString(Notification.EXTRA_TITLE))
+        assertEquals("That isn't a photo the server can read (JPEG, PNG, WebP or GIF). Open the Fridge to take them again.", notificationText())
+        assertTrue(worker(ImportQueue.fridgeInput(tmp.newFolder("empty"))).doWork() is Result.Failure)
     }
 
     @Test fun `waiting for the home network keeps the pages and retries`() = runTest {

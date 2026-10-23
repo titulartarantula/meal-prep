@@ -74,3 +74,38 @@ fun contextAction(week: LocalDate, today: LocalDate, entries: List<PlanEntry>, c
 /** Ask for the notification permission at most once ever (Android stops showing the prompt after a couple of
  *  refusals anyway, and a nagging app is worse than a missing "recipe added" notice). */
 fun shouldAskForNotifications(granted: Boolean, alreadyAsked: Boolean): Boolean = !granted && !alreadyAsked
+
+/** "Use up the fridge · 3 nights free" under the status strip: a week that isn't past, with nights free (from today on,
+ *  in this week) and something in the fridge (the saved copy). Null = no row. */
+fun useUpFridge(week: LocalDate, today: LocalDate, entries: List<PlanEntry>, fridgeCount: Int): String? {
+    val start = Weeks.weekStart(week)
+    if (fridgeCount <= 0 || start.plusDays(6).isBefore(today)) return null
+    val n = freeNights(start, today, entries)
+    if (n <= 0) return null
+    return "Use up the fridge · $n night${if (n == 1) "" else "s"} free"
+}
+
+/** Nights of the week with no dinner on them, from today on for this week. */
+fun freeNights(week: LocalDate, today: LocalDate, entries: List<PlanEntry>): Int {
+    val start = Weeks.weekStart(week)
+    val taken = entries.mapNotNull { it.day }.toSet()
+    return (0..6).count { d -> d !in taken && !Weeks.nightDate(start, d).isBefore(today) }
+}
+
+/** "4 Eggs", "4 Eggs and 1 cup Whole milk", "4 Eggs, 2 Lemons and 1 cup Whole milk". */
+fun andList(items: List<String>): String = when (items.size) {
+    0 -> ""
+    1 -> items[0]
+    else -> items.dropLast(1).joinToString(", ") + " and " + items.last()
+}
+
+/** The morning-after fridge line: "Update the fridge? Tuesday's Frittata used 4 Eggs and 1 cup Whole milk." */
+fun fridgeNudgeText(n: dev.mealprep.app.data.api.FridgeNight): String {
+    val day = runCatching { Weeks.longDayLabel(Weeks.dayOf(LocalDate.parse(n.date))) }.getOrDefault("Last night")
+    return if (n.uses.isEmpty()) "$day's ${n.title} used what's in the fridge."
+        else "Update the fridge? $day's ${n.title} used ${andList(n.uses.map { it.used })}."
+}
+
+/** "Fridge updated · Eggs 2, Whole milk 3 cups". */
+fun fridgeUpdatedText(a: dev.mealprep.app.data.api.UsedAnswer): String =
+    if (a.changes.isEmpty()) "Fridge updated" else "Fridge updated · " + a.changes.joinToString(", ") { it.text }

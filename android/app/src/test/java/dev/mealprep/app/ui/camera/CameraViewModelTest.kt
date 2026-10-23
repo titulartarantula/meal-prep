@@ -20,9 +20,21 @@ class CameraViewModelTest {
     @get:Rule val tmp = TemporaryFolder()
 
     private fun vm(scale: suspend (java.io.File, java.io.File) -> Unit = { raw, out -> raw.copyTo(out) }) =
-        CameraViewModel(PageStore(tmp.root), scale) { uri, out ->
+        CameraViewModel(PageStore(tmp.root), scale, copy = { uri, out ->
             if (uri.toString().contains("bad")) error("unreadable") else out.writeText(uri.lastPathSegment!!)
-        }
+        })
+
+    @Test fun `a fridge read takes up to 6 photos and says so`() = runTest {
+        val vm = CameraViewModel(PageStore(tmp.root), { raw, out -> raw.copyTo(out) }, { uri, out -> out.writeText(uri.lastPathSegment!!) },
+            max = PagesState.FRIDGE_MAX)
+        vm.onPicked((1..8).map { Uri.parse("content://photos/p$it") })
+        vm.busy.await { !it }
+        assertEquals(6, vm.state.value.pages.size)
+        assertFalse(vm.state.value.canShoot)
+        assertEquals("Up to 6 photos — the extra ones were left out.", vm.error.value)
+        vm.remove(0); vm.restore(0, vm.state.value.pages[0])
+        assertEquals(5, vm.state.value.pages.size)                 // restoring an existing file changes nothing
+    }
 
     @Test fun `captured pages are scaled, retakes replace, done numbers them`() = runTest {
         val vm = vm()

@@ -56,6 +56,28 @@ class JobWatchWorkerTest {
         assertEquals(1, notes().size)                                 // de-duplicated
     }
 
+    @Test fun `a fridge read is watched until ready and said once, with how many changes`() = runTest {
+        val ready = fixture("fridge_read_ready.json")
+        env.onSequence("GET", "/fridge/reads/12", listOf(ready.replace("\"ready\"", "\"reading\""), ready))
+        val r = worker(JobWatchWorker.FRIDGE, 12).doWork() as Result.Success
+        assertEquals("ready", r.outputData.getString(JobWatchWorker.OUT_STATUS))
+        assertEquals("Fridge photos read", title(notes().single()))
+        assertEquals("Review 5 changes.", text(notes().single()))
+        worker(JobWatchWorker.FRIDGE, 12).doWork()
+        assertEquals(1, notes().size)
+        assertTrue(env.repo.fridgeRead(12).value != null)                    // kept for the review away from home
+    }
+
+    @Test fun `a failed fridge read says so, quietly while the app is open`() = runTest {
+        env.on("GET", "/fridge/reads/13", body = """{"id":13,"status":"failed","photo_count":1,"error":"Couldn't read the fridge in those photos."}""")
+        worker(JobWatchWorker.FRIDGE, 13, foreground = true).doWork()
+        assertTrue(notes().isEmpty())
+        env.on("GET", "/fridge/reads/14", body = """{"id":14,"status":"failed","photo_count":1,"error":"Couldn't read the fridge in those photos."}""")
+        worker(JobWatchWorker.FRIDGE, 14).doWork()
+        assertEquals("Couldn't read the fridge", title(notes().single()))
+        assertEquals("Couldn't read the fridge in those photos. Open it to try again.", text(notes().single()))
+    }
+
     @Test fun `stays quiet while the app is open`() = runTest {
         env.on("GET", "/drafts/7", body = fixture("draft_ready.json"))
         assertTrue(worker(JobWatchWorker.DRAFT, 7, foreground = true).doWork() is Result.Success)

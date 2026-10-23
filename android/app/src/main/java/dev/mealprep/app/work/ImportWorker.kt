@@ -25,10 +25,15 @@ class ImportWorker(
     params: WorkerParameters,
     private val importer: Importer,
     private val notifier: Notifier,
+    /** A fridge read the server started: watched until it is ready (JobWatcher.watchFridge). */
+    private val onFridgeRead: (Int) -> Unit = {},
 ) : CoroutineWorker(ctx, params) {
 
     companion object {
         const val KIND = "kind"; const val LINK = "link"; const val PHOTO = "photo"; const val PAGES = "pages"
+        /** Fridge photos (0.14.0): POST /fridge/photos, then the read is watched. */
+        const val FRIDGE = "fridge"; const val OUT_READ_ID = "out_read_id"
+        const val FRIDGE_GONE = "The fridge photos are gone from the phone. Take them again."
         const val TEXT = "text"; const val WEEK = "week"; const val DIR = "dir"; const val TITLE = "title"
         const val BOOK = "book"; const val BOOK_PAGE = "book_page"; const val BOOK_AUTHOR = "book_author"; const val BOOK_ISBN = "book_isbn"
         /** "other" (0.7.1): BOOK / BOOK_PAGE are another source's name and note; absent = a book. */
@@ -67,6 +72,7 @@ class ImportWorker(
             kind == PAGES && e is ApiError.Http && e.code == 409 && e.detail.orEmpty().contains("already")
 
         fun progressText(kind: String?): String = when (kind) {
+            FRIDGE -> "Sending your fridge photos…"
             PHOTO -> "Reading cookbook pages…"
             PAGES -> "Reading the referenced page…"
             else -> "Reading recipe…"
@@ -119,6 +125,22 @@ class ImportWorker(
                             null -> { dir.deleteRecursively(); fail(ALREADY_ATTACHED, retrySafe = false) }
                             else -> attach(dir, recipeId, pages, at)
                         }
+                    }
+                }
+            }
+            FRIDGE -> {
+                val dir = inputData.getString(DIR)?.let(::File)
+                val photos = dir?.let(PageStore::pagesIn).orEmpty()
+                when {
+                    dir == null -> fail("The fridge photos were incomplete.", retrySafe = false)
+                    photos.isEmpty() -> fail(FRIDGE_GONE, retrySafe = false)
+                    // The photos stay on the phone until the review is saved or discarded (Try again re-sends them); the
+                    // server answers the same photos with the same read, so a resend never reads twice.
+                    else -> sendOnce(null, {
+                        importer.uploadFridgePhotos(photos).also { r -> if (r is ApiResult.Ok) importer.rememberFridgeBatch(r.value.id, dir) }
+                    }) { read ->
+                        onFridgeRead(read.id)
+                        workDataOf(KIND to FRIDGE, OUT_READ_ID to read.id, DIR to dir.path)
                     }
                 }
             }

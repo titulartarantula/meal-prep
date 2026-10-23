@@ -61,6 +61,7 @@ import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.announced
 import dev.mealprep.app.ui.common.graphViewModel
 import java.time.LocalDate
+import kotlinx.coroutines.flow.map
 
 const val SUGGEST_DINNERS = "Suggest dinners"
 const val TAKE_A_PHOTO = "Take a photo"
@@ -84,7 +85,7 @@ data class FridgeActions(
 
 @Composable
 fun FridgeScreen(onBack: () -> Unit, onSuggest: () -> Unit, onPhoto: () -> Unit, onReview: (Int) -> Unit) {
-    val vm = graphViewModel { g -> FridgeViewModel(g.repo) }
+    val vm = graphViewModel { g -> FridgeViewModel(g.repo, sending = g.imports.fridge.map(FridgeViewModel::sendingText)) }
     val state by vm.state.collectAsStateWithLifecycle()
     // Back from a review, or the other phone changed it: read it again.
     LifecycleResumeEffect(Unit) { vm.load(); onPauseOrDispose { } }
@@ -114,6 +115,9 @@ fun FridgeContent(state: FridgeState, today: LocalDate, a: FridgeActions) {
                 MessageText(state.error)
                 if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 LazyColumn(Modifier.weight(1f)) {
+                    state.sending?.takeIf { state.read == null }?.let { t ->
+                        item(key = "sending") { Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Text(t, Modifier.padding(12.dp).announced()) } }
+                    }
                     state.read?.let { r -> item(key = "read") { ReadCard(r, a.onReview) } }
                     item(key = "add") {
                         OutlinedTextField(typed, { typed = it; a.onTyped(it) }, label = { Text("Add to the fridge") },

@@ -29,6 +29,10 @@ import dev.mealprep.app.ui.common.graphViewModel
 import dev.mealprep.app.ui.cart.ListScreen
 import dev.mealprep.app.ui.cart.StaplesScreen
 import dev.mealprep.app.ui.fridge.FridgeScreen
+import dev.mealprep.app.ui.fridge.FridgeReviewScreen
+import dev.mealprep.app.ui.fridge.SuggestScreen
+import dev.mealprep.app.ui.camera.CameraKind
+import dev.mealprep.app.ui.camera.PagesState
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.ui.setup.NotifSettings
 import dev.mealprep.app.ui.rating.RatingScreen
@@ -68,6 +72,19 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
             SettingsScreen(graph, onDone = up) { NotifSettings(graph); LoblawsSettings(graph) }
         }
         composable<StaplesRoute> { StaplesScreen(onBack = up) }
+        composable<FridgeReviewRoute> { back ->
+            FridgeReviewScreen(back.toRoute<FridgeReviewRoute>().readId,
+                onDone = { text -> Toast.makeText(ctx(nav), text, Toast.LENGTH_SHORT).show(); up() },
+                onBack = up, onNewPhotos = { nav.navigate(CameraRoute("fridge")) { popUpTo<FridgeReviewRoute> { inclusive = true } } })
+        }
+        composable<FridgeSuggestRoute> { back ->
+            val week = back.toRoute<FridgeSuggestRoute>().week
+            SuggestScreen(LocalDate.parse(week), onBack = up, onDone = { text ->
+                Toast.makeText(ctx(nav), text, Toast.LENGTH_LONG).show()
+                // This week (that week), where the new dinners wait under No night yet.
+                nav.navigate(HomeRoute(week)) { popUpTo<HomeRoute> { inclusive = true } }
+            })
+        }
         composable<FridgeRoute> {
             FridgeScreen(onBack = up, onSuggest = { open(FridgeSuggestRoute(Weeks.weekStart(LocalDate.now()).toString())) },
                 onPhoto = { open(CameraRoute("fridge")) }, onReview = { id -> open(FridgeReviewRoute(id)) })
@@ -138,10 +155,17 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
         }
         composable<CameraRoute> { back ->
             val r = back.toRoute<CameraRoute>()
-            val vm = graphViewModel(key = "camera-${back.id}") { g -> CameraViewModel(g.pages, g.scalePage, g.copyPage) }
-            CameraScreen(vm, title = cameraTitle(r),
+            val fridge = r.purpose == "fridge"
+            val vm = graphViewModel(key = "camera-${back.id}") { g ->
+                CameraViewModel(g.pages, g.scalePage, g.copyPage, if (fridge) PagesState.FRIDGE_MAX else PagesState.MAX_PAGES)
+            }
+            CameraScreen(vm, title = cameraTitle(r), kind = if (fridge) CameraKind.FRIDGE else CameraKind.RECIPE,
                 onDone = { dir ->
-                    if (r.purpose == "ref") {
+                    if (fridge) {
+                        // Sent and read in the background; the Fridge screen shows "Reading your fridge photos…".
+                        graph.imports.enqueueFridge(dir)
+                        if (!nav.popBackStack()) nav.navigate(FridgeRoute)
+                    } else if (r.purpose == "ref") {
                         // Read in the background like any import; the home screen shows "Reading the referenced page…".
                         graph.imports.enqueuePages(dir, r.recipeId, r.forLine, r.page)
                         if (!nav.popBackStack()) nav.navigate(HomeRoute())
@@ -171,7 +195,10 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
     }
 }
 
+private fun ctx(nav: NavHostController) = nav.context
+
 fun cameraTitle(r: CameraRoute): String = when {
+    r.purpose == "fridge" -> "Photograph your fridge"
     r.purpose != "ref" -> "Photograph the recipe, page by page"
     r.page > 0 -> "Photograph page ${r.page} (the part this recipe refers to)"
     else -> "Photograph the page this recipe refers to"

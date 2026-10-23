@@ -35,6 +35,7 @@ class Notifier(private val context: Context) {
 
     internal fun failedText(message: String, retrySafe: Boolean, kind: String? = ImportWorker.LINK): String = sentences(
         message, when {
+            kind == ImportWorker.FRIDGE -> "Open the Fridge to take them again."
             retrySafe -> "Open Meal Prep to try again."
             kind == ImportWorker.PAGES -> "Check the shopping list for its ingredients before adding it again."
             else -> "It may have been saved already — check Recipes."
@@ -86,8 +87,18 @@ class Notifier(private val context: Context) {
 
     /** [retrySafe] false: the request may have reached the server, so warn instead of inviting a retry. */
     fun importFailed(workId: UUID, message: String, retrySafe: Boolean, kind: String? = ImportWorker.LINK) =
-        post("import-failed-$workId", CH_JOBS, if (kind == ImportWorker.PAGES) "Couldn't add the page" else "Couldn't add the recipe",
-            failedText(message, retrySafe, kind), Nav.home(null))
+        post("import-failed-$workId", CH_JOBS, when (kind) {
+                ImportWorker.PAGES -> "Couldn't add the page"
+                ImportWorker.FRIDGE -> "Couldn't send the fridge photos"
+                else -> "Couldn't add the recipe"
+            }, failedText(message, retrySafe, kind), if (kind == ImportWorker.FRIDGE) Nav.fridge() else Nav.home(null))
+
+    /** A fridge read finished (JobWatchWorker, app in the background): tap opens the review. */
+    fun fridgeRead(read: dev.mealprep.app.data.api.FridgeRead) = post("fridge-read-${read.id}", CH_JOBS,
+        if (read.status == "ready") "Fridge photos read" else "Couldn't read the fridge",
+        if (read.status == "ready") dev.mealprep.app.ui.fridge.ReviewLogic.notificationText(read)
+        else "${read.error ?: "Couldn't read the fridge in those photos."} Open it to try again.",
+        Nav.fridgeReview(read.id))
 
     /** A cart draft or prep plan left "building" (JobWatchWorker). [error] is the server's reason when it failed. */
     fun jobDone(kind: String, id: Int, week: LocalDate, ok: Boolean, error: String?) {

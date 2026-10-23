@@ -91,6 +91,9 @@ import dev.mealprep.app.AppGraph
 import dev.mealprep.app.R
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.PendingRating
+import dev.mealprep.app.data.api.FridgeNight
+import dev.mealprep.app.ui.nav.FridgeRoute
+import dev.mealprep.app.ui.nav.FridgeSuggestRoute
 import dev.mealprep.app.data.api.PlanEntry
 import dev.mealprep.app.ui.nav.DraftRoute
 import dev.mealprep.app.ui.common.MessageText
@@ -128,8 +131,13 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
     val imports by vm.imports.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val pending by vm.pending.collectAsStateWithLifecycle()
+    val nudge by vm.nudge.collectAsStateWithLifecycle()
+    val nudgeSending by vm.nudgeSending.collectAsStateWithLifecycle()
+    val fridgeCount by vm.fridgeCount.collectAsStateWithLifecycle()
+    val snack by vm.snack.collectAsStateWithLifecycle()
     val removed by vm.removed.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(snack) { snack?.let { t -> vm.snackShown(); snackbar.showSnackbar(t, withDismissAction = true) } }
     // Taking a dinner off the week waits for this snackbar: Undo keeps it, anything else makes it final, leaving This
     // week too (another tab or screen, or the app): Recipes, the shopping list and the other phone read the server, so
     // a removal held back after leaving showed the dinner as still planned there.
@@ -166,14 +174,15 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
                     MessageText(m); TextButton(onClick = vm::clearMessage) { Text("OK") }
                 }
             }
-            pending?.let { p -> RatingBanner(p, onRate = { onOpen(RatingRoute(p.entryId, p.week)) }, onLater = vm::dismissPending) }
+            MorningBanner(pending, nudge, nudgeSending, onRate = { p -> onOpen(RatingRoute(p.entryId, p.week)) }, onLater = vm::dismissPending,
+                onUpdate = { vm.answerNudge(true) }, onNotNow = { vm.answerNudge(false) }, onFridge = { onOpen(FridgeRoute) })
             ImportCards(imports, onRetry = vm::retryImport, onDismiss = vm::dismissImport, onOpen = onOpen, onCancel = vm::cancelImport)
             // While a recipe is held the drag has priority: the week can't be swiped away underneath it.
             HorizontalPager(pager, Modifier.weight(1f), userScrollEnabled = !drag.dragging) { page ->
                 val week = current.plusWeeks((page - BACK).toLong())
                 val ui by vm.week(week).collectAsStateWithLifecycle()
                 WeekContent(ui, today, onAction, vm::place, vm::scale, vm::remove, onOpen, onRefresh = { vm.refresh(week) },
-                    loadRef = vm::refPromptFor, drag = drag)
+                    loadRef = vm::refPromptFor, drag = drag, fridgeCount = fridgeCount)
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
@@ -198,6 +207,43 @@ fun WeekHeader(
         OverflowMenu(menu, onOpen)
     }
 }
+
+/** The morning card: the rating question and/or, after a fridge dinner, "Update the fridge? … used 4 Eggs" with
+ *  Update fridge (one tap) and Not now, plus "Check: Cilantro" (→ Fridge) for amounts that don't convert. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun MorningBanner(
+    pending: PendingRating?, nudge: FridgeNight?, sending: Boolean, onRate: (PendingRating) -> Unit, onLater: () -> Unit,
+    onUpdate: () -> Unit, onNotNow: () -> Unit, onFridge: () -> Unit,
+) {
+    if (pending == null && nudge == null) return
+    Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp)) {
+            pending?.let { p ->
+                Text(ratingQuestion(p.title, Weeks.longDayLabel(p.day)), style = MaterialTheme.typography.titleSmall)
+                val date = runCatching { Weeks.shortDate(LocalDate.parse(p.date)) }.getOrDefault(p.date)
+                Text("$date · a quick rating helps pick family favourites.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow {
+                    TextButton({ onRate(p) }, Modifier.heightIn(min = 48.dp)) { Text("Rate it") }
+                    TextButton(onLater, Modifier.heightIn(min = 48.dp)) { Text("Later") }
+                }
+            }
+            nudge?.let { n ->
+                Text(fridgeNudgeText(n), style = MaterialTheme.typography.titleSmall)
+                if (n.check.isNotEmpty()) Text("Check: ${andList(n.check)}", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow {
+                    if (n.uses.isNotEmpty()) TextButton(onUpdate, Modifier.heightIn(min = 48.dp), enabled = !sending) { Text(UPDATE_FRIDGE) }
+                    if (n.check.isNotEmpty()) TextButton(onFridge, Modifier.heightIn(min = 48.dp)) { Text("Open the fridge") }
+                    TextButton(onNotNow, Modifier.heightIn(min = 48.dp), enabled = !sending) { Text("Not now") }
+                }
+            }
+        }
+    }
+}
+
+const val UPDATE_FRIDGE = "Update fridge"
 
 /** The morning after (or any day within two weeks): "How was Tuesday's Chili?" with Rate and Later. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -307,6 +353,8 @@ fun WeekContent(
     /** The recipe's first page reference without a photo (null if none, or offline). */
     loadRef: suspend (recipeId: Int) -> RefPrompt? = { null },
     drag: WeekDrag = remember { WeekDrag() },
+    /** Items in the fridge list: "Use up the fridge" shows only with some. */
+    fridgeCount: Int = 0,
 ) {
     var sheetFor by remember { mutableStateOf<PlanEntry?>(null) }
     val all = ui.view?.all.orEmpty()
@@ -325,6 +373,12 @@ fun WeekContent(
             item {
                 StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } },
                     onPrep = if (ui.hasPrep) { { onOpen(PrepRoute(ui.week.toString())) } } else null)
+            }
+            // Not the context button: the cart → prep → tonight flow stays as it is.
+            if (ui.view != null) useUpFridge(ui.week, today, all, fridgeCount)?.let { label ->
+                item {
+                    TextButton({ onOpen(FridgeSuggestRoute(ui.week.toString())) }, Modifier.heightIn(min = 48.dp)) { Text(label) }
+                }
             }
             when {
                 ui.loading && ui.view == null -> {}   // the first load: no button until we know what the week needs

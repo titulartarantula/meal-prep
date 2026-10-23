@@ -161,7 +161,9 @@ internal fun weeksTitle(weeks: List<String>, today: LocalDate): String? {
 
 /** What the recipes need, under the item name: "Need ⅚ cup · warmed"; null when there's nothing to say. */
 internal fun needText(line: DraftLine): String? =
-    listOfNotNull(amountText(line.qty, line.unit)?.let { "Need $it" }, line.prep).joinToString(" · ").ifEmpty { null }
+    listOfNotNull(amountText(line.qty, line.unit)?.let { "Need $it" },
+        line.fridgeQty?.takeIf { line.fridge == "partial" }?.let { amountText(it, line.unit)?.let { a -> "$a from the fridge" } },
+        line.prep).joinToString(" · ").ifEmpty { null }
 
 /** The quiet line under the product: "onion · need 4 · diced · 3 recipes" (one recipe by name). */
 internal fun lineDetail(line: DraftLine): String {

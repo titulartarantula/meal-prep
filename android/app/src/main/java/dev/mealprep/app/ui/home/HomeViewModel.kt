@@ -6,6 +6,7 @@ import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.PendingRating
+import dev.mealprep.app.data.api.FridgeNight
 import dev.mealprep.app.data.api.PlanEntry
 import dev.mealprep.app.data.api.userMessage
 import dev.mealprep.app.ui.camera.RefPrompt
@@ -85,6 +86,18 @@ class HomeViewModel(
     private var pendingJob: Job? = null
     private var resumed = false
 
+    /** Items in the fridge list (the saved copy): "Use up the fridge" shows only with some. */
+    private val _fridgeCount = MutableStateFlow(0)
+    val fridgeCount: StateFlow<Int> = _fridgeCount.asStateFlow()
+    /** The newest fridge dinner of the last two days nobody answered: "Update the fridge? …" (either phone may). */
+    private val _nudge = MutableStateFlow<FridgeNight?>(null)
+    val nudge: StateFlow<FridgeNight?> = _nudge.asStateFlow()
+    private val _nudgeSending = MutableStateFlow(false)
+    val nudgeSending: StateFlow<Boolean> = _nudgeSending.asStateFlow()
+    /** A short confirmation for the snackbar ("Fridge updated · Eggs 2"). */
+    private val _snack = MutableStateFlow<String?>(null)
+    val snack: StateFlow<String?> = _snack.asStateFlow()
+
     init { refreshAhead(); refreshPending() }
 
     fun refreshPending() {
@@ -92,8 +105,31 @@ class HomeViewModel(
         pendingJob = viewModelScope.launch {
             val t = today()
             _pending.value = repo.pendingRatings(t).value.orEmpty().firstOrNull { repo.getLocal(laterKey(it.entryId, t), Boolean.serializer()) == null }
+            _fridgeCount.value = repo.fridge().value.orEmpty().count { it.qty == null || it.qty > 0 }
+            // Offline (or an older server) there is simply no nudge: the answer has to reach the server anyway.
+            if (!_nudgeSending.value) _nudge.value = (repo.fridgeUsed(t) as? ApiResult.Ok)?.value?.firstOrNull()
         }
     }
+
+    /** "Update fridge" (one tap, applied once; the button is off while it is sent) or "Not now" ([apply] false). */
+    fun answerNudge(apply: Boolean) {
+        val n = _nudge.value ?: return
+        if (_nudgeSending.value) return
+        _nudgeSending.value = true
+        viewModelScope.launch {
+            when (val r = repo.answerUsed(n.entryId, apply)) {
+                is ApiResult.Ok -> {
+                    if (apply) repo.fridge()   // the saved copy shows the new amounts
+                    _nudge.value = null
+                    if (apply) _snack.value = if (r.value.action == "applied") fridgeUpdatedText(r.value) else "Already answered on the other phone."
+                }
+                is ApiResult.Err -> _message.value = dev.mealprep.app.ui.fridge.FridgeLogic.writeMessage(r.error)
+            }
+            _nudgeSending.value = false
+        }
+    }
+
+    fun snackShown() { _snack.value = null }
 
     /** "Later": hidden on this phone until tomorrow (the next one, if any, shows the next time Home opens). */
     fun dismissPending() {

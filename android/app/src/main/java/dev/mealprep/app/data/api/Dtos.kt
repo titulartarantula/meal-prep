@@ -148,6 +148,8 @@ import kotlinx.serialization.Serializable
     val pinned: Boolean = false, val note: String? = null,
     /** An item added by search (since 0.13.0): its id in the week's added items. */
     val extraId: Int? = null,
+    /** What the fridge covered when the list was made (since 0.14.0): "partial" with [fridgeQty] in the line's unit. */
+    val fridge: String? = null, val fridgeQty: Double? = null,
 )
 @Serializable data class Progress(val done: Int = 0, val total: Int = 0)
 @Serializable data class Draft(

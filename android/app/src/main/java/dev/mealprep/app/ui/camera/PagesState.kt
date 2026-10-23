@@ -2,14 +2,15 @@ package dev.mealprep.app.ui.camera
 
 import java.io.File
 
-/** Pages of one recipe, in reading order (the server takes 1–10 and reads them in order as one recipe). */
-data class PagesState(val pages: List<File> = emptyList(), val retaking: Int? = null) {
-    companion object { const val MAX_PAGES = 10 }
+/** Pages of one recipe, in reading order (the server takes 1–10 and reads them in order as one recipe), or the photos
+ *  of one fridge read ([max] = [FRIDGE_MAX]). */
+data class PagesState(val pages: List<File> = emptyList(), val retaking: Int? = null, val max: Int = MAX_PAGES) {
+    companion object { const val MAX_PAGES = 10; const val FRIDGE_MAX = 6 }
 
     /** Another photo may be taken: there is room, or it replaces the page being retaken. */
-    val canShoot: Boolean get() = retaking != null || pages.size < MAX_PAGES
+    val canShoot: Boolean get() = retaking != null || pages.size < max
     /** More pages than the server accepts (only possible from a gallery share): some must be deleted first. */
-    val tooMany: Boolean get() = pages.size > MAX_PAGES
+    val tooMany: Boolean get() = pages.size > max
 
     fun add(f: File): PagesState = retaking?.let { i -> copy(pages = pages.toMutableList().also { it[i] = f }, retaking = null) }
         ?: copy(pages = pages + f)

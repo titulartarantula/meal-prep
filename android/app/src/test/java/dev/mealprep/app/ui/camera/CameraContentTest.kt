@@ -86,6 +86,21 @@ class CameraContentTest {
         assertEquals(1, back)
     }
 
+    @Test fun `the fridge read says photos, its hint, six at most and Read my fridge`() {
+        val six = (1..6).fold(PagesState(max = PagesState.FRIDGE_MAX)) { s, i -> s.add(File("/nonexistent/p$i.jpg")) }
+        compose.setContent {
+            CameraContent("Photograph your fridge", six, false, null, CameraMode.Ready, preview = { Box {} },
+                onShoot = {}, onSystemCamera = {}, onPick = {}, onAllowCamera = {}, onRetake = {}, onCancelRetake = {},
+                onRemove = {}, onMove = { _, _ -> }, onDone = {}, onBack = {}, kind = CameraKind.FRIDGE)
+        }
+        compose.onNodeWithText("Photograph each shelf, drawer and the door.").assertExists()
+        compose.onNodeWithText("6 of 6 photos · tap a photo to retake it").assertExists()
+        compose.onNodeWithText("Add photo").assertIsNotEnabled()
+        compose.onNodeWithText("That's the most for one read (6 photos).").assertExists()
+        compose.onNodeWithText("Read my fridge (6)").assertIsEnabled()
+        compose.onNodeWithContentDescription("Delete photo 1").assertExists()
+    }
+
     @Test fun `at ten pages only Done is left`() {
         show(pages(10))
         compose.onNodeWithText("Add page").assertIsNotEnabled()

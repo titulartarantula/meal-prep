@@ -289,7 +289,10 @@ class Repository(
     suspend fun confirmFridge(id: Int): ApiResult<FridgeItem> = call { it.patchFridge(id, Bodies.fridgeConfirm()) }
     suspend fun deleteFridge(id: Int): ApiResult<Unit> = call { it.deleteFridge(id) }
     /** Fridge photos up for a background read (202): the same photos again return the same read. */
-    suspend fun uploadFridgePhotos(photos: List<File>): ApiResult<FridgeRead> = call { it.fridgePhotos(Http.pageParts(photos)) }
+    override suspend fun uploadFridgePhotos(photos: List<File>): ApiResult<FridgeRead> = call { it.fridgePhotos(Http.pageParts(photos)) }
+    override suspend fun rememberFridgeBatch(readId: Int, dir: File) { putLocal("fridge-batch:$readId", String.serializer(), dir.path) }
+    /** The photo folder read [readId] came from, if it is still on the phone. */
+    suspend fun fridgeBatch(readId: Int): File? = getLocal("fridge-batch:$readId", String.serializer())?.let(::File)?.takeIf { it.isDirectory }
     suspend fun applyRead(id: Int, lines: List<ApplyLine>): ApiResult<FridgeRead> = call { it.applyRead(id, ApplyIn(lines)) }
     suspend fun dismissRead(id: Int): ApiResult<FridgeRead> = call { it.dismissRead(id) }
     /** "Update fridge" ([apply]) or "Not now" on the morning-after nudge; the first answer from either phone wins. */
