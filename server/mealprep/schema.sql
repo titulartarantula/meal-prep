@@ -312,3 +312,23 @@ CREATE TABLE IF NOT EXISTS extras(
 );
 CREATE INDEX IF NOT EXISTS extras_week_idx ON extras(week);
 ALTER TABLE cart_lines ADD COLUMN IF NOT EXISTS extra_id int;
+
+-- Fridge cleaner (0.14.0): the household's perishables on hand. `key` = the shopping-list name the item matches
+-- (staples.name_key: the cleaned, singular name without the unit family), set once when the name is added or edited
+-- (AI mapping onto the household's vocabulary, else the rule). An item leaves only when someone removes it.
+-- amount_as_of = the day the amount was last set or confirmed. qty null = "some" (no count); unit null = a count.
+CREATE TABLE IF NOT EXISTS fridge_items(
+  id serial PRIMARY KEY,
+  name text NOT NULL,
+  key text NOT NULL,
+  key_source text NOT NULL CHECK (key_source IN ('ai','rule','list')),
+  qty numeric,
+  unit text,
+  qty_estimated boolean NOT NULL DEFAULT false,
+  amount_as_of date NOT NULL DEFAULT CURRENT_DATE,
+  use_soon boolean NOT NULL DEFAULT false,
+  use_by date,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS fridge_items_key_unit_idx ON fridge_items(key, coalesce(unit, ''));

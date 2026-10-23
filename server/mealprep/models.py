@@ -85,6 +85,22 @@ class Staple(BaseModel):
     created_at: str
 
 
+class FridgeItem(BaseModel):
+    """An item in the household's fridge list (fridge.py)."""
+    id: int
+    name: str                    # as typed ("Large eggs")
+    key: str                     # the shopping list's name it matches ("egg"), set once per name
+    key_source: Literal["ai", "rule", "list"]
+    qty: float | None = None     # None = "some" (no amount); 0 = used up (the item stays until removed)
+    unit: str | None = None      # staples.normalise_unit; None = a count
+    qty_estimated: bool = False  # the amount came from a photo ("about")
+    amount_as_of: str            # ISO date the amount was last set or confirmed
+    days_since_checked: int = 0
+    use_soon: bool = False
+    use_by: str | None = None
+    soon: bool = False           # use_soon, or use_by within 3 days
+
+
 class Product(BaseModel):
     code: str
     name: str

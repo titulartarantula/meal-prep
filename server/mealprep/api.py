@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import books, db, drafts, extras, prepplan, recipe_edit, staples, subrecipe
+from . import books, db, drafts, extras, fridge, prepplan, recipe_edit, staples, subrecipe
 from .ai import AIError, get_provider
 from .exchange import importer, jsonld, safe
 from .config import Settings
@@ -16,7 +16,7 @@ from .importers.nyt import BASE as NYT_BASE, extract_nyt_url, fetch_nyt_recipe, 
 from .importers.photo import import_photo, import_subrecipe
 from .importers.structure import structure_ingredients
 from .matcher import fill_cart
-from .models import EDITABLE_FIELDS, ListItem, PlanEntry, Recipe, RecipeDetail, RecipeOut, SourceKind, Staple, recipe_revision
+from .models import EDITABLE_FIELDS, FridgeItem, ListItem, PlanEntry, Recipe, RecipeDetail, RecipeOut, SourceKind, Staple, recipe_revision
 from .pcx import Pcx
 from .shopping import build_list
 
@@ -206,6 +206,55 @@ class StaplePatch(BaseModel):   # partial update: omitted fields are left unchan
         return staples.normalise_unit(v)
 
 
+def _fridge_name(v):
+    v = _staple_name(v)
+    if len(v) > 80:
+        raise ValueError("name is longer than 80 characters")
+    return v
+
+
+FridgeQty = Annotated[float, Field(ge=0, le=10_000)]
+
+
+class FridgeIn(BaseModel):
+    name: str
+    qty: FridgeQty | None = None
+    unit: str | None = None
+    use_soon: Annotated[bool, Field(strict=True)] = False
+    use_by: date | None = None
+    from_list: Annotated[bool, Field(strict=True)] = False   # picked from the /fridge/names suggestions
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v):
+        return _fridge_name(v)
+
+    @field_validator("unit")
+    @classmethod
+    def _unit(cls, v):
+        return staples.normalise_unit(v)
+
+
+class FridgePatch(BaseModel):   # partial update: omitted fields are left unchanged; null clears qty/unit/use_by
+    name: str | None = None
+    qty: FridgeQty | None = None
+    unit: str | None = None
+    use_soon: Annotated[bool, Field(strict=True)] | None = None
+    use_by: date | None = None
+    confirm: Annotated[bool, Field(strict=True)] = False     # "Still right": the amount is dated today, unchanged
+    from_list: Annotated[bool, Field(strict=True)] = False
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v):
+        return _fridge_name(v)
+
+    @field_validator("unit")
+    @classmethod
+    def _unit(cls, v):
+        return staples.normalise_unit(v)
+
+
 class CartIn(BaseModel):
     items: list[ListItem]
     weeks: list[date] = []
@@ -286,6 +335,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     import_ai = provider or get_provider(settings, timeout=settings.import_ai_timeout)
     document_ai = provider or get_provider(settings, timeout=settings.document_ai_timeout)
     edit_ai = provider or get_provider(settings, timeout=settings.edit_ai_timeout)
+    fridge_ai = provider or get_provider(settings, timeout=settings.fridge_ai_timeout)
     import_cap = settings.import_max_mb * 1024 * 1024
     too_big = f"This file is too big to import (max {settings.import_max_mb} MB)."
     shop = pcx or Pcx(settings.store_id, api_key=settings.pcx_apikey)
@@ -686,6 +736,47 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     @app.delete("/staples/{staple_id}", status_code=204, dependencies=A)
     def remove_staple(staple_id: int, c=Depends(get_conn)):
         staples.delete_staple(c, staple_id)
+
+    def _use_by(d: date | None):
+        if d is not None and abs((d - today()).days) > 366:
+            raise HTTPException(422, "use_by must be within a year of today")
+
+    def _fridge_call(fn, *args, **kw):
+        try:
+            return fn(*args, **kw)
+        except fridge.FridgeNotFound as e:
+            raise HTTPException(404, str(e))
+        except fridge.FridgeExists as e:   # the app offers to edit the item that is already there
+            return JSONResponse({"detail": str(e), "id": e.item.id}, status_code=409)
+
+    @app.get("/fridge", dependencies=A)
+    def get_fridge(c=Depends(get_conn)) -> list[FridgeItem]:
+        """The household's fridge list: soon first (use soon / use-by within 3 days), then name A–Z."""
+        return fridge.list_items(c, today())
+
+    @app.get("/fridge/names", dependencies=A)
+    def fridge_names(q: str = Query("", max_length=80), c=Depends(get_conn)) -> list[str]:
+        """Typing suggestions: the shopping list's names containing q (≤ 12; from 1 character)."""
+        return fridge.suggest_names(c, q)
+
+    @app.post("/fridge", status_code=201, dependencies=A)
+    def add_fridge(body: FridgeIn, c=Depends(get_conn)) -> FridgeItem:
+        _use_by(body.use_by)
+        return _fridge_call(fridge.create_item, c, fridge_ai, body.name, body.qty, body.unit, today=today(),
+                            use_soon=body.use_soon, use_by=body.use_by, from_list=body.from_list)
+
+    @app.patch("/fridge/{item_id}", dependencies=A)
+    def patch_fridge(item_id: int, body: FridgePatch, c=Depends(get_conn)) -> FridgeItem:
+        fields = body.model_dump(include=body.model_fields_set)   # only what the client sent
+        for f in ("name", "use_soon"):
+            if f in fields and fields[f] is None:
+                raise HTTPException(422, f"{f} can't be null")
+        _use_by(fields.get("use_by"))
+        return _fridge_call(fridge.update_item, c, fridge_ai, item_id, today=today(), **fields)
+
+    @app.delete("/fridge/{item_id}", status_code=204, dependencies=A)
+    def remove_fridge(item_id: int, c=Depends(get_conn)):
+        fridge.delete_item(c, item_id)
 
     @app.get("/cart/default-week", dependencies=A)
     def cart_default_week(c=Depends(get_conn)):

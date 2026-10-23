@@ -37,5 +37,13 @@ class Settings:
     document_ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_DOCUMENT_AI_TIMEOUT", "600")))
     # Edit recipe: the AI structuring changed ingredient lines while the app waits (s); slower → the deterministic clean-up.
     edit_ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_EDIT_AI_TIMEOUT", "20")))
+    # Fridge (0.14.0): mapping a typed name onto the shopping list's names while the app waits (s; slower → the rule),
+    # reading fridge photos (s), and the photo limits (6 per read; each photo ≤ 7 MB so its base64 stays under the
+    # Anthropic API's 10 MB per image, all together ≤ 20 MB so the request stays under its 32 MB).
+    fridge_ai_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_FRIDGE_AI_TIMEOUT", "20")))
+    fridge_photo_timeout: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_FRIDGE_PHOTO_TIMEOUT", "180")))
+    fridge_max_photos: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_FRIDGE_MAX_PHOTOS", "6")))
+    fridge_photo_max_mb: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_FRIDGE_PHOTO_MAX_MB", "7")))
+    fridge_photos_max_mb: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_FRIDGE_PHOTOS_MAX_MB", "20")))
     store_id: str = "1092"
     default_people: int = 4
