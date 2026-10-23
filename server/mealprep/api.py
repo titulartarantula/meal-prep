@@ -12,7 +12,7 @@ from . import books, db, drafts, extras, prepplan, recipe_edit, staples, subreci
 from .ai import AIError, get_provider
 from .exchange import importer, jsonld, safe
 from .config import Settings
-from .importers.nyt import extract_nyt_url, fetch_nyt, parse_nyt_html
+from .importers.nyt import BASE as NYT_BASE, extract_nyt_url, fetch_nyt_recipe, parse_nyt_html, recipe_id as nyt_id
 from .importers.photo import import_photo, import_subrecipe
 from .importers.structure import structure_ingredients
 from .matcher import fill_cart
@@ -345,13 +345,20 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         url = extract_nyt_url(body.text)
         if not url:
             raise HTTPException(422, "no NYT Cooking link found")
-        existing = c.execute("SELECT id FROM recipes WHERE source_url=%s", (url,)).fetchone()
+        # Same numeric id = same recipe, whatever the slug (share links don't always carry the canonical one).
+        rid = nyt_id(url)
+        existing = c.execute("SELECT id FROM recipes WHERE source_url=%s OR source_url=%s OR source_url LIKE %s "
+                             "ORDER BY id LIMIT 1", (url, f"{NYT_BASE}/recipes/{rid}", f"{NYT_BASE}/recipes/{rid}-%")
+                             ).fetchone() if rid else \
+            c.execute("SELECT id FROM recipes WHERE source_url=%s", (url,)).fetchone()
         if existing:   # already in the library: no re-import (added to the week if one was sent)
             return _save_and_plan(c, db.get_recipe(c, existing[0]), body.week, existing=True)
         try:
-            title, servings, lines, steps = parse_nyt_html(fetch_nyt(url), url)
+            html, url = fetch_nyt_recipe(url)   # a wrong slug or id-only link resolves to the canonical one
+            title, servings, lines, steps = parse_nyt_html(html, url)
             ings = structure_ingredients(ai, lines)
-        except Exception as e:   # NotARecipe, AIError, httpx errors
+        except Exception as e:   # NytFetchError, NotARecipe, AIError
+            log.warning("share import of %s failed: %s: %s", url, type(e).__name__, str(e)[:300])
             raise HTTPException(502, f"import failed: {type(e).__name__}: {str(e)[:200]}")
         r = Recipe(title=title, source="nyt", source_url=url, servings=servings, ingredients=ings, steps=steps)
         return _save_and_plan(c, r, body.week)

@@ -168,7 +168,7 @@ def test_attached_page_keeps_the_recipes_book(conn):
 def test_share_nyt_sets_kind(conn, monkeypatch):
     import mealprep.api as api_mod
     from test_api import FIX
-    monkeypatch.setattr(api_mod, "fetch_nyt", lambda url: FIX.read_text())
+    monkeypatch.setattr(api_mod, "fetch_nyt_recipe", lambda url: (FIX.read_text(), url))
     rec = client(conn).post("/recipes/share", headers=H, json={"text": "https://cooking.nytimes.com/recipes/1015819-x"}).json()["recipe"]
     assert (rec["source_kind"], rec["source_title"], rec["source_ref"]) == ("nyt", None, None)
 

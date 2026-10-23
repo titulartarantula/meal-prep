@@ -150,7 +150,7 @@ def test_recipes_sort_favourites(conn):
 def test_resharing_existing_recipe_shows_current_rating(conn, monkeypatch):
     import mealprep.api as api_mod
     from test_api import FIX
-    monkeypatch.setattr(api_mod, "fetch_nyt", lambda url: FIX.read_text())
+    monkeypatch.setattr(api_mod, "fetch_nyt_recipe", lambda url: (FIX.read_text(), url))
     c = client(conn, today=TODAY)
     text = {"text": "https://cooking.nytimes.com/recipes/1015819-x", "week": "2026-10-04"}
     first = c.post("/recipes/share", headers=H, json=text).json()

@@ -39,7 +39,7 @@ H = {"Authorization": "Bearer secret"}
 
 @pytest.fixture
 def nyt(monkeypatch):
-    monkeypatch.setattr(api_mod, "fetch_nyt", lambda url: FIX.read_text())
+    monkeypatch.setattr(api_mod, "fetch_nyt_recipe", lambda url: (FIX.read_text(), url))
 
 
 def share(c, week):
@@ -128,13 +128,33 @@ def test_place_on_night_and_scale(conn, nyt):
     assert c.get("/weeks/2026-10-11", headers=H).json() == []
 
 
+def test_share_with_another_slug_finds_the_same_id(conn, nyt, monkeypatch):
+    c = client(conn)
+    first = c.post("/recipes/share", headers=H, json={"text": NYT}).json()
+    fetched = []
+    def fetch(url): fetched.append(url); raise RuntimeError("404")
+    monkeypatch.setattr(api_mod, "fetch_nyt_recipe", fetch)
+    for t in ("https://cooking.nytimes.com/recipes/1015819-other-slug?smid=x", "https://cooking.nytimes.com/recipes/1015819"):
+        again = c.post("/recipes/share", headers=H, json={"text": t}).json()
+        assert again["existing"] is True and again["recipe"]["id"] == first["recipe"]["id"]
+    assert fetched == []          # found by id, nothing fetched
+    assert c.post("/recipes/share", headers=H, json={"text": "https://cooking.nytimes.com/recipes/10158190-x"}).status_code == 502
+    assert fetched == ["https://cooking.nytimes.com/recipes/10158190-x"]   # a longer id is another recipe
+
+
+def test_share_saves_the_resolved_link(conn, monkeypatch):
+    monkeypatch.setattr(api_mod, "fetch_nyt_recipe", lambda url: (FIX.read_text(), "https://cooking.nytimes.com/recipes/1015819-chocolate-chip-cookies"))
+    rec = client(conn).post("/recipes/share", headers=H, json={"text": NYT}).json()["recipe"]
+    assert rec["source_url"] == "https://cooking.nytimes.com/recipes/1015819-chocolate-chip-cookies"
+
+
 def test_share_not_nyt(conn):
     assert client(conn).post("/recipes/share", headers=H, json={"text": "hello"}).status_code == 422
 
 
 def test_share_fetch_failure_is_502_and_saves_nothing(conn, monkeypatch):
     def boom(url): raise RuntimeError("network down")
-    monkeypatch.setattr(api_mod, "fetch_nyt", boom)
+    monkeypatch.setattr(api_mod, "fetch_nyt_recipe", boom)
     c = client(conn)
     assert share(c, "2026-10-11").status_code == 502
     assert c.get("/recipes", headers=H).json() == []
