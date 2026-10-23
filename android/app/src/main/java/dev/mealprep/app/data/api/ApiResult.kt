@@ -27,6 +27,8 @@ sealed interface ApiError {
     data object TimedOut : ApiError
     data object Unauthorized : ApiError
     data class Http(val code: Int, val detail: String?) : ApiError
+    /** 409 for something already there that the app can open instead (a fridge item: "Already in the fridge: 6 Eggs"). */
+    data class Exists(val detail: String, val id: Int) : ApiError
     data class Other(val message: String) : ApiError
 }
 
@@ -39,6 +41,7 @@ fun ApiError.userMessage(): String = when (this) {
     // (404/409/422) are written for people and shown as they are.
     is ApiError.Http -> if (code == 502) "The server couldn't get what it needed from another site. Try again later."
         else detail ?: "Server error ($code)."
+    is ApiError.Exists -> detail
     is ApiError.Other -> message
 }
 
@@ -71,6 +74,10 @@ suspend fun <T> apiCall(block: suspend () -> T): ApiResult<T> = try {
 
 internal fun httpError(code: Int, body: String?): ApiError {
     if (code == 401) return ApiError.Unauthorized
+    if (code == 409) runCatching {
+        val o = Http.json.parseToJsonElement(body!!).jsonObject
+        return ApiError.Exists(o["detail"]!!.jsonPrimitive.content, o["id"]!!.jsonPrimitive.content.toInt())
+    }
     val detail = runCatching {
         when (val d = Http.json.parseToJsonElement(body!!).jsonObject["detail"]) {
             is JsonPrimitive -> d.content

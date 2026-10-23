@@ -51,6 +51,20 @@ interface MealPrepApi {
     @POST("staples") suspend fun addStaple(@Body body: StapleIn): Staple
     @PATCH("staples/{id}") suspend fun patchStaple(@Path("id") id: Int, @Body body: JsonObject): Staple
     @DELETE("staples/{id}") suspend fun deleteStaple(@Path("id") id: Int)
+    @GET("fridge") suspend fun fridge(): List<FridgeItem>
+    @POST("fridge") suspend fun addFridge(@Body body: FridgeIn): FridgeItem
+    @PATCH("fridge/{id}") suspend fun patchFridge(@Path("id") id: Int, @Body body: JsonObject): FridgeItem
+    @DELETE("fridge/{id}") suspend fun deleteFridge(@Path("id") id: Int)
+    @GET("fridge/names") suspend fun fridgeNames(@Query("q") q: String): List<String>
+    @POST("fridge/suggest") suspend fun suggest(@Body body: SuggestIn): Suggestion
+    /** 202: the read runs in the background (poll [fridgeRead]); the same photos again → that read (existing). */
+    @Multipart @POST("fridge/photos") suspend fun fridgePhotos(@Part files: List<MultipartBody.Part>): FridgeRead
+    @GET("fridge/reads") suspend fun openFridgeRead(): OpenRead
+    @GET("fridge/reads/{id}") suspend fun fridgeRead(@Path("id") id: Int): FridgeRead
+    @POST("fridge/reads/{id}/apply") suspend fun applyRead(@Path("id") id: Int, @Body body: ApplyIn): FridgeRead
+    @POST("fridge/reads/{id}/dismiss") suspend fun dismissRead(@Path("id") id: Int): FridgeRead
+    @GET("fridge/used") suspend fun fridgeUsed(@Query("today") today: String): List<FridgeNight>
+    @POST("fridge/used/{id}") suspend fun answerUsed(@Path("id") id: Int, @Body body: UsedIn): UsedAnswer
     @GET("cart/default-week") suspend fun defaultCartWeek(): DefaultWeek
     @POST("drafts") suspend fun createDraft(@Body body: DraftIn): JobStarted
     @GET("drafts/{id}") suspend fun draft(@Path("id") id: Int): Draft

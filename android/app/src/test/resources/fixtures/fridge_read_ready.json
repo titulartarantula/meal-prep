@@ -1,0 +1,8 @@
+{"id":12,"status":"ready","photo_count":3,"progress":null,
+ "proposals":[
+  {"pid":"p1","kind":"amount","item_id":1,"name":"Eggs","key":"egg","key_source":"ai","estimate":{"qty":4.0,"unit":null},"current":{"qty":6.0,"unit":null,"amount_as_of":"2026-10-01","qty_estimated":false},"confidence":"high","where":"door","default_on":true},
+  {"pid":"p2","kind":"seen","item_id":3,"name":"Spinach","key":"spinach","key_source":"rule","estimate":null,"current":{"qty":1.0,"unit":"bag","amount_as_of":"2026-10-01","qty_estimated":true},"confidence":"high","where":"crisper drawer","default_on":true},
+  {"pid":"p3","kind":"new","item_id":null,"name":"Whole milk","key":"whole milk","key_source":"list","estimate":{"qty":1.0,"unit":"l"},"current":null,"confidence":"medium","where":"top shelf","default_on":true},
+  {"pid":"p4","kind":"new","item_id":null,"name":"Lemons","key":"lemon","key_source":"rule","estimate":{"qty":2.0,"unit":null},"current":null,"confidence":"low","where":"door","default_on":false},
+  {"pid":"p5","kind":"not_seen","item_id":2,"name":"Cilantro","key":"cilantro","key_source":"list","estimate":null,"current":{"qty":1.0,"unit":"bunch","amount_as_of":"2026-09-28","qty_estimated":false},"confidence":null,"where":null,"default_on":false}],
+ "counts":{"new":2,"amount":1,"seen":1,"not_seen":1},"result":null,"error":null,"created_at":"2026-10-07T14:00:00+00:00","finished_at":"2026-10-07T14:00:40+00:00","applied_at":null}

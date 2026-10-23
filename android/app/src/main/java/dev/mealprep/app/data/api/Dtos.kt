@@ -79,14 +79,20 @@ import kotlinx.serialization.Serializable
     val multiplier: Double = 1.0,
 )
 
-/** [staples]: ids of the ticked weekly staples; the server merges them into the list like recipe lines. */
-@Serializable data class ListIn(val weeks: List<String>, val people: Int = 4, val staples: List<Int> = emptyList())
+/** [staples]: ids of the ticked weekly staples; the server merges them into the list like recipe lines. [fridge]: leave
+ *  out what is in the fridge (since 0.14.0; ListItem.fridge). */
+@Serializable data class ListIn(val weeks: List<String>, val people: Int = 4, val staples: List<Int> = emptyList(),
+                                val fridge: Boolean = false)
 @Serializable data class ListItem(
     val key: String, val name: String, val qty: Double? = null, val unit: String? = null, val prep: String? = null,
     val likelyOnHand: Boolean = false, val needed: Boolean = true, val recipes: List<String> = emptyList(),
     // A weekly staple is (part of) this line; staplePacks = "at least this many packs". Sent back as is in
     // POST /drafts so the server's planner keeps the floor.
     val staple: Boolean = false, val staplePacks: Int? = null,
+    /** What the fridge covers (since 0.14.0, with ListIn.fridge): "covered" (all of it: [qty] is what the recipes need,
+     *  not needed), "partial" ([qty] = the remainder, [fridgeQty] = from the fridge, in the line's unit) or "check"
+     *  (units that don't convert: not needed, "check you have enough"). Sent back as is in POST /drafts. */
+    val fridge: String? = null, val fridgeQty: Double? = null, val fridgeItems: List<Int> = emptyList(),
 ) {
     /** A line that is only a staple (no recipe needs it): the Staples section stands for it. */
     val onlyStaple: Boolean get() = staple && recipes.all { it == STAPLES }
@@ -247,3 +253,80 @@ import kotlinx.serialization.Serializable
 
 /** The library recipe (or, [recipeId] null, an earlier recipe of the same file) an item matched, and how. */
 @Serializable data class ImportMatch(val recipeId: Int? = null, val title: String = "", val by: String = "")
+
+// --- Fridge (0.14.0) ---
+
+/** An item in the household's fridge list. [qty] null = "some" (no amount), 0 = used up; [unit] null = a count.
+ *  [key] = the shopping list's name it matches; [qtyEstimated] = the amount came from a photo ("about");
+ *  [amountAsOf] = ISO date the amount was set or confirmed; [soon] = use soon, or a use-by within 3 days. */
+@Serializable data class FridgeItem(
+    val id: Int, val name: String, val key: String = "", val keySource: String = "rule",
+    val qty: Double? = null, val unit: String? = null, val qtyEstimated: Boolean = false, val amountAsOf: String = "",
+    val daysSinceChecked: Int = 0, val useSoon: Boolean = false, val useBy: String? = null, val soon: Boolean = false,
+)
+/** [fromList]: the name was picked from the server's suggestions (no AI mapping needed). */
+@Serializable data class FridgeIn(
+    val name: String, val qty: Double? = null, val unit: String? = null, val useSoon: Boolean = false,
+    val useBy: String? = null, val fromList: Boolean = false,
+)
+
+/** POST /fridge/suggest: [exclude] = recipes not wanted ("Suggest others"); recipes already on [week] are left out. */
+@Serializable data class SuggestIn(val nights: Int, val people: Int = 4, val week: String? = null, val exclude: List<Int> = emptyList())
+@Serializable data class Suggestion(
+    val picks: List<Pick> = emptyList(), val fridgeLeft: List<FridgeLeft> = emptyList(),
+    /** "Eggs: last checked 9 days ago" for the used items whose amount is old. */
+    val stale: List<String> = emptyList(),
+    /** Fewer library recipes use the fridge than nights asked for. */
+    val thinLibrary: Boolean = false,
+)
+@Serializable data class Pick(
+    val recipeId: Int, val title: String, val score: Double = 0.0, val ratings: RatingSummary = RatingSummary(),
+    val uses: List<FridgeUse> = emptyList(), val stillNeed: List<String> = emptyList(), val stillNeedMore: Int = 0,
+)
+/** What a pick uses of an item: [amount] "4 Eggs" ([convertible]), or just the name when the units don't convert. */
+@Serializable data class FridgeUse(
+    val itemId: Int, val name: String, val amount: String, val qty: Double? = null, val unit: String? = null,
+    val convertible: Boolean = false, val stale: Boolean = false,
+)
+@Serializable data class FridgeLeft(val itemId: Int, val name: String, val amount: String = "")
+
+/** A read of fridge photos (POST /fridge/photos, GET /fridge/reads/{id}): [status] reading → ready | failed, then
+ *  applied | dismissed. [existing] (upload only): these photos were already being read. */
+@Serializable data class FridgeRead(
+    val id: Int, val status: String, val photoCount: Int = 0, val progress: String? = null,
+    val proposals: List<Proposal> = emptyList(), val counts: Map<String, Int> = emptyMap(),
+    val result: Map<String, Int>? = null, val error: String? = null, val createdAt: String? = null,
+    val finishedAt: String? = null, val appliedAt: String? = null, val existing: Boolean = false,
+) {
+    fun count(kind: String): Int = counts[kind] ?: 0
+}
+/** One line of a read's review. [kind]: new | amount | seen | not_seen; [itemId] null for new. [estimate] = what the
+ *  photo showed (null: couldn't tell); [current] = the item as it is. [defaultOn] = starts ticked. */
+@Serializable data class Proposal(
+    val pid: String, val kind: String, val itemId: Int? = null, val name: String, val key: String = "",
+    val keySource: String = "", val estimate: FridgeAmount? = null, val current: CurrentAmount? = null,
+    val confidence: String? = null, val where: String? = null, val defaultOn: Boolean = false,
+)
+@Serializable data class FridgeAmount(val qty: Double? = null, val unit: String? = null)
+@Serializable data class CurrentAmount(val qty: Double? = null, val unit: String? = null, val amountAsOf: String? = null,
+                                       val qtyEstimated: Boolean = false)
+@Serializable data class OpenRead(val read: FridgeRead? = null)
+/** A reviewed line; [name]/[qty]/[unit] only when edited (an edited number is typed, no longer an estimate). */
+@Serializable data class ApplyLine(
+    val pid: String, val accept: Boolean, val name: String? = null, val qty: Double? = null, val unit: String? = null,
+    val useSoon: Boolean? = null,
+)
+@Serializable data class ApplyIn(val lines: List<ApplyLine>)
+
+/** The morning after a fridge dinner (GET /fridge/used): what one tap would take off the list. */
+@Serializable data class FridgeNight(
+    val entryId: Int, val date: String, val title: String, val uses: List<NightUse> = emptyList(),
+    /** Items it used whose units don't convert: "Check: cilantro". */
+    val check: List<String> = emptyList(),
+)
+@Serializable data class NightUse(val itemId: Int, val name: String, val used: String, val after: String = "")
+@Serializable data class UsedIn(val apply: Boolean)
+@Serializable data class UsedAnswer(val entryId: Int, val action: String, val changes: List<UsedChange> = emptyList(),
+                                    val answeredAt: String? = null)
+@Serializable data class UsedChange(val itemId: Int, val name: String, val before: Double? = null, val after: Double? = null,
+                                    val unit: String? = null, val text: String = "")

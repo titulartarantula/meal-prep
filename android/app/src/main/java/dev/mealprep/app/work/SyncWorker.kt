@@ -27,7 +27,7 @@ import kotlinx.serialization.builtins.ListSerializer
 /**
  * Hourly, on app start and after a change on this phone (a dinner placed, moved, removed or rated; a prep plan
  * written; notification settings): refreshes the saved copies of last / this / next week, their prep plans' cook
- * cards and the library; tells this phone about a cart that is ready to review (built on either phone); and
+ * cards, the library and the fridge list; tells this phone about a cart that is ready to review (built on either phone); and
  * re-plans this phone's reminders. Away from home it plans from the saved copies.
  */
 class SyncWorker(
@@ -65,6 +65,7 @@ class SyncWorker(
         if (live) {
             weeks.forEach { (_, _, p) -> p.value?.let { repo.saveCards(it) } }   // cook cards readable away from home
             repo.recipes()
+            repo.fridge()
             if (s.notif.cartReady) cartReady(t)
         }
         // A week that couldn't be read and has no saved copy: keep the reminders already queued rather than drop them.

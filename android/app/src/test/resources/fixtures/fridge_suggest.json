@@ -1,0 +1,7 @@
+{"picks":[{"recipe_id":5,"title":"Test Spinach Frittata","score":3.85,"ratings":{"times_cooked":2,"times_rated":2,"avg_family":4.5,"last_family":5,"last_rated_at":"2026-09-20T19:00:00-04:00","company":"yes","notes":[],"imported_ratings":0},
+  "uses":[{"item_id":1,"name":"Eggs","amount":"4 Eggs","qty":4.0,"unit":null,"convertible":true,"stale":false},{"item_id":3,"name":"Spinach","amount":"1 bag Spinach","qty":1.0,"unit":"bag","convertible":true,"stale":false},{"item_id":2,"name":"Cilantro","amount":"Cilantro","qty":null,"unit":null,"convertible":false,"stale":true}],
+  "still_need":["feta","red onion"],"still_need_more":0},
+ {"recipe_id":7,"title":"Test Green Shakshuka","score":0.4,"ratings":{"times_cooked":0,"times_rated":0,"avg_family":null,"last_family":null,"last_rated_at":null,"company":null,"notes":[],"imported_ratings":0},
+  "uses":[{"item_id":1,"name":"Eggs","amount":"2 Eggs","qty":2.0,"unit":null,"convertible":true,"stale":false}],
+  "still_need":["chicken thigh","lime","jalapeno","tomatillo","green onion","avocado","tortilla","sour cream"],"still_need_more":2}],
+ "fridge_left":[{"item_id":4,"name":"Yogurt","amount":"Yogurt"}],"stale":["Cilantro: last checked 9 days ago"],"thin_library":false}

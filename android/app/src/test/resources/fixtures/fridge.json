@@ -1,0 +1,4 @@
+[{"id":2,"name":"Cilantro","key":"cilantro","key_source":"list","qty":1.0,"unit":"bunch","qty_estimated":false,"amount_as_of":"2026-09-28","days_since_checked":9,"use_soon":true,"use_by":null,"soon":true},
+ {"id":1,"name":"Eggs","key":"egg","key_source":"ai","qty":6.0,"unit":null,"qty_estimated":false,"amount_as_of":"2026-10-06","days_since_checked":1,"use_soon":false,"use_by":"2026-10-20","soon":false},
+ {"id":3,"name":"Spinach","key":"spinach","key_source":"rule","qty":1.0,"unit":"bag","qty_estimated":true,"amount_as_of":"2026-10-07","days_since_checked":0,"use_soon":false,"use_by":null,"soon":false},
+ {"id":4,"name":"Yogurt","key":"yogurt","key_source":"rule","qty":null,"unit":null,"qty_estimated":false,"amount_as_of":"2026-10-07","days_since_checked":0,"use_soon":false,"use_by":null,"soon":false}]

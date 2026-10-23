@@ -40,4 +40,18 @@ object Bodies {
         if (removed != null) put("removed", removed)
         if (pinned != null) put("pinned", pinned)
     }
+
+    /** A fridge item's edit form saved: every field sent, null clears qty/unit/use_by. */
+    fun fridgePatch(name: String, qty: Double?, unit: String?, useSoon: Boolean, useBy: String?, fromList: Boolean = false): JsonObject =
+        buildJsonObject {
+            put("name", name)
+            if (qty != null) put("qty", qty) else put("qty", JsonNull)
+            if (unit != null) put("unit", unit) else put("unit", JsonNull)
+            put("use_soon", useSoon)
+            if (useBy != null) put("use_by", useBy) else put("use_by", JsonNull)
+            if (fromList) put("from_list", true)
+        }
+
+    /** "Still right": the amount is dated today, unchanged. */
+    fun fridgeConfirm(): JsonObject = buildJsonObject { put("confirm", true) }
 }

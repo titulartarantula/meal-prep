@@ -17,6 +17,16 @@ import dev.mealprep.app.data.api.DraftLine
 import dev.mealprep.app.data.api.EntryIn
 import dev.mealprep.app.data.api.Extra
 import dev.mealprep.app.data.api.ExtraIn
+import dev.mealprep.app.data.api.ApplyIn
+import dev.mealprep.app.data.api.ApplyLine
+import dev.mealprep.app.data.api.FridgeIn
+import dev.mealprep.app.data.api.FridgeItem
+import dev.mealprep.app.data.api.FridgeNight
+import dev.mealprep.app.data.api.FridgeRead
+import dev.mealprep.app.data.api.SuggestIn
+import dev.mealprep.app.data.api.Suggestion
+import dev.mealprep.app.data.api.UsedAnswer
+import dev.mealprep.app.data.api.UsedIn
 import dev.mealprep.app.data.api.Health
 import dev.mealprep.app.data.api.ImportReport
 import dev.mealprep.app.data.api.Http
@@ -177,6 +187,10 @@ class Repository(
     suspend fun weekDraft(week: LocalDate): Loaded<Draft?> =
         loadOptional("draft:${wk(week)}", Draft.serializer()) { it.weekDraft(wk(week)) }
     suspend fun staples(): Loaded<List<Staple>> = load("staples", ListSerializer(Staple.serializer())) { it.staples() }
+    /** The household's fridge list (one for both phones), with the saved copy offline. */
+    suspend fun fridge(): Loaded<List<FridgeItem>> = load("fridge", ListSerializer(FridgeItem.serializer())) { it.fridge() }
+    /** A read of fridge photos, its last copy kept (the review stays readable away from home). */
+    suspend fun fridgeRead(id: Int): Loaded<FridgeRead> = load("fridgeread:$id", FridgeRead.serializer()) { it.fridgeRead(id) }
     suspend fun pendingRatings(today: LocalDate): Loaded<List<PendingRating>> =
         load("pending", ListSerializer(PendingRating.serializer())) { it.pendingRatings(today.toString()) }
 
@@ -187,10 +201,21 @@ class Repository(
     suspend fun prepPlan(id: Int): ApiResult<PrepPlan> = call { it.prepPlan(id) }
     /** Book suggestions for "Which book?" (live, never saved: offline the caller falls back to the household's books). */
     suspend fun searchBooks(q: String, limit: Int = 8): ApiResult<List<BookHit>> = call { it.searchBooks(q, limit) }
-    suspend fun shoppingList(weeks: List<LocalDate>, staples: List<Int> = emptyList()): ApiResult<List<ListItem>> {
+    suspend fun shoppingList(weeks: List<LocalDate>, staples: List<Int> = emptyList(), fridge: Boolean = false): ApiResult<List<ListItem>> {
         afterPlanWrites()
-        return call { it.list(ListIn(weeks.map(::wk), staples = staples)) }
+        return call { it.list(ListIn(weeks.map(::wk), staples = staples, fridge = fridge)) }
     }
+    /** Names the shopping list uses that contain [q] (typing suggestions for a fridge item). Live. */
+    suspend fun fridgeNames(q: String): ApiResult<List<String>> = call { it.fridgeNames(q) }
+    /** Library dinners that use the fridge ([week]'s recipes are left out and use it first). Live. */
+    suspend fun suggest(nights: Int, people: Int, week: LocalDate?, exclude: List<Int> = emptyList()): ApiResult<Suggestion> {
+        afterPlanWrites()
+        return call { it.suggest(SuggestIn(nights, people, week?.let(::wk), exclude)) }
+    }
+    /** The newest fridge read still reading or waiting for review (either phone's), or null. */
+    suspend fun openFridgeRead(): ApiResult<FridgeRead?> = call { it.openFridgeRead().read }
+    /** Last nights' fridge dinners nobody answered ("Update the fridge?"). Live: either phone may answer. */
+    suspend fun fridgeUsed(today: LocalDate): ApiResult<List<FridgeNight>> = call { it.fridgeUsed(today.toString()) }
 
     // --- writes ---
     /** Sets the recipe's book, page, author and ISBN (blank = not known / none), or with [kind] "other" its source's
@@ -253,6 +278,22 @@ class Repository(
     suspend fun moveStaple(id: Int, position: Int): ApiResult<Staple> =
         call { it.patchStaple(id, Bodies.staplePatch(position = position)) }
     suspend fun deleteStaple(id: Int): ApiResult<Unit> = call { it.deleteStaple(id) }
+    suspend fun addFridge(name: String, qty: Double?, unit: String?, useSoon: Boolean = false, useBy: LocalDate? = null,
+                          fromList: Boolean = false): ApiResult<FridgeItem> =
+        call { it.addFridge(FridgeIn(name.clean() ?: name, qty, unit.clean(), useSoon, useBy?.toString(), fromList)) }
+    /** The edit form saved: every field (null clears qty, unit and use-by); a new name is matched again on the server. */
+    suspend fun editFridge(id: Int, name: String, qty: Double?, unit: String?, useSoon: Boolean, useBy: LocalDate?,
+                           fromList: Boolean = false): ApiResult<FridgeItem> =
+        call { it.patchFridge(id, Bodies.fridgePatch(name.clean() ?: name, qty, unit.clean(), useSoon, useBy?.toString(), fromList)) }
+    /** "Still right": the amount is dated today. */
+    suspend fun confirmFridge(id: Int): ApiResult<FridgeItem> = call { it.patchFridge(id, Bodies.fridgeConfirm()) }
+    suspend fun deleteFridge(id: Int): ApiResult<Unit> = call { it.deleteFridge(id) }
+    /** Fridge photos up for a background read (202): the same photos again return the same read. */
+    suspend fun uploadFridgePhotos(photos: List<File>): ApiResult<FridgeRead> = call { it.fridgePhotos(Http.pageParts(photos)) }
+    suspend fun applyRead(id: Int, lines: List<ApplyLine>): ApiResult<FridgeRead> = call { it.applyRead(id, ApplyIn(lines)) }
+    suspend fun dismissRead(id: Int): ApiResult<FridgeRead> = call { it.dismissRead(id) }
+    /** "Update fridge" ([apply]) or "Not now" on the morning-after nudge; the first answer from either phone wins. */
+    suspend fun answerUsed(entryId: Int, apply: Boolean): ApiResult<UsedAnswer> = call { it.answerUsed(entryId, UsedIn(apply)) }
     suspend fun startPrep(weeks: List<LocalDate>): ApiResult<JobStarted> = call { it.startPrep(PrepIn(weeks.map(::wk))) }
     suspend fun tickTask(planId: Int, taskId: String, done: Boolean): ApiResult<PrepTask> =
         call { it.tickTask(planId, taskId, TaskDone(done)) }

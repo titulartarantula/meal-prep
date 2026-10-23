@@ -29,7 +29,7 @@ object Http {
     fun isLongCall(path: String): Boolean = LONG_CALL.containsMatchIn(path)
 
     // Files up and down (import / export): bigger bodies, a slower server read, but no AI wait.
-    private val TRANSFER = Regex("""/recipes/(import|export|\d+/export)$""")
+    private val TRANSFER = Regex("""/recipes/(import|export|\d+/export)$|/fridge/photos$""")
     fun isTransfer(path: String): Boolean = TRANSFER.containsMatchIn(path)
 
     private val HEALTH = Regex("""/health$""")
