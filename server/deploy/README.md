@@ -66,7 +66,20 @@ and off → deletes the entries, the prep plan and its task events.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /list` `{weeks, people?, staples?: [ids]}` | the merged shopping list for the weeks (plan entries placed or not); `staples` = the ticked weekly staples to merge in (see below) |
+| `POST /list` `{weeks, people?, staples?: [ids], fridge?: bool}` | the merged shopping list for the weeks (plan entries placed or not); `staples` = the ticked weekly staples to merge in (see below); `fridge: true` subtracts the fridge list (see "Fridge" below) |
+| `GET /fridge` | the fridge list, soon first (use soon / use-by within 3 days), then name A–Z: `id, name, key` (the shopping list's name it matches), `key_source` (`list`/`ai`/`rule`), `qty` (null = "some"; 0 = used up, stays until removed), `unit` (null = a count), `qty_estimated` (from a photo), `amount_as_of`, `days_since_checked`, `use_soon`, `use_by`, `soon` |
+| `POST /fridge` `{name 1–80, qty? 0–10000, unit?, use_soon?, use_by?, from_list?}` | add → 201; the name is matched once (a vocabulary name as is; else one AI call, `MEALPREP_FRIDGE_AI_TIMEOUT` 20 s; else the rule); `from_list` (picked from `/fridge/names`) skips the AI. Same key + unit → 409 `{detail: "Already in the fridge: 6 Eggs", id}`; 422 bad unit/qty/use-by (±1 year) |
+| `PATCH /fridge/{id}` `{name?, qty?, unit?, use_soon?, use_by?, confirm?, from_list?}` | partial update; a new name is matched again; setting qty/unit dates the amount today and clears `qty_estimated`; `confirm: true` = "Still right" (dates it today only) |
+| `DELETE /fridge/{id}` | remove → 204 (idempotent). Nothing else ever removes an item (not a cart, a dinner or a photo) |
+| `GET /fridge/names?q=` | typing suggestions: the vocabulary (library recipe lines + staples, cleaned names, most used first, ≤ 600) entries containing q, ≤ 12, from 1 character |
+| `POST /fridge/suggest` `{nights 1–7, people? 1–20 = 4, week?, exclude?: [recipe ids]}` | library dinners that use the fridge: `{picks: [{recipe_id, title, score, ratings, uses: [{item_id, name, amount, qty, unit, convertible, stale}], still_need (≤ 8 names), still_need_more}], fridge_left, stale: ["eggs: last checked 9 days ago"], thin_library}`. Greedy (see `fridge.select`), no AI; recipes already on `week` are left out and use the fridge first |
+| `POST /fridge/photos` multipart `files` (1–`MEALPREP_FRIDGE_MAX_PHOTOS` = 6; JPEG/PNG/WebP/GIF by content; each ≤ `MEALPREP_FRIDGE_PHOTO_MAX_MB` = 7, together ≤ `MEALPREP_FRIDGE_PHOTOS_MAX_MB` = 20) | → 202 a read (as `GET /fridge/reads/{id}`) + `existing` (the same photos while that read is reading/ready → that read). One vision call in the background (`MEALPREP_FRIDGE_PHOTO_TIMEOUT` 180 s, one retry) + one name-mapping call; the photos are deleted when the read ends, success or not. A restart marks reading reads failed |
+| `GET /fridge/reads/{id}` | `{id, status: reading\|ready\|failed\|applied\|dismissed, photo_count, progress, proposals, counts {new, amount, seen, not_seen}, result, error, created_at, finished_at, applied_at}`. Proposal: `{pid, kind: new\|amount\|seen\|not_seen, item_id, name, key, key_source, estimate {qty, unit}, current {qty, unit, amount_as_of, qty_estimated}, confidence, where, default_on}`; `not_seen` and low confidence always start off, and so does an estimate on an amount typed in the last 2 days |
+| `GET /fridge/reads` | `{read}`: the newest read still reading or ready (≤ 14 days), or null |
+| `POST /fridge/reads/{id}/apply` `{lines: [{pid, accept, name?, qty?, unit?, use_soon?}]}` | one transaction: accepted new → added (the same key + unit added meanwhile gets the amount), amount → the estimate (`qty_estimated`) or the edited number (typed), seen → as of today, not_seen → removed; others nothing → the read with `result {added, changed, seen, removed}`. Not ready (applied already, dismissed, failed, reading) → 409 `{detail, read}` |
+| `POST /fridge/reads/{id}/dismiss` | discard the proposals → the read (idempotent; 409 if applied) |
+| `GET /fridge/used?today=` | the morning-after nudge: nights of the last 2 days (before today) whose recipe (× multiplier, for 4) uses a fridge item and nobody answered, newest first: `{entry_id, date, title, uses: [{item_id, name, used: "4 eggs", after: "2 left"}], check: ["cilantro"]}`; items set or confirmed on/after that day are left alone. Read-only |
+| `POST /fridge/used/{entry}` `{apply}` | `true` takes what it used off the list (floor 0, items stay; dated today), `false` = Not now → `{entry_id, action, changes [{item_id, name, before, after, unit, text}], answered_at}`; the first answer wins (both phones at once subtract once); 404 unknown entry |
 | `GET /staples` | weekly staples in the household's order: `id, name, qty, unit, weekly, position, last_bought, created_at` |
 | `POST /staples` `{name, qty?, unit?, weekly?}` | add one at the end → 201; 409 if the item is already a staple, 422 for an unknown unit |
 | `PATCH /staples/{id}` `{name?, qty?, unit?, weekly?, last_bought?, position?}` | partial update (null clears qty/unit/last_bought); `position` moves it there and renumbers |
@@ -130,3 +143,14 @@ or stands alone ("Need 1 pack (weekly staple) → 1 × 2 L"). Lines with a stapl
 "Staples" among their `recipes`; draft lines carry `staple` and `staple_packs` too. `last_bought` is the local date
 of the newest *sent* cart with an added line for the item (any unit; drafts never sent and removed lines don't
 count), or the manual `last_bought` hint when that is later. Three starter staples are seeded once.
+
+### Fridge (`mealprep/fridge.py`, 0.14.0)
+
+The household's perishables on hand. An item leaves the list only when someone removes it. Amounts compare only
+within a unit family (volume, mass, or the same count unit; never volume with mass), everywhere: `POST /list
+{fridge: true}` lowers a recipe line by what the fridge covers, once across the chosen weeks and never a staple's
+own amount: `fridge: "covered"` (all of it; qty unchanged, not needed, Probably have), `"partial"` (qty = the
+remainder, `fridge_qty` = covered, in the line's unit) or `"check"` (units don't convert or the item has no amount:
+not needed, "check you have enough"), with `fridge_items` = the matched ids. Staple lines stay needed with their pack
+floor. Drafts are unchanged: covered/check lines aren't needed so aren't drafted, partial lines are planned on the
+remainder, and the line's `item` snapshot carries the fridge fields. A fridge edit never makes a cart stale.

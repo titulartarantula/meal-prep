@@ -12,7 +12,7 @@ import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 
 import psycopg
 from psycopg.types.json import Jsonb
