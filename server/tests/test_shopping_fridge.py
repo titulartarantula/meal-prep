@@ -190,3 +190,5 @@ def test_a_draft_from_a_fridge_list_buys_only_the_remainder(conn):
     rows = conn.execute("SELECT item_name, need_qty::float, item->>'fridge', (item->>'fridge_qty')::float "
                         "FROM cart_lines WHERE cart_id=%s ORDER BY position", (did,)).fetchall()
     assert rows == [("egg", 6.0, "partial", 6.0), ("red onion", 1.0, None, None)]
+    lines = drafts.get_draft(conn, did)["lines"]
+    assert [(ln["name"], ln["fridge"], ln["fridge_qty"]) for ln in lines] == [("egg", "partial", 6.0), ("red onion", None, None)]

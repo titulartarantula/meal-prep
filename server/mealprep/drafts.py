@@ -313,7 +313,9 @@ def _line_out(row) -> dict:
             "alternatives": alts or [], "removed": removed, "status": status,
             "packs_min": plan.packs_min if plan else None, "needs_check": bool(plan and plan.needs_check),
             "why": plan.why(quantity) if plan and not (product or {}).get("weighted") else None,
-            "pinned": bool(pinned), "note": note, "extra_id": extra_id}
+            "pinned": bool(pinned), "note": note, "extra_id": extra_id,
+            # what the fridge covered when the list was made (0.14.0; null for lines from before)
+            "fridge": item.get("fridge"), "fridge_qty": item.get("fridge_qty")}
 
 
 _LINE_SQL = ("SELECT l.id, l.item, l.item_key, l.item_name, l.need_qty, l.need_unit, l.product, l.product_code, "
