@@ -10,12 +10,13 @@
 import json
 import logging
 from collections import Counter
+from dataclasses import dataclass
 from datetime import date
 
 import psycopg
 
-from .ingredients import clean_ingredient
-from .models import FridgeItem, Ingredient
+from .ingredients import BASE, clean_ingredient
+from .models import FridgeItem, Ingredient, Recipe
 from .planner import _plural, _qty_text
 from .staples import name_key
 
@@ -219,3 +220,80 @@ def update_item(conn, provider, iid: int, *, today: date, name=_UNSET, qty=_UNSE
 def delete_item(conn, iid: int) -> None:
     """Idempotent, like a staple."""
     conn.execute("DELETE FROM fridge_items WHERE id=%s", (iid,))
+
+
+# --- what a recipe uses from the fridge (pure; the list, suggestions and the nudge all use this) -------------------
+#
+# Amounts are compared only within a unit family: volume with volume, mass with mass, a count unit with the same count
+# unit ("clove" with "clove", a plain count with a plain count). Never volume with mass (no density guesses here):
+# anything else is a use without a number ("check you have enough").
+
+@dataclass(frozen=True)
+class Line:
+    """A recipe line as the list sees it: cleaned, scaled, keyed like `fridge_items.key`."""
+    key: str
+    name: str
+    qty: float | None
+    unit: str | None
+    likely_on_hand: bool = False
+
+
+@dataclass(frozen=True)
+class Use:
+    item_id: int
+    name: str                                  # the fridge item's name
+    need: tuple[float, str | None] | None      # what the recipe needs, in the item's unit (None: not convertible)
+    convertible: bool
+    used: tuple[float, str | None] | None      # min(need, what is there), in the item's unit
+
+
+def amount_in_base(qty: float | None, unit: str | None) -> tuple[str, float] | None:
+    """(unit family, amount in its base unit: tsp / g / the count unit itself)."""
+    if qty is None:
+        return None
+    if unit in BASE:
+        dim, size = BASE[unit]
+        return dim, qty * size
+    return unit or "each", qty
+
+
+def from_base(base: float, unit: str | None) -> float:
+    return base / BASE[unit][1] if unit in BASE else base
+
+
+def recipe_lines(recipe: Recipe, factor: float) -> list[Line]:
+    """The recipe's bought lines, cleaned like the list's and scaled; attached-reference lines are skipped."""
+    out = []
+    for ing in recipe.ingredients:
+        if ing.expanded:
+            continue
+        c = clean_ingredient(ing)
+        out.append(Line(key=name_key(c.name), name=c.name, qty=None if c.qty is None else c.qty * factor, unit=c.unit,
+                        likely_on_hand=c.likely_on_hand))
+    return out
+
+
+def uses(lines: list[Line], items: list[FridgeItem], have: dict[int, float | None] | None = None) -> list[Use]:
+    """One Use per fridge item the lines need (in item order). `have` (item id → amount in the item's unit) overrides
+    the stored amounts, e.g. what is left after other recipes. Items with nothing left (0) are left out."""
+    out = []
+    for it in items:
+        q = it.qty if have is None or it.id not in have else have[it.id]
+        if q is not None and q <= 1e-9:
+            continue
+        mine = [ln for ln in lines if ln.key == it.key]
+        if not mine:
+            continue
+        hb = amount_in_base(q, it.unit)
+        need = None
+        if hb is not None:
+            for ln in mine:
+                nb = amount_in_base(ln.qty, ln.unit)
+                if nb is not None and nb[0] == hb[0]:
+                    need = (need or 0.0) + nb[1]
+        if need is None:
+            out.append(Use(it.id, it.name, None, False, None))
+            continue
+        out.append(Use(it.id, it.name, (from_base(need, it.unit), it.unit), True,
+                       (from_base(min(need, hb[1]), it.unit), it.unit)))
+    return out

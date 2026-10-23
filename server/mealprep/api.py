@@ -159,6 +159,7 @@ class ListIn(BaseModel):
     weeks: list[date]
     people: int = 4
     staples: list[int] = []      # staple ids to merge in (the ones ticked on the list); unknown ids are skipped
+    fridge: bool = False         # subtract what is in the fridge (0.14.0; ListItem.fridge)
 
 
 def _staple_name(v):
@@ -707,7 +708,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                 if r is not None:
                     entries.append((r, e.multiplier))
         chosen = staples.list_staples(c, body.staples) if body.staples else []
-        return build_list(entries, body.people, chosen)
+        return build_list(entries, body.people, chosen, fridge.list_items(c, today()) if body.fridge else ())
 
     @app.get("/staples", dependencies=A)
     def get_staples(c=Depends(get_conn)) -> list[Staple]:
