@@ -2,7 +2,7 @@
 
 _Published at https://github.com/titulartarantula/meal-prep/blob/main/docs/play/privacy-policy.md_
 
-_Last updated: 10 October 2026_
+_Last updated: 23 October 2026_
 
 Meal Prep helps a household plan the week's dinners. You share recipe links into the app, it sends them to a
 home server **that you set up and choose**, and it shows you the plan from that server. The developer runs no
@@ -22,6 +22,12 @@ text, never opened. To find the recipes in a document, the server sends the docu
 PDF, its page images) to the AI service it is configured to use, the same way it reads a cookbook photo. Photos
 of a recipe's pages that you pick this way (for example from OneDrive) are handled like the ones you choose in
 the photo picker: they are sent to your server, which has its AI service read them.
+
+**The fridge list and fridge photos.** If you keep a list of what's in your fridge, it is stored on your
+household's server (both phones see the same list). Fridge photos you take are sent to your household server,
+which has its AI service read them and then deletes them; only the list of items is kept. Until you save or
+discard the changes a read suggests, the photos also stay in the app's private storage on the phone, so the read
+can be tried again; they are deleted after that, or after 14 days.
 
 **The saved copy on your phone.** To work offline, the app keeps a copy of the current week's plan on the
 phone, in the app's private storage. Uninstalling the app removes it.
