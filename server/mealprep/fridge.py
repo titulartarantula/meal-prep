@@ -12,7 +12,7 @@ import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -700,3 +700,85 @@ def apply_read(conn, provider, rid: int, lines: list[dict], today: date) -> dict
         conn.execute("UPDATE fridge_reads SET status='applied', result=%s, applied_at=now() WHERE id=%s",
                      (Jsonb(counts), rid))
     return get_read(conn, rid)
+
+
+# --- the morning after a fridge dinner: "Update the fridge? You used 4 eggs" --------------------------------------
+#
+# Nights placed in the last NUDGE_DAYS days (before today) whose recipe uses a fridge item and that nobody answered.
+# One tap applies what the dinner used (Task 2's rule, so it agrees with the list), once; "Not now" dismisses it;
+# not answering changes nothing (the nudge ages out). An item whose amount was set or confirmed on or after the
+# dinner's day is left alone: someone already updated it.
+
+NUDGE_DAYS = 2
+
+
+class EntryNotFound(Exception):
+    pass
+
+
+def _left_text(qty: float, unit: str | None) -> str:
+    return amount_text(qty, unit, "").strip()
+
+
+def _dinner_uses(conn, recipe: Recipe, multiplier: float, dinner: date | None, items: list[FridgeItem],
+                 people: int) -> tuple[list[Use], list[FridgeItem]]:
+    fresh = [it for it in items if dinner is None or date.fromisoformat(it.amount_as_of) < dinner]
+    lines = recipe_lines(recipe, shopping.scale_factor(recipe.servings, multiplier, people))
+    return uses(lines, fresh), fresh
+
+
+def used_nights(conn, today: date, people: int = 4) -> list[dict]:
+    """GET /fridge/used: newest night first, each {entry_id, date, title, uses [{item_id, name, used, after}], check}."""
+    rows = conn.execute(
+        "SELECT p.id, p.week + p.day::int AS d, p.recipe_id, p.multiplier FROM plan p "
+        "WHERE p.day IS NOT NULL AND p.week + p.day::int < %(t)s AND p.week + p.day::int >= %(t)s - %(n)s::int "
+        "AND NOT EXISTS (SELECT 1 FROM fridge_nudges x WHERE x.plan_id = p.id) ORDER BY d DESC, p.id DESC",
+        {"t": today, "n": NUDGE_DAYS}).fetchall()
+    if not rows:
+        return []
+    items, out = list_items(conn, today), []
+    for eid, d, rid, mult in rows:
+        r = db.get_recipe(conn, rid)
+        us, _ = _dinner_uses(conn, r, mult, d, items, people)
+        by_id = {it.id: it for it in items}
+        applied = [{"item_id": u.item_id, "name": u.name, "used": amount_text(u.used[0], u.used[1], u.name),
+                    "after": f"{_left_text(max(0.0, by_id[u.item_id].qty - u.used[0]), u.used[1])} left"}
+                   for u in us if u.convertible and u.used[0] > 1e-9]
+        check = [u.name for u in us if not u.convertible]
+        if applied or check:
+            out.append({"entry_id": eid, "date": d.isoformat(), "title": r.title, "uses": applied, "check": check})
+    return out
+
+
+def _nudge_out(row) -> dict:
+    pid, action, changes, at = row
+    return {"entry_id": pid, "action": action, "changes": changes, "answered_at": at.isoformat()}
+
+
+def answer_used(conn, entry_id: int, apply: bool, today: date, people: int = 4) -> dict:
+    """POST /fridge/used/{entry}: the first answer wins (INSERT … ON CONFLICT DO NOTHING decides, so two phones
+    tapping at once subtract once); a repeat returns that first answer."""
+    with conn.transaction():
+        e = conn.execute("SELECT week + day::int, recipe_id, multiplier FROM plan WHERE id=%s", (entry_id,)).fetchone()
+        if e is None:
+            raise EntryNotFound(f"plan entry {entry_id}")
+        won = conn.execute("INSERT INTO fridge_nudges(plan_id, action) VALUES(%s,%s) ON CONFLICT DO NOTHING "
+                           "RETURNING plan_id", (entry_id, "applied" if apply else "dismissed")).fetchone()
+        if won and apply:
+            conn.execute("SELECT id FROM fridge_items ORDER BY id FOR UPDATE")
+            items = list_items(conn, today)
+            by_id = {it.id: it for it in items}
+            us, _ = _dinner_uses(conn, db.get_recipe(conn, e[1]), e[2], e[0], items, people)
+            changes = []
+            for u in us:
+                if not u.convertible or u.used[0] <= 1e-9:
+                    continue
+                before = by_id[u.item_id].qty
+                after = round(max(0.0, before - u.used[0]), 4)
+                conn.execute("UPDATE fridge_items SET qty=%s, amount_as_of=%s, updated_at=now() WHERE id=%s",
+                             (after, today, u.item_id))
+                changes.append({"item_id": u.item_id, "name": u.name, "before": before, "after": after,
+                                "unit": u.used[1], "text": f"{u.name} {_left_text(after, u.used[1])}"})
+            conn.execute("UPDATE fridge_nudges SET changes=%s WHERE plan_id=%s", (Jsonb(changes), entry_id))
+    return _nudge_out(conn.execute("SELECT plan_id, action, changes, answered_at FROM fridge_nudges WHERE plan_id=%s",
+                                   (entry_id,)).fetchone())

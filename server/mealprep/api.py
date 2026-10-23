@@ -298,6 +298,10 @@ def _photo_ext(data: bytes) -> str | None:
     return next((ext for magic, ext in _PHOTO_TYPES if data.startswith(magic)), None)
 
 
+class UsedIn(BaseModel):
+    apply: Annotated[bool, Field(strict=True)]    # true = "Update fridge", false = "Not now"
+
+
 class CartIn(BaseModel):
     items: list[ListItem]
     weeks: list[date] = []
@@ -896,6 +900,20 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     @app.post("/fridge/reads/{read_id}/dismiss", dependencies=A)
     def fridge_dismiss(read_id: int, c=Depends(get_conn)):
         return _read_call(fridge.dismiss_read, c, read_id)
+
+    @app.get("/fridge/used", dependencies=A)
+    def fridge_used(today_: date | None = Query(None, alias="today"), c=Depends(get_conn)):
+        """The morning-after nudge: nights of the last 2 days (before today) that used the fridge and nobody answered,
+        newest first, with what one tap would take off the list. Read-only."""
+        return fridge.used_nights(c, today_ or today(), settings.default_people)
+
+    @app.post("/fridge/used/{entry_id}", dependencies=A)
+    def fridge_used_answer(entry_id: int, body: UsedIn, c=Depends(get_conn)):
+        """Apply what that dinner used (once; floor 0, the items stay) or dismiss; a repeat returns the first answer."""
+        try:
+            return fridge.answer_used(c, entry_id, body.apply, today(), settings.default_people)
+        except fridge.EntryNotFound as e:
+            raise HTTPException(404, str(e))
 
     @app.delete("/fridge/{item_id}", status_code=204, dependencies=A)
     def remove_fridge(item_id: int, c=Depends(get_conn)):

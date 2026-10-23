@@ -349,3 +349,12 @@ CREATE TABLE IF NOT EXISTS fridge_reads(
   applied_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS fridge_reads_sha_idx ON fridge_reads(photos_sha);
+
+-- Morning-after fridge nudge (0.14.0): one answer per plan entry (applied or dismissed), so a tap applies once, even
+-- from both phones at the same time. changes = what the apply took off the list (for the app's message).
+CREATE TABLE IF NOT EXISTS fridge_nudges(
+  plan_id int PRIMARY KEY REFERENCES plan(id) ON DELETE CASCADE,
+  action text NOT NULL CHECK (action IN ('applied','dismissed')),
+  changes jsonb NOT NULL DEFAULT '[]',
+  answered_at timestamptz NOT NULL DEFAULT now()
+);
