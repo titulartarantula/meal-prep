@@ -7,6 +7,7 @@
 - Items never clear by themselves (not after a cart, a dinner or a photo): only a person removes them. Every amount
   carries `amount_as_of` (set when the amount is set or confirmed), so a stale count shows instead of being trusted.
 """
+import hashlib
 import json
 import logging
 from collections import Counter
@@ -14,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from . import db, shopping
 from .ingredients import BASE, clean_ingredient
@@ -447,3 +449,254 @@ def suggest(conn, today: date, nights: int, people: int = 4, week: date | None =
         cands.append(Candidate(recipe_id=r.id, title=r.title, lines=lines, avg_family=s.get("avg_family"),
                                company=s.get("company"), last_cooked=last.get(r.id), ratings=s))
     return select(cands, items, nights, planned)
+
+
+# --- fridge photos: a background read proposes changes; nothing saves until the review is applied -----------------
+#
+# Proposal kinds: `new` (not on the list: add it), `amount` (the photo's estimate differs from the stored amount by
+# more than 15 %, or by a whole count: write it, marked estimated), `seen` (no estimate, it matches, or its unit doesn't
+# convert: only "as of today"), `not_seen` (on the list, in no photo: "remove?"). `not_seen` always starts unticked: it
+# is the only way a photo leads to a removal. Low confidence starts unticked, and so does an estimate on an amount
+# someone typed in the last 2 days.
+
+READ_KEEP_DAYS = 14       # a ready read nobody reviewed is dismissed when a new read starts after this long
+AMOUNT_CHANGE = 0.15
+TYPED_RECENTLY_DAYS = 2
+
+
+class ReadNotFound(Exception):
+    pass
+
+
+class ReadState(Exception):
+    """The read isn't ready to apply (applied already, dismissed, failed, still reading); `read` = its state."""
+    def __init__(self, text: str, read: dict):
+        super().__init__(text)
+        self.read = read
+
+
+def photos_sha(photos: list[bytes]) -> str:
+    h = hashlib.sha256()
+    for p in photos:
+        h.update(hashlib.sha256(p).digest())
+    return h.hexdigest()
+
+
+def _current(it: FridgeItem) -> dict:
+    return {"qty": it.qty, "unit": it.unit, "amount_as_of": it.amount_as_of, "qty_estimated": it.qty_estimated}
+
+
+def _differs(it: FridgeItem, est: dict) -> bool | None:
+    """True/False whether the estimate is another amount; None when the units don't convert."""
+    if it.qty is None:
+        return True
+    a, b = amount_in_base(it.qty, it.unit), amount_in_base(est["qty"], est["unit"])
+    if a[0] != b[0]:
+        return None
+    diff = abs(a[1] - b[1])
+    return diff > AMOUNT_CHANGE * a[1] or (a[0] not in ("vol", "mass") and diff >= 1 - 1e-9)
+
+
+def _about(it: FridgeItem, est, confidence, where, today: date, pid: str) -> dict:
+    kind = "seen" if est is None or not _differs(it, est) else "amount"
+    typed_recently = (kind == "amount" and it.qty is not None and not it.qty_estimated
+                      and (today - date.fromisoformat(it.amount_as_of)).days <= TYPED_RECENTLY_DAYS)
+    return {"pid": pid, "kind": kind, "item_id": it.id, "name": it.name, "key": it.key, "key_source": it.key_source,
+            "estimate": est, "current": _current(it), "confidence": confidence, "where": where,
+            "default_on": confidence != "low" and not typed_recently}
+
+
+def proposals(items: list[FridgeItem], read: dict, mapped: list[tuple[str, str]], today: date) -> list[dict]:
+    """The review's lines for a read ({seen, new} from importers.fridge_photo) against the list. `mapped` = (key,
+    source) for each new name (map_names). A new name that maps onto an item on the list is about that item."""
+    by_id = {it.id: it for it in items}
+    out, about = [], set()
+
+    def pid() -> str:
+        return f"p{len(out) + 1}"
+
+    for s in read["seen"]:
+        it = by_id.get(s["id"])
+        if it is not None and it.id not in about:
+            about.add(it.id)
+            out.append(_about(it, s["estimate"], s["confidence"], s["where"], today, pid()))
+    new_keys = set()
+    for n, (key, src) in zip(read["new"], mapped):
+        same = [it for it in items if it.key == key]
+        if same:
+            est = n["estimate"]
+            it = next((i for i in same if est and (i.unit or "") == (est["unit"] or "")), same[0])
+            if it.id not in about:
+                about.add(it.id)
+                out.append(_about(it, est, n["confidence"], n["where"], today, pid()))
+            continue
+        if key in new_keys:
+            continue
+        new_keys.add(key)
+        out.append({"pid": pid(), "kind": "new", "item_id": None, "name": n["name"], "key": key, "key_source": src,
+                    "estimate": n["estimate"], "current": None, "confidence": n["confidence"], "where": n["where"],
+                    "default_on": n["confidence"] != "low"})
+    for it in items:
+        if it.id not in about:
+            out.append({"pid": pid(), "kind": "not_seen", "item_id": it.id, "name": it.name, "key": it.key,
+                        "key_source": it.key_source, "estimate": None, "current": _current(it), "confidence": None,
+                        "where": None, "default_on": False})
+    return out
+
+
+_READ_COLS = "id, status, photo_count, proposals, result, error, created_at, finished_at, applied_at"
+
+
+def _read_out(row) -> dict:
+    rid, status, n, props, result, error, created, finished, applied = row
+    counts = {k: sum(1 for p in props if p["kind"] == k) for k in ("new", "amount", "seen", "not_seen")}
+    return {"id": rid, "status": status, "photo_count": n,
+            "progress": f"Reading {n} photo{'' if n == 1 else 's'}…" if status == "reading" else None,
+            "proposals": props, "counts": counts, "result": result, "error": error,
+            "created_at": created.isoformat(), "finished_at": finished.isoformat() if finished else None,
+            "applied_at": applied.isoformat() if applied else None}
+
+
+def get_read(conn, rid: int) -> dict:
+    row = conn.execute(f"SELECT {_READ_COLS} FROM fridge_reads WHERE id=%s", (rid,)).fetchone()
+    if row is None:
+        raise ReadNotFound(f"fridge read {rid}")
+    return _read_out(row)
+
+
+def open_read(conn) -> dict | None:
+    """The newest read still reading or ready to review (both phones show it), if any."""
+    row = conn.execute(f"SELECT {_READ_COLS} FROM fridge_reads WHERE status IN ('reading','ready') AND created_at > "
+                       f"now() - make_interval(days => %s) ORDER BY id DESC LIMIT 1", (READ_KEEP_DAYS,)).fetchone()
+    return _read_out(row) if row else None
+
+
+def start_read(conn, photos: list[bytes]) -> tuple[int, bool]:
+    """(read id, existing): the same photos while that read is reading or ready → that read."""
+    sha = photos_sha(photos)
+    with conn.transaction():
+        conn.execute("LOCK TABLE fridge_reads IN SHARE ROW EXCLUSIVE MODE")   # two uploads of the same photos
+        conn.execute("UPDATE fridge_reads SET status='dismissed' WHERE status='ready' AND created_at <= "
+                     "now() - make_interval(days => %s)", (READ_KEEP_DAYS,))
+        row = conn.execute("SELECT id FROM fridge_reads WHERE photos_sha=%s AND status IN ('reading','ready') "
+                           "ORDER BY id DESC LIMIT 1", (sha,)).fetchone()
+        if row:
+            return row[0], True
+        rid = conn.execute("INSERT INTO fridge_reads(photos_sha, photo_count) VALUES(%s,%s) RETURNING id",
+                           (sha, len(photos))).fetchone()[0]
+    return rid, False
+
+
+def run_read(conn, rid: int, provider, map_provider, paths: list[str], today: date) -> None:
+    """The background read: one vision call, one mapping call for the new names, then the proposals."""
+    from .importers import fridge_photo
+    try:
+        items = [it for it in list_items(conn, today)]
+        vocab = vocabulary(conn)
+        read = fridge_photo.read(provider, paths, items, vocab)
+        mapped = map_names(map_provider, [n["name"] for n in read["new"]], vocab)
+        props = proposals(items, read, mapped, today)
+        conn.execute("UPDATE fridge_reads SET status='ready', proposals=%s, finished_at=now() WHERE id=%s AND "
+                     "status='reading'", (Jsonb(props), rid))
+        usage = getattr(provider, "last_usage", None)
+        log.warning("fridge read %s: %d photos, %d proposals%s", rid, len(paths), len(props),
+                    f", usage {usage}" if usage is not None else "")
+    except Exception as e:
+        log.warning("fridge read %s failed: %s: %s", rid, type(e).__name__, str(e)[:300])
+        text = str(e) if isinstance(e, fridge_photo.ReadFailed) else fridge_photo.FAILED
+        conn.execute("UPDATE fridge_reads SET status='failed', error=%s, finished_at=now() WHERE id=%s AND "
+                     "status='reading'", (text, rid))
+
+
+def fail_interrupted(conn) -> None:
+    """At startup: reads cut off by a restart will never finish (their photos are gone)."""
+    conn.execute("UPDATE fridge_reads SET status='failed', error='interrupted by a server restart', finished_at=now() "
+                 "WHERE status='reading'")
+
+
+def dismiss_read(conn, rid: int) -> dict:
+    with conn.transaction():
+        read = get_read(conn, rid)
+        if read["status"] == "applied":
+            raise ReadState("These changes were already saved.", read)
+        conn.execute("UPDATE fridge_reads SET status='dismissed' WHERE id=%s AND status IN ('reading','ready')", (rid,))
+    return get_read(conn, rid)
+
+
+def _edited(line: dict) -> bool:
+    return "qty" in line or "unit" in line
+
+
+def _amount(p: dict, line: dict) -> tuple[float | None, str | None, bool]:
+    """(qty, unit, estimated) to write: the reviewer's numbers if edited (typed), else the photo's estimate."""
+    est = p["estimate"] or {"qty": None, "unit": None}
+    if _edited(line):
+        return line.get("qty", est["qty"]), line.get("unit", est["unit"]), False
+    return est["qty"], est["unit"], est["qty"] is not None
+
+
+def _apply_line(conn, p: dict, line: dict, mapped: dict, today: date, counts: dict) -> None:
+    kind = p["kind"]
+    if kind == "not_seen":
+        if conn.execute("DELETE FROM fridge_items WHERE id=%s", (p["item_id"],)).rowcount:
+            counts["removed"] += 1
+        return
+    soon = line.get("use_soon")
+    if kind == "new":
+        name = line.get("name") or p["name"]
+        key, src = mapped.get(name, (p["key"], p["key_source"]))
+        qty, unit, est = _amount(p, line)
+        row = conn.execute("INSERT INTO fridge_items(name, key, key_source, qty, unit, qty_estimated, amount_as_of, "
+                           "use_soon) VALUES(%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING id",
+                           (name, key, src, qty, unit, est, today, bool(soon))).fetchone()
+        if row is None:   # added meanwhile (the other phone, by hand): the same item gets the amount
+            conn.execute("UPDATE fridge_items SET qty=COALESCE(%s, qty), qty_estimated=%s, amount_as_of=%s, "
+                         "use_soon=COALESCE(%s, use_soon), updated_at=now() WHERE key=%s AND coalesce(unit,'')=%s",
+                         (qty, est and qty is not None, today, soon, key, unit or ""))
+        counts["added"] += 1
+        return
+    if conn.execute("SELECT 1 FROM fridge_items WHERE id=%s FOR UPDATE", (p["item_id"],)).fetchone() is None:
+        return            # removed meanwhile: nothing to change
+    if kind == "amount" or _edited(line):
+        qty, unit, est = _amount(p, line)
+        if not _edited(line) and qty is None:
+            qty, unit = p["current"]["qty"], p["current"]["unit"]
+        try:
+            with conn.transaction():
+                conn.execute("UPDATE fridge_items SET qty=%s, unit=%s, qty_estimated=%s, amount_as_of=%s, updated_at=now() "
+                             "WHERE id=%s", (qty, unit, est, today, p["item_id"]))
+            counts["changed"] += 1
+        except psycopg.errors.UniqueViolation:   # that unit is another row of the same food: only "as of today"
+            conn.execute("UPDATE fridge_items SET amount_as_of=%s, updated_at=now() WHERE id=%s", (today, p["item_id"]))
+            counts["seen"] += 1
+    else:
+        conn.execute("UPDATE fridge_items SET amount_as_of=%s, updated_at=now() WHERE id=%s", (today, p["item_id"]))
+        counts["seen"] += 1
+    if soon is not None:
+        conn.execute("UPDATE fridge_items SET use_soon=%s WHERE id=%s", (soon, p["item_id"]))
+
+
+def apply_read(conn, provider, rid: int, lines: list[dict], today: date) -> dict:
+    """Save the reviewed lines in one transaction: accepted new → added (an item with the same key + unit added
+    meanwhile gets the amount), amount → the estimate (marked estimated) or the reviewer's number, seen → as of today,
+    not_seen → removed. Lines not accepted (or not sent) change nothing. A second apply → ReadState with the result."""
+    read = get_read(conn, rid)
+    props = {p["pid"]: p for p in read["proposals"]}
+    renamed = [ln["name"] for ln in lines if ln.get("accept") and ln.get("name")
+               and props.get(ln["pid"], {}).get("kind") == "new" and ln["name"] != props[ln["pid"]]["name"]]
+    mapped = dict(zip(renamed, map_names(provider, renamed, vocabulary(conn)))) if renamed else {}
+    counts = {"added": 0, "changed": 0, "seen": 0, "removed": 0}
+    with conn.transaction():
+        row = conn.execute("SELECT status FROM fridge_reads WHERE id=%s FOR UPDATE", (rid,)).fetchone()
+        if row[0] != "ready":
+            text = {"applied": "These changes were already saved (on the other phone?).",
+                    "dismissed": "These changes were discarded.", "failed": "This read failed.",
+                    "reading": "The photos are still being read."}[row[0]]
+            raise ReadState(text, get_read(conn, rid))
+        for ln in lines:
+            p = props.get(ln.get("pid"))
+            if p is not None and ln.get("accept"):
+                _apply_line(conn, p, ln, mapped, today, counts)
+        conn.execute("UPDATE fridge_reads SET status='applied', result=%s, applied_at=now() WHERE id=%s",
+                     (Jsonb(counts), rid))
+    return get_read(conn, rid)

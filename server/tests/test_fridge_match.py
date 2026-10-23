@@ -7,8 +7,8 @@ from mealprep.models import FridgeItem, Ingredient, Recipe
 
 
 def F(iid, name, qty, unit=None, key=None, **kw):
-    return FridgeItem(id=iid, name=name, key=key or fridge.rule_key(name), key_source="rule", qty=qty, unit=unit,
-                      amount_as_of="2026-10-23", **kw)
+    kw.setdefault("amount_as_of", "2026-10-23")
+    return FridgeItem(id=iid, name=name, key=key or fridge.rule_key(name), key_source="rule", qty=qty, unit=unit, **kw)
 
 
 def L(name, qty, unit=None, likely=False):

@@ -263,6 +263,41 @@ class SuggestIn(BaseModel):
     exclude: Annotated[list[int], Field(max_length=1000)] = []   # "Suggest others": the picks not wanted
 
 
+class ApplyLine(BaseModel):
+    """One reviewed line of a fridge read; name/qty/unit only when the reviewer edited them (an edited number is
+    typed, no longer an estimate)."""
+    pid: Annotated[str, Field(max_length=20)]
+    accept: Annotated[bool, Field(strict=True)]
+    name: str | None = None
+    qty: FridgeQty | None = None
+    unit: str | None = None
+    use_soon: Annotated[bool, Field(strict=True)] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v):
+        return None if v is None else _fridge_name(v)
+
+    @field_validator("unit")
+    @classmethod
+    def _unit(cls, v):
+        return staples.normalise_unit(v)
+
+
+class ApplyIn(BaseModel):
+    lines: Annotated[list[ApplyLine], Field(max_length=500)]
+
+
+# Photo types the AI reads (Anthropic: JPEG, PNG, GIF, WebP), told apart by content.
+_PHOTO_TYPES = ((b"\xff\xd8\xff", "jpg"), (b"\x89PNG\r\n\x1a\n", "png"), (b"GIF87a", "gif"), (b"GIF89a", "gif"))
+
+
+def _photo_ext(data: bytes) -> str | None:
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return next((ext for magic, ext in _PHOTO_TYPES if data.startswith(magic)), None)
+
+
 class CartIn(BaseModel):
     items: list[ListItem]
     weeks: list[date] = []
@@ -344,6 +379,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     document_ai = provider or get_provider(settings, timeout=settings.document_ai_timeout)
     edit_ai = provider or get_provider(settings, timeout=settings.edit_ai_timeout)
     fridge_ai = provider or get_provider(settings, timeout=settings.fridge_ai_timeout)
+    fridge_photo_ai = provider or get_provider(settings, timeout=settings.fridge_photo_timeout)
     import_cap = settings.import_max_mb * 1024 * 1024
     too_big = f"This file is too big to import (max {settings.import_max_mb} MB)."
     shop = pcx or Pcx(settings.store_id, api_key=settings.pcx_apikey)
@@ -353,6 +389,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             drafts.fail_interrupted(c)            # builds cut off by a restart will never finish
             prepplan.fail_interrupted(c)
             importer.fail_interrupted(c)
+            fridge.fail_interrupted(c)
 
     def get_conn():
         # injected connection (tests) or one connection per request (thread-safe transactions)
@@ -787,6 +824,78 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         """Dinners from the library that use what's in the fridge (use soon first) with the fewest extra ingredients
         (fridge.select): {picks, fridge_left, stale, thin_library}. Read-only, no AI."""
         return fridge.suggest(c, today(), body.nights, body.people, body.week, body.exclude)
+
+    def run_fridge_read(rid: int, td: tempfile.TemporaryDirectory, paths: list[str]):
+        # background thread with its own connection, like draft builds; the photos are deleted whatever happens
+        try:
+            with psycopg.connect(settings.dsn, autocommit=True) as bc:
+                fridge.run_read(bc, rid, fridge_photo_ai, fridge_ai, paths, today())
+        except Exception:
+            log.exception("fridge read %s: background run crashed", rid)
+        finally:
+            td.cleanup()
+
+    @app.post("/fridge/photos", status_code=202, dependencies=A)
+    def fridge_photos(files: list[UploadFile] = File(...), c=Depends(get_conn)):
+        """Read 1–6 fridge photos in the background (GET /fridge/reads/{id}): the read proposes changes to the list,
+        nothing is saved until POST /fridge/reads/{id}/apply. The same photos again → the same read (existing)."""
+        if not 1 <= len(files) <= settings.fridge_max_photos:
+            raise HTTPException(422, f"Send 1–{settings.fridge_max_photos} photos.")
+        cap, total_cap = settings.fridge_photo_max_mb * 1024 * 1024, settings.fridge_photos_max_mb * 1024 * 1024
+        photos = []
+        for f in files:
+            data = f.file.read(cap + 1)
+            if len(data) > cap:
+                raise HTTPException(413, f"A photo is too big (max {settings.fridge_photo_max_mb} MB).")
+            if not data:
+                raise HTTPException(422, "A photo is empty.")
+            if _photo_ext(data) is None:
+                raise HTTPException(422, "That isn't a photo the server can read (JPEG, PNG, WebP or GIF).")
+            photos.append(data)
+        if sum(map(len, photos)) > total_cap:
+            raise HTTPException(413, f"The photos are too big together (max {settings.fridge_photos_max_mb} MB).")
+        rid, existing = fridge.start_read(c, photos)
+        if not existing:
+            td = tempfile.TemporaryDirectory(prefix="mealprep-fridge-")
+            try:
+                paths = []
+                for i, data in enumerate(photos, 1):
+                    path = f"{td.name}/photo{i:02d}.{_photo_ext(data)}"
+                    with open(path, "wb") as out:
+                        out.write(data)
+                    paths.append(path)
+                threading.Thread(target=run_fridge_read, args=(rid, td, paths), name=f"fridge-{rid}", daemon=True).start()
+            except Exception:
+                td.cleanup()
+                c.execute("UPDATE fridge_reads SET status='failed', error=%s WHERE id=%s", ("Couldn't start the read.", rid))
+                raise
+        return JSONResponse({**fridge.get_read(c, rid), "existing": existing}, status_code=202)
+
+    @app.get("/fridge/reads", dependencies=A)
+    def fridge_open_read(c=Depends(get_conn)):
+        """{read}: the newest read still reading or ready to review (for the Fridge screen and the other phone)."""
+        return {"read": fridge.open_read(c)}
+
+    def _read_call(fn, *args, **kw):
+        try:
+            return fn(*args, **kw)
+        except fridge.ReadNotFound as e:
+            raise HTTPException(404, str(e))
+        except fridge.ReadState as e:   # e.g. applied on the other phone: the app treats that as done
+            return JSONResponse({"detail": str(e), "read": e.read}, status_code=409)
+
+    @app.get("/fridge/reads/{read_id}", dependencies=A)
+    def fridge_read(read_id: int, c=Depends(get_conn)):
+        return _read_call(fridge.get_read, c, read_id)
+
+    @app.post("/fridge/reads/{read_id}/apply", dependencies=A)
+    def fridge_apply(read_id: int, body: ApplyIn, c=Depends(get_conn)):
+        lines = [ln.model_dump(include=ln.model_fields_set) for ln in body.lines]
+        return _read_call(fridge.apply_read, c, fridge_ai, read_id, lines, today())
+
+    @app.post("/fridge/reads/{read_id}/dismiss", dependencies=A)
+    def fridge_dismiss(read_id: int, c=Depends(get_conn)):
+        return _read_call(fridge.dismiss_read, c, read_id)
 
     @app.delete("/fridge/{item_id}", status_code=204, dependencies=A)
     def remove_fridge(item_id: int, c=Depends(get_conn)):

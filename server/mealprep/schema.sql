@@ -332,3 +332,20 @@ CREATE TABLE IF NOT EXISTS fridge_items(
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS fridge_items_key_unit_idx ON fridge_items(key, coalesce(unit, ''));
+
+-- Fridge photos (0.14.0): a read of 1–6 photos proposes changes to the fridge list; nothing is saved until the
+-- review is applied (result = what the apply did). The photos are deleted as soon as the read ends: only the
+-- proposals are kept. photos_sha = sha256 over the photos in order, so a resend of the same photos returns that read.
+CREATE TABLE IF NOT EXISTS fridge_reads(
+  id serial PRIMARY KEY,
+  photos_sha text NOT NULL,
+  photo_count int NOT NULL,
+  status text NOT NULL DEFAULT 'reading' CHECK (status IN ('reading','ready','failed','applied','dismissed')),
+  proposals jsonb NOT NULL DEFAULT '[]',
+  result jsonb,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz,
+  applied_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS fridge_reads_sha_idx ON fridge_reads(photos_sha);
