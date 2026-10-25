@@ -40,6 +40,11 @@ DENSITY_PREP = [(r"cheese|cheddar|mozzarella|parmesan|parmigiano", r"shred|grat"
 EACH_G = [(r"sweet potato|yam", 300), (r"potato", 220), (r"onion", 200), (r"shallot", 40), (r"lemon", 120),
           (r"lime", 70), (r"orange", 200), (r"apple", 200), (r"carrot", 75), (r"tomato", 150),
           (r"bell pepper", 180), (r"zucchini", 250), (r"avocado", 200), (r"cucumber", 300), (r"banana", 130)]
+# Pieces in one "1 ea" pack of produce sold by the bunch (Loblaws' Green Onion and Leeks are a bunch each): item
+# name → (pieces per bunch, product-name pattern the pack must match or None). Counts lean low, so a need errs
+# towards covering. Carrots and beets are usually bags or loose, so only a pack named as a bunch counts.
+BUNCH = [(r"scallion|green onion|spring onion", 6, None), (r"leek", 2, None), (r"radish", 8, None),
+         (r"carrot", 5, r"bunch"), (r"beet", 3, r"bunch")]
 # Part of a bought item: unit → (parts per item, g per part or None).
 PARTS = {"clove": (8, 5), "sprig": (10, None), "stalk": (6, 40)}
 STICK_G = 113                           # a stick of butter
@@ -124,6 +129,17 @@ def parse_pack(text: str | None, sold_by: str | None = None) -> Pack:
 
 def _match(table, name: str):
     return next((v for pat, v in table if re.search(rf"\b(?:{pat})(?:e?s)?\b", name)), None)
+
+
+def bunch_pieces(it, product, pack: Pack) -> int | None:
+    """Pieces in one bunch when this "1 ea" pack is a bunch of the item's produce; else None."""
+    if pack.family != "count" or pack.total != 1 or pack.priced_by_weight:
+        return None
+    pname = (_get(product, "name") or "").lower()
+    hit = next((v for pat, *v in BUNCH if re.search(rf"\b(?:{pat})(?:e?s)?\b", (it.name or "").lower())), None)
+    if hit is None or (hit[1] and not re.search(hit[1], pname)):
+        return None
+    return hit[0]
 
 
 def density(it) -> float | None:
@@ -263,6 +279,8 @@ def _plan_line(it, product) -> Plan:
             return _plan(it.qty, pack.units, text, pack)
         fam, need = "count", it.qty
     elif unit is None or unit in WHOLE:
+        if unit is None and (per := bunch_pieces(it, product, pack)):
+            return _plan(it.qty / per, 1, text, Pack("count", 1, label=f"1 bunch (≈ {per})"))
         if pack.family == "count":
             fam, need = "count", it.qty
         elif unit is None and pack.family == "mass" and (g := _match(EACH_G, name)):

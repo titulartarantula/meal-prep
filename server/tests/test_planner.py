@@ -154,6 +154,28 @@ def test_bunches_and_heads_count_against_each():
     assert p.needs_check and not p.enforce
 
 
+def test_produce_sold_by_the_bunch_counts_pieces_per_bunch():
+    onion = prod("1 ea", sold_by="SOLD_BY_EACH", name="Green Onion")
+    p = planner.plan(li("scallion", 6), onion)
+    assert (p.packs_min, p.enforce, p.needs_check) == (1, True, False)
+    assert p.why(1) == "Need 6 → 1 × 1 bunch (≈ 6)"
+    assert planner.plan(li("green onion", 8), onion).packs_min == 2
+    assert planner.default_quantity(li("scallion", 6), onion, 6) == 1          # the AI's 6 bunches → 1
+    assert planner.remembered_quantity(li("scallion", 6), onion, (6, 6, None)) == 1
+    leeks = prod("1 ea", sold_by="SOLD_BY_EACH", name="Leeks")
+    assert planner.plan(li("leek", 1.33, prep="large or 2 small"), leeks).packs_min == 1
+    assert planner.plan(li("leek", 3), leeks).packs_min == 2
+    assert planner.plan(li("radish", 6), prod("1 ea", name="Radishes")).packs_min == 1
+
+
+def test_bunch_rule_leaves_other_packs_alone():
+    assert planner.plan(li("green onion", 2, "bunch"), prod("1 ea", name="Green Onion")).packs_min == 2
+    assert planner.plan(li("leek", 3), prod("3 ea", name="Leeks")).packs_min == 1     # 3 loose leeks
+    assert planner.plan(li("carrot", 4), prod("1 ea", name="Carrot")).packs_min == 4  # not named a bunch
+    assert planner.plan(li("carrot", 4), prod("1 ea", name="Carrots, Bunched")).packs_min == 1
+    assert planner.plan(li("red onion", 2), prod("", sold_by="SOLD_BY_EACH_PRICED_BY_WEIGHT")).packs_min == 2
+
+
 def test_pinch_is_negligible():
     p = planner.plan(li("kosher salt", 1, "pinch"), prod("1 kg"))
     assert (p.packs_min, p.enforce, p.needs_check) == (1, True, False)
