@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import dev.mealprep.app.data.api.Http
 import dev.mealprep.app.data.api.Draft
+import dev.mealprep.app.data.api.PackInfo
 import dev.mealprep.app.fixture
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -147,6 +148,43 @@ class DraftScreenTest {
         val none = ready.copy(lines = ready.lines.map { it.copy(removed = true) })
         compose.setContent { DraftContent(DraftState(none, loading = false), DraftActions()) }
         compose.onNodeWithText("Send to Loblaws").assertIsNotEnabled()
+    }
+
+    private val scallions = ready.copy(lines = listOf(ready.lines[0].copy(name = "scallion", quantity = 1,
+        product = ready.lines[0].product!!.copy(name = "Green Onion", packageSize = "1 ea"),
+        why = "Need 6 → 1 × 1 bunch (≈ 6, a guess)", pack = PackInfo(6, "bunch", "guess"), packEditable = true)))
+
+    @Test fun `pack size - the menu says what one pack holds and the dialog saves a number for the product`() {
+        val calls = mutableListOf<String>()
+        compose.setContent { DraftContent(DraftState(scallions, loading = false), DraftActions(onPack = { l, n, w -> calls += "${l.name} $n $w" })) }
+        compose.onNodeWithContentDescription("More for scallion").performClick()
+        compose.onNodeWithText("One pack: a bunch of about 6 (a guess)").assertExists()
+        compose.onNodeWithText("Pack size…").performClick()
+        compose.onNodeWithText("How many scallion come in one bunch?").assertExists()
+        compose.onNodeWithText("Forget").assertDoesNotExist()                          // nothing saved yet: only the guess
+        compose.onNodeWithContentDescription("One more in a bunch").performClick()
+        compose.onNodeWithContentDescription("One more in a bunch").performClick()
+        compose.onNodeWithText("bag").performClick()
+        compose.onNodeWithContentDescription("8 in one bag").assertExists()
+        compose.onNodeWithText("Save").performClick()
+        assertEquals(listOf("scallion 8 bag"), calls)
+    }
+
+    @Test fun `pack size - a saved number can be forgotten`() {
+        val learned = scallions.copy(lines = listOf(scallions.lines[0].copy(pack = PackInfo(6, "bunch", "check"))))
+        var forgot: Pair<Int?, String?>? = null
+        compose.setContent { DraftContent(DraftState(learned, loading = false), DraftActions(onPack = { _, n, w -> forgot = n to w })) }
+        compose.onNodeWithContentDescription("More for scallion").performClick()
+        compose.onNodeWithText("One pack: a bunch of about 6 (learned by the cart check)").assertExists()
+        compose.onNodeWithText("Pack size…").performClick()
+        compose.onNodeWithText("Forget").performClick()
+        assertEquals(null to null, forgot)
+    }
+
+    @Test fun `no pack size for a product sold by weight or volume`() {
+        compose.setContent { DraftContent(DraftState(ready, loading = false), DraftActions()) }
+        compose.onNodeWithContentDescription("More for onion").performClick()
+        compose.onNodeWithText("Pack size…").assertDoesNotExist()
     }
 
     @Test fun `planner explanation is in the line's menu when the server sends it`() {

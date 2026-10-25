@@ -76,6 +76,23 @@ class DraftViewModelTest {
         assertNull(s.busyLine)
     }
 
+    @Test fun `pack size saves for the product and takes the re-planned draft`() = runTest {
+        val vm = ready()
+        env.on("PUT", "/drafts/7/lines/31/pack", body = fixture("draft_ready.json").replace("\"quantity\": 1,", "\"quantity\": 2,"))
+        vm.setPack(vm.state.value.draft!!.lines[0], 6, "bunch")
+        val s = vm.state.await { it.draft!!.lines[0].quantity == 2 }
+        assertEquals("""{"pieces":6,"word":"bunch"}""", env.bodies("PUT", "/drafts/7/lines/31/pack").single())
+        assertNull(s.busyLine)
+    }
+
+    @Test fun `forgetting a pack size sends pieces null`() = runTest {
+        val vm = ready()
+        env.on("PUT", "/drafts/7/lines/31/pack", body = fixture("draft_ready.json"))
+        vm.setPack(vm.state.value.draft!!.lines[0], null, null)
+        vm.state.await { it.busyLine == null && env.count("PUT", "/drafts/7/lines/31/pack") == 1 }
+        assertEquals("""{"pieces":null}""", env.bodies("PUT", "/drafts/7/lines/31/pack").single())
+    }
+
     @Test fun `refresh after the chooser picks up the changed line`() = runTest {
         val vm = ready()
         env.on("GET", "/drafts/7", body = fixture("draft_ready.json").replace("\"quantity\": 1,", "\"quantity\": 4,"))

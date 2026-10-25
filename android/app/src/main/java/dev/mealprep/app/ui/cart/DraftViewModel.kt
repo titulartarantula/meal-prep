@@ -77,6 +77,22 @@ class DraftViewModel(private val repo: Repository, private val id: Int, private 
     /** Always buy this (or stop) for the line's product. */
     fun setPinned(line: DraftLine, pinned: Boolean) = edit(line.id) { repo.setPinned(id, line.id, pinned) }
 
+    /** How many pieces one pack of the line's product holds (null = forget it). Saved for the product; every line
+     *  of this cart with it is re-planned, so the whole draft comes back. */
+    fun setPack(line: DraftLine, pieces: Int?, word: String?) {
+        if (!_state.value.editable) return
+        _state.update { it.copy(busyLine = line.id, error = null) }
+        viewModelScope.launch {
+            when (val r = repo.setPack(id, line.id, pieces, word)) {
+                is ApiResult.Ok -> _state.update { it.copy(busyLine = null, draft = r.value) }
+                is ApiResult.Err -> {
+                    _state.update { it.copy(busyLine = null, error = r.error.userMessage()) }
+                    if (r.isConflict()) refreshAfterConflict()
+                }
+            }
+        }
+    }
+
     /** Back from the chooser (or the app resumed): load the draft again without a spinner; a build still being
      *  polled is left to its poll. */
     fun refresh() {

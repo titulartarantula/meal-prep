@@ -64,6 +64,8 @@ class DraftActions(
     /** Opens the product chooser for the line (Swap product, Search Loblaws). */
     val onSwap: (DraftLine) -> Unit = {},
     val onPin: (DraftLine, Boolean) -> Unit = { _, _ -> },
+    /** Pack size saved for the line's product (pieces, word), or forgotten (null, null). */
+    val onPack: (DraftLine, Int?, String?) -> Unit = { _, _, _ -> },
     val onSend: () -> Unit = {},
     val onLoblaws: (String) -> Unit = {},
     val onRebuild: (List<String>) -> Unit = {},
@@ -98,7 +100,7 @@ fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.no
                     items(d.lines, key = { it.id }) { line ->
                         LineRow(line, editable = s.editable, busy = s.busyLine == line.id,
                             onQty = { a.onQty(line, it) }, onRemove = { a.onRemove(line, !line.removed) }, onSwap = { a.onSwap(line) },
-                            onPin = { a.onPin(line, it) })
+                            onPin = { a.onPin(line, it) }, onPack = { n, w -> a.onPack(line, n, w) })
                     }
                     if (s.editable) item(key = "add") {
                         OutlinedButton(a.onAddItem, Modifier.fillMaxWidth().padding(vertical = 8.dp).heightIn(min = 48.dp)) {
@@ -185,8 +187,11 @@ internal fun productTitle(line: DraftLine): String =
  */
 @Composable
 private fun LineRow(line: DraftLine, editable: Boolean, busy: Boolean, onQty: (Int) -> Unit, onRemove: () -> Unit,
-                    onSwap: () -> Unit, onPin: (Boolean) -> Unit) {
+                    onSwap: () -> Unit, onPin: (Boolean) -> Unit, onPack: (Int?, String?) -> Unit = { _, _ -> }) {
     val q = line.quantity ?: 0
+    var packOpen by remember { mutableStateOf(false) }
+    if (packOpen) PackDialog(line, onSave = { n, w -> packOpen = false; onPack(n, w) },
+        onForget = { packOpen = false; onPack(null, null) }, onDismiss = { packOpen = false })
     val p = line.product
     val strike = if (line.removed) TextDecoration.LineThrough else null
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
@@ -224,7 +229,7 @@ private fun LineRow(line: DraftLine, editable: Boolean, busy: Boolean, onQty: (I
                     }
                 }
             }
-            LineMenu(line, editable, onSwap, onRemove, onPin)
+            LineMenu(line, editable, onSwap, onRemove, onPin, onPack = { packOpen = true })
         }
         HorizontalDivider(Modifier.padding(top = 4.dp))
     }
@@ -233,20 +238,23 @@ private fun LineRow(line: DraftLine, editable: Boolean, busy: Boolean, onQty: (I
 const val SEARCH_LOBLAWS = "Search Loblaws"
 const val STOP_ALWAYS_BUY = "Stop always buying this"
 
-/** ⋮ on a cart line: why this amount and which recipes (read-only text), then Swap, Always buy this and Remove / Put back. */
+/** ⋮ on a cart line: why this amount, what one pack holds and which recipes (read-only text), then Swap, Pack size
+ *  (a product sold by the piece), Always buy this and Remove / Put back. */
 @Composable
-private fun LineMenu(line: DraftLine, editable: Boolean, onSwap: () -> Unit, onRemove: () -> Unit, onPin: (Boolean) -> Unit) {
+private fun LineMenu(line: DraftLine, editable: Boolean, onSwap: () -> Unit, onRemove: () -> Unit, onPin: (Boolean) -> Unit,
+                     onPack: () -> Unit = {}) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton({ open = true }) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More for ${line.name}") }
         DropdownMenu(open, { open = false }) {
-            val info = listOfNotNull(line.why, line.recipes.takeIf { it.isNotEmpty() }?.let { "For " + it.joinToString(", ") },
+            val info = listOfNotNull(line.why, PackText.summary(line.pack), line.recipes.takeIf { it.isNotEmpty() }?.let { "For " + it.joinToString(", ") },
                 (if (line.pinned) ALWAYS_BOUGHT else SOURCE[line.source])?.let { "Product: $it" })
             Column(Modifier.widthIn(max = 280.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
                 info.forEach { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             HorizontalDivider()
             DropdownMenuItem({ Text(if (line.product == null) SEARCH_LOBLAWS else "Swap product") }, { open = false; onSwap() }, enabled = editable)
+            if (line.packEditable && !line.removed) DropdownMenuItem({ Text("$PACK_SIZE…") }, { open = false; onPack() }, enabled = editable)
             if (line.product != null && !line.removed) DropdownMenuItem({ Text(if (line.pinned) STOP_ALWAYS_BUY else ALWAYS_BUY) },
                 { open = false; onPin(!line.pinned) }, enabled = editable)
             DropdownMenuItem({ Text(if (line.removed) "Put back" else "Remove from cart") }, { open = false; onRemove() }, enabled = editable)
@@ -264,7 +272,7 @@ fun DraftScreen(id: Int, onLoblaws: (String) -> Unit, onRebuild: (List<String>) 
     LifecycleResumeEffect(vm) { vm.refresh(); onPauseOrDispose { } }
     DraftContent(s, DraftActions(
         onQty = vm::setQuantity, onRemove = vm::setRemoved, onSwap = { if (s.editable) onChoose(it.id) }, onPin = vm::setPinned,
-        onSend = vm::send, onLoblaws = onLoblaws, onRebuild = onRebuild, onReload = vm::reload, onBack = onBack,
+        onPack = vm::setPack, onSend = vm::send, onLoblaws = onLoblaws, onRebuild = onRebuild, onReload = vm::reload, onBack = onBack,
         onAddItem = { if (s.editable) onAddItem() },
     ))
 }

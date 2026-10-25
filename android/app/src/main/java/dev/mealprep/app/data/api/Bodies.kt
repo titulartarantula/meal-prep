@@ -41,6 +41,12 @@ object Bodies {
         if (pinned != null) put("pinned", pinned)
     }
 
+    /** How many pieces one pack holds ("a bunch has 6"); null pieces forgets it (sent explicitly). */
+    fun pack(pieces: Int?, word: String?): JsonObject = buildJsonObject {
+        if (pieces != null) put("pieces", pieces) else put("pieces", JsonNull)
+        if (word != null) put("word", word)
+    }
+
     /** A fridge item's edit form saved: every field sent, null clears qty/unit/use_by. */
     fun fridgePatch(name: String, qty: Double?, unit: String?, useSoon: Boolean, useBy: String?, fromList: Boolean = false): JsonObject =
         buildJsonObject {

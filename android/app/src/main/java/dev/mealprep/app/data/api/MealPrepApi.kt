@@ -70,6 +70,7 @@ interface MealPrepApi {
     @GET("drafts/{id}") suspend fun draft(@Path("id") id: Int): Draft
     @GET("weeks/{week}/draft") suspend fun weekDraft(@Path("week") week: String): Draft
     @PATCH("drafts/{id}/lines/{line}") suspend fun patchLine(@Path("id") id: Int, @Path("line") line: Int, @Body body: JsonObject): DraftLine
+    @PUT("drafts/{id}/lines/{line}/pack") suspend fun putPack(@Path("id") id: Int, @Path("line") line: Int, @Body body: JsonObject): Draft
     @POST("drafts/{id}/lines/{line}/search") suspend fun searchLine(@Path("id") id: Int, @Path("line") line: Int, @Body body: SearchIn): List<Product>
     @GET("drafts/{id}/lines/{line}/choices") suspend fun choices(@Path("id") id: Int, @Path("line") line: Int,
         @Query("term") term: String?, @Query("page") page: Int): Choices

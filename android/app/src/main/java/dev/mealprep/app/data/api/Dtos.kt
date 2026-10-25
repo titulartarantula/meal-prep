@@ -128,6 +128,9 @@ import kotlinx.serialization.Serializable
     val minQty: Int? = null, val maxQty: Int? = null, val interval: Int? = null,
     val weighted: Boolean = false, val priceQuantity: Double? = null,
     val link: String? = null,
+    /** What one pack holds when the size doesn't say ("1 ea" Green Onion = a bunch of 6), since 0.15.0: learned by
+     *  the cart's quantity check ("check") or set by the household ("user"). */
+    val pieces: Int? = null, val piecesWord: String? = null, val piecesSource: String? = null,
 ) {
     val outOfStock: Boolean get() = stock == "OUT" || stock == "OUT_OF_STOCK"
     /** What [quantity] of it costs (a price per 100 g counts grams). */
@@ -150,7 +153,12 @@ import kotlinx.serialization.Serializable
     val extraId: Int? = null,
     /** What the fridge covered when the list was made (since 0.14.0): "partial" with [fridgeQty] in the line's unit. */
     val fridge: String? = null, val fridgeQty: Double? = null,
+    /** What one pack of the product holds (since 0.15.0), or null; [packEditable] = it's sold by the piece, so the
+     *  household can say how many are in one (Pack size on ⋮). */
+    val pack: PackInfo? = null, val packEditable: Boolean = false,
 )
+/** [source]: "check" (learned by the cart's quantity check), "user" (the household's number) or "guess". */
+@Serializable data class PackInfo(val pieces: Int, val word: String = "pack", val source: String = "guess")
 @Serializable data class Progress(val done: Int = 0, val total: Int = 0)
 @Serializable data class Draft(
     val id: Int, val status: String, val error: String? = null, val progress: Progress = Progress(),

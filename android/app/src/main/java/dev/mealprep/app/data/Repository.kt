@@ -265,6 +265,9 @@ class Repository(
     suspend fun setExtraQuantity(id: Int, quantity: Int): ApiResult<Extra> =
         call { it.patchExtra(id, Bodies.extraPatch(quantity = quantity)) }
     suspend fun deleteExtra(id: Int): ApiResult<Unit> = call { it.deleteExtra(id) }
+    /** How many pieces one pack of the line's product holds (null = forget); the server re-plans the draft. */
+    suspend fun setPack(draftId: Int, lineId: Int, pieces: Int?, word: String?): ApiResult<Draft> =
+        call { it.putPack(draftId, lineId, Bodies.pack(pieces, word)) }
     suspend fun setPinned(draftId: Int, lineId: Int, pinned: Boolean): ApiResult<DraftLine> =
         call { it.patchLine(draftId, lineId, Bodies.linePatch(pinned = pinned)) }
     suspend fun sendDraft(draftId: Int): ApiResult<String> = call { it.sendDraft(draftId).pcxCartId }
