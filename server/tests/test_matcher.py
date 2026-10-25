@@ -1,7 +1,7 @@
 from datetime import date
 import itertools
 import httpx
-from mealprep import db
+from mealprep import db, qtycheck
 from mealprep.models import ListItem, Product
 from mealprep.matcher import fill_cart
 
@@ -21,7 +21,9 @@ class FakePcx:
 
 class FakeAI:
     def __init__(self, out): self.out, self.n = out, 0
-    def complete_json(self, prompt, images=None): self.n += 1; return self.out
+    def complete_json(self, prompt, images=None):
+        if prompt.startswith(qtycheck.MARKER): return {"changes": []}
+        self.n += 1; return self.out
 
 
 P1 = Product(code="A", name="Chicken Thighs 1kg", stock="OK", price=15)

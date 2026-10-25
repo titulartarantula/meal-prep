@@ -9,7 +9,7 @@ import math
 import httpx
 from psycopg.types.json import Jsonb
 
-from . import bulk, db, planner
+from . import bulk, db, planner, qtycheck
 from .ingredients import item_key, split_prep
 from .matcher import OUT_OF_STOCK, _choose
 from .models import ListItem, Product
@@ -288,6 +288,7 @@ def _build(conn, draft_id, pcx, provider, store_id, workers):
                      (f"PC Express product search failed for every item ({type(last_error).__name__}: "
                       f"{str(last_error)[:150]}) — likely an outage; try again later", draft_id))
     else:
+        qtycheck.check_draft(conn, draft_id, provider)
         conn.execute("UPDATE carts SET status='ready' WHERE id=%s AND status='building'", (draft_id,))
 
 

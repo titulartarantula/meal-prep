@@ -4,7 +4,7 @@ import itertools
 import httpx
 from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
-from mealprep import db, drafts
+from mealprep import db, drafts, qtycheck
 from mealprep.api import create_app
 from mealprep.config import Settings
 from mealprep.models import ListItem, Product
@@ -42,6 +42,7 @@ class Pcx:
 class AI:
     def __init__(self, code=None): self.code, self.n = code, 0
     def complete_json(self, prompt, images=None):
+        if prompt.startswith(qtycheck.MARKER): return {"changes": []}
         self.n += 1
         return {"code": self.code, "quantity": 1}
 

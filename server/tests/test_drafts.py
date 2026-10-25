@@ -2,7 +2,7 @@ from datetime import date
 import itertools, threading, time
 import httpx
 import pytest
-from mealprep import db, drafts
+from mealprep import db, drafts, qtycheck
 from mealprep.models import ListItem, Product
 
 WK = [date(2026, 10, 11)]
@@ -38,6 +38,7 @@ class FakeAI:
     """Picks by term: {name: code}; quantity 1."""
     def __init__(self, picks): self.picks, self.n = picks, 0
     def complete_json(self, prompt, images=None):
+        if prompt.startswith(qtycheck.MARKER): return {"changes": []}
         self.n += 1
         for name, code in self.picks.items():
             if f" {name}\n" in prompt or f" {name} (" in prompt:
@@ -280,6 +281,7 @@ class QtyAI:
     """Always picks `code` × `quantity`; keeps the prompts."""
     def __init__(self, code, quantity): self.code, self.quantity, self.prompts = code, quantity, []
     def complete_json(self, prompt, images=None):
+        if prompt.startswith(qtycheck.MARKER): return {"changes": []}
         self.prompts.append(prompt); return {"code": self.code, "quantity": self.quantity}
 
 
