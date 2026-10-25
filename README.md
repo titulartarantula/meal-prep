@@ -21,13 +21,16 @@ It has two parts:
   out of date. A Fridge list keeps what needs using up (typed, or proposed from photos of the fridge and
   reviewed before anything is saved): the app suggests dinners from Recipes that use it up with the fewest extra
   ingredients, the shopping list leaves out what the fridge covers, and the morning after a fridge dinner one tap
-  takes what it used off the list. The app talks only to the household's own server; it keeps an offline
+  takes what it used off the list. Before a cart is ready, every quantity gets a final check; a pack that holds
+  several pieces (a bunch of green onions) is remembered for that product, and Pack size on a cart line sets it by
+  hand. The app talks only to the household's own server; it keeps an offline
   copy of the current week.
 - **Server** (`server/`, Python 3.12 + FastAPI + Postgres). Imports recipes (schema.org JSON-LD from recipe
   pages, cookbook photos read by an AI model, or recipe documents — PDF, Word, text, scanned PDFs — split into
   recipes by the AI), suggests cookbook titles and authors for the app (Open Library,
   with Google Books as a fallback), stores the weekly plan and ratings, builds a grocery cart
-  for PC Express (Loblaws) by matching ingredients to products, keeps the household's fridge list (photos read by
+  for PC Express (Loblaws) by matching ingredients to products (quantities from the package sizes, checked by the AI
+  once the cart is built, with what a pack holds learned per product), keeps the household's fridge list (photos read by
   the AI, then deleted; dinner suggestions that use it up; the list's subtraction), and writes the Sunday prep plan and per-night
   cook cards with an LLM followed by a deterministic food-safety pass.
 
@@ -46,7 +49,7 @@ Not affiliated with The New York Times or Loblaws.
 | Path | What |
 |---|---|
 | `android/` | The app. `android/tools/` holds build/release helper scripts (see below). |
-| `server/mealprep/` | API (`api.py`), DB access + schema (`db.py`, `schema.sql`), importers, AI providers (`ai/`), cart drafts and product matching (`drafts.py`, `matcher.py`, `pcx.py`), prep plans (`prepplan.py`, `prep_rules.py`), the fridge list (`fridge.py`). |
+| `server/mealprep/` | API (`api.py`), DB access + schema (`db.py`, `schema.sql`), importers, AI providers (`ai/`), cart drafts and product matching (`drafts.py`, `matcher.py`, `pcx.py`), quantities (`planner.py`, `qtycheck.py`, `packs.py`), prep plans (`prepplan.py`, `prep_rules.py`), the fridge list (`fridge.py`). |
 | `server/tests/` | pytest suite (DB tests need a Postgres test database). |
 | `server/deploy/` | systemd unit, deploy script, smoke scripts, and the API reference (`README.md`). |
 | `docker-compose.yml` | Postgres for the server. |
