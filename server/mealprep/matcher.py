@@ -5,15 +5,14 @@ from .models import CartLine, CartResult
 
 OUT_OF_STOCK = {"OUT", "OUT_OF_STOCK"}   # live API reports "OUT"
 
-PROMPT = """Pick the best grocery product for this shopping-list need, and how many packages to buy.
+PROMPT = """Pick the best grocery product for this shopping-list need.
 Need: {need}
 Candidates (JSON; min_packs = the fewest packages of that product that cover the need, worked out from its
 package_size; 1 where that can't be worked out; cover_cost = what min_packs of it cost, where known): {cands}
 Prefer: the plain/standard version; the cheapest way to cover the amount (one bigger pack — club/family size — over
 several small ones when its cover_cost is no higher; otherwise the smallest package that covers it); regular brands
-over specialty.
-Quantity: its min_packs (where it was worked out, exactly that is bought); otherwise the packages the need calls for, usually 1.
-Return ONLY JSON: {{"code": candidate code, "quantity": integer packages}}"""
+over specialty. How many to buy is worked out separately.
+Return ONLY JSON: {{"code": candidate code}}"""
 
 
 def _need(it):
@@ -23,8 +22,9 @@ def _need(it):
     return out + (f" — weekly staple: at least {sp} package{'' if sp == 1 else 's'}" if sp else "")
 
 
-def _choose(provider, it, cands):
-    """AI pick (code, packages). The caller settles the quantity with `planner.default_quantity`."""
+def _choose(provider, it, cands) -> str | None:
+    """AI pick: the chosen candidate's code (None when the AI fails). The quantity is the planner's
+    (`planner.default_quantity`), checked with the rest of the cart by `qtycheck`."""
     mins = planner.min_packs(it, cands)
 
     def cand(p):
@@ -39,14 +39,8 @@ def _choose(provider, it, cands):
         ch = provider.complete_json(PROMPT.format(need=_need(it), cands=json.dumps(
             [cand(p) for p in cands], ensure_ascii=False)))
     except AIError:
-        return None, 0
-    if not isinstance(ch, dict):
-        return None, 0
-    try:
-        qty = max(1, int(ch.get("quantity") or 1))
-    except (TypeError, ValueError):
-        qty = 1
-    return ch.get("code"), qty
+        return None
+    return ch.get("code") if isinstance(ch, dict) else None
 
 
 def fill_cart(items, pcx, provider, conn, weeks, provider_name: str | None = None, store_id: str = "1092",

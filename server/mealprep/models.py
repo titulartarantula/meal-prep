@@ -137,6 +137,11 @@ class Product(BaseModel):
     weighted: bool = False               # sold by weight: quantity = grams, price per price_quantity grams
     price_quantity: float | None = None  # what `price` is for: 100 (g) for deli by weight; None/1 = per item
     link: str | None = None              # path on loblaws.ca
+    # Since 0.15.0: what one pack holds when the size text doesn't say ("1 ea" Green Onion = a bunch of 6), from
+    # `pack_contents` (`packs.attach`); never from the store, so `db.record_products` leaves it out.
+    pieces: int | None = None
+    pieces_word: str | None = None       # "bunch"
+    pieces_source: str | None = None     # "check" (learned by the quantity check) | "user"
 
 
 class CartLine(BaseModel):

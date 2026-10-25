@@ -249,7 +249,7 @@ def record_products(conn, store_id: str, products) -> None:
         return
     with conn.transaction():
         for p in products:
-            detail = p.model_dump(exclude={"price", "stock"})
+            detail = p.model_dump(exclude={"price", "stock", "pieces", "pieces_word", "pieces_source"})
             conn.execute(
                 "INSERT INTO products(code, name, brand, package_size, detail) VALUES(%s,%s,%s,%s,%s) "
                 "ON CONFLICT(code) DO UPDATE SET name=excluded.name, brand=excluded.brand, "

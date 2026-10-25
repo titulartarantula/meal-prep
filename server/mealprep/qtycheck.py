@@ -3,12 +3,15 @@
 The planner works from free-text pack sizes, and some of them hide what a pack really holds ("1 ea" of Green Onion
 is a bunch of several). After every line is matched, the AI reviews all of them together — the recipe need, the
 product and the quantity — and corrects only quantities that are clearly wrong. A corrected line says so in its
-`note` (shown on the cart row), so the user sees the change and can undo it. Fails open: any AI or data problem
-leaves the draft exactly as built."""
+`note` (shown on the cart row), so the user sees the change and can undo it. When the fix is that one pack holds
+several pieces (a bunch, a bag), that is saved for the product (`packs`), so later carts plan it right from the start
+and the check is only a backstop. Fails open: any AI or data problem leaves the draft exactly as built."""
 import json
 import logging
 
-from . import planner
+from psycopg.types.json import Jsonb
+
+from . import packs, planner
 from .ai.base import AIError
 from .models import ListItem
 
@@ -26,12 +29,15 @@ has many stalks).
 For each line decide whether the quantity is reasonable: it covers the need without buying a lot more than needed.
 A little extra is fine (packs come in fixed sizes); weekly staples are bought as listed. Change ONLY quantities that
 are clearly wrong, e.g. several bunches where one bunch covers it, or far too little for the need. When unsure, leave
-the line alone. Lines marked "weighed" are in grams.
+the line alone. Lines marked "weighed" are in grams. "pack_holds" is what one pack was already found to hold.
 
 Lines (JSON): {lines}
 
 Return ONLY JSON: {{"changes": [{{"id": line id, "quantity": corrected integer, "reason": "short plain reason for the
-shopper, e.g. one bunch has about 6–8 green onions"}}]}} — an empty list when every quantity is reasonable."""
+shopper, e.g. one bunch has about 6–8 green onions", "pieces_per_pack": integer or null, "pack_word": "bunch"}}]}}
+— an empty list when every quantity is reasonable. Give pieces_per_pack (a typical, slightly low count of the need's
+pieces in one pack) and pack_word ("bunch", "bag", ...) only when the fix is that one pack holds several pieces of
+what the need counts; otherwise null."""
 
 
 def _line(lid, item, product, qty):
@@ -46,6 +52,8 @@ def _line(lid, item, product, qty):
         out["weekly_staple_packs"] = it.staple_packs
     if product.get("weighted"):
         out["weighed"] = True
+    if product.get("pieces"):
+        out["pack_holds"] = f"about {product['pieces']} ({product.get('pieces_word') or 'pack'})"
     if desc := (product.get("description") or "").strip():
         out["description"] = desc[:MAX_DESC]
     return out
@@ -85,6 +93,10 @@ def check_draft(conn, draft_id: int, provider) -> int:
         _, item, product, old, note = row
         if new > old * MAX_RAISE:
             continue
+        if (learned := _learn(conn, product, ch)) is not None:   # plan with what a pack holds, as later carts will
+            product = learned
+            new = planner.default_quantity(ListItem(**item), product, new)
+            conn.execute("UPDATE cart_lines SET product=%s WHERE id=%s", (Jsonb(product), lid))
         new = order_quantity(product, new)
         if not new or new == old:
             continue
@@ -97,3 +109,19 @@ def check_draft(conn, draft_id: int, provider) -> int:
     if done:
         log.info("draft %s: quantity check changed %d line(s)", draft_id, done)
     return done
+
+
+def _learn(conn, product: dict, ch: dict) -> dict | None:
+    """Save what one pack holds when the AI says so (count packs only; never over the household's number). Returns
+    the line's product with it attached, or None when nothing was learned."""
+    try:
+        n = int(ch.get("pieces_per_pack") or 0)
+    except (TypeError, ValueError):
+        return None
+    pack = planner.parse_pack(product.get("package_size"), product.get("sold_by"))
+    if (not 2 <= n <= packs.MAX_PIECES or pack.family != "count" or pack.priced_by_weight or product.get("weighted")
+            or not product.get("code")):
+        return None
+    if not packs.save(conn, product["code"], n, ch.get("pack_word"), "check", str(ch.get("reason") or "")):
+        return None
+    return packs.attach(product, packs.lookup(conn, product["code"]))

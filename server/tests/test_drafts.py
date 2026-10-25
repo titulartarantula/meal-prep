@@ -302,7 +302,8 @@ def test_ai_too_few_packs_is_raised_to_the_floor(conn):
     _, line = one_line(conn, MILK, [sized("L1", "1 l"), sized("L4", "4 l", price=9.0)], ai)
     assert line["quantity"] == 2 and line["packs_min"] == 2 and line["needs_check"] is False
     assert line["why"] == "Need 6 cups → 2 × 1 L"
-    assert '"min_packs": 2' in ai.prompts[0] and "exactly that is bought" in ai.prompts[0]
+    assert '"min_packs": 2' in ai.prompts[0]
+    assert '"quantity"' not in ai.prompts[0]                          # the AI picks; the planner counts
 
 
 def test_ai_more_packs_than_needed_is_the_floor(conn):
@@ -326,11 +327,22 @@ def test_remembered_pick_gets_the_floor_too(conn):
     assert line["source"] == "memory" and line["quantity"] == 2 and ai.prompts == []
 
 
-def test_priced_by_weight_keeps_ai_quantity_and_flags(conn):
+def test_priced_by_weight_without_a_unit_price_is_one_and_flagged(conn):
     it = ListItem(key="red onion|mass", name="red onion", qty=500, unit="g")
     _, line = one_line(conn, it, [sized("O", "", sold_by="SOLD_BY_EACH_PRICED_BY_WEIGHT")], QtyAI("O", 3))
-    assert line["quantity"] == 3 and line["needs_check"] is True and "priced by weight" in line["why"]
+    assert line["quantity"] == 1 and line["needs_check"] is True and "priced by weight" in line["why"]
     assert line["product"]["sold_by"] == "SOLD_BY_EACH_PRICED_BY_WEIGHT"
+
+
+def test_tray_priced_by_weight_is_planned_from_its_estimated_weight(conn):
+    it = ListItem(key="boneless pork shoulder|mass", name="boneless pork shoulder", qty=2.67, unit="lb")
+    roast = sized("R", "", sold_by="SOLD_BY_EACH_PRICED_BY_WEIGHT").model_copy(
+        update={"price": 28.28, "unit_price": 14.31, "unit_price_unit": "1 kg"})              # ≈ 1.98 kg
+    _, line = one_line(conn, it, [roast], QtyAI("R", 1))
+    assert line["quantity"] == 1 and line["needs_check"] is False
+    assert line["why"] == "Need 2⅔ lb → 1 × 1 pack (≈ 1.98 kg)"
+    it = it.model_copy(update={"qty": 6})                                                   # ≈ 2.7 kg
+    assert one_line(conn, it, [roast], QtyAI("R", 1))[1]["quantity"] == 2
 
 
 def test_unparseable_size_is_one_pack_and_flagged(conn):

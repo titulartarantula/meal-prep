@@ -358,3 +358,15 @@ CREATE TABLE IF NOT EXISTS fridge_nudges(
   changes jsonb NOT NULL DEFAULT '[]',
   answered_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- What one pack holds when its size text doesn't say (0.15.0): Loblaws lists Green Onion as "1 ea", and that "ea" is
+-- a bunch of about 6. Learned by the cart's quantity check (source 'check') or set by the household on a cart line
+-- ('user', which a check never overwrites). Keyed by product code; the planner reads it from Product.pieces.
+CREATE TABLE IF NOT EXISTS pack_contents(
+  code text PRIMARY KEY,
+  pieces int NOT NULL CHECK (pieces BETWEEN 1 AND 100),
+  word text NOT NULL,
+  source text NOT NULL CHECK (source IN ('check','user')),
+  reason text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);

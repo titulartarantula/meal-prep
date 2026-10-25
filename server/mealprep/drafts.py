@@ -9,7 +9,7 @@ import math
 import httpx
 from psycopg.types.json import Jsonb
 
-from . import bulk, db, planner, qtycheck
+from . import bulk, db, packs, planner, qtycheck
 from .ingredients import item_key, split_prep
 from .matcher import OUT_OF_STOCK, _choose
 from .models import ListItem, Product
@@ -168,18 +168,18 @@ def _match(pcx, provider, it, pick, last, pinned=False, usual=None):
         hint = bulk.better_cover(it, p, cands)
         note = bulk.hint_note(hint[0], bulk.cover(it, hint[0])[0], hint[1]) if hint and hint[1] >= HINT_SAVING else None
         return found, cands, pick[0], fit_quantity(it, p, planner.remembered_quantity(it, p, last), last), "memory", note
-    code, qty = _choose(provider, it, cands)
+    code = _choose(provider, it, cands)
     if code in by_code:
         chosen = by_code[code]
-        bigger = bulk.better_cover(it, chosen, cands)
+        bigger, n_big = bulk.better_cover(it, chosen, cands), None
         if bigger:   # the same thing in a bigger pack covers the need for no more: take it
             big, saving = bigger
             n_chosen, n_big = bulk.cover(it, chosen)[0], bulk.cover(it, big)[0]
             why = bulk.swap_note(chosen, n_chosen, big, n_big, saving)
             note = f"{note} {why}" if note else why
-            code, chosen, qty = big.code, big, n_big
-        qty = fit_quantity(it, chosen, planner.default_quantity(it, chosen, qty))
-    return found, cands, code, qty, "ai", note
+            code, chosen = big.code, big
+        return found, cands, code, fit_quantity(it, chosen, planner.default_quantity(it, chosen, n_big)), "ai", note
+    return found, cands, code, None, "ai", note
 
 
 def _with_bulk(pcx, it, found):
@@ -209,7 +209,7 @@ def _match_extra(pcx, provider, it):
     cands = [c for c in found if c.stock not in OUT_OF_STOCK]
     if not cands:
         return found, cands, None, None, "none", note
-    code, _ = _choose(provider, it, cands)
+    code = _choose(provider, it, cands)
     by_code = {c.code: c for c in cands}
     if code not in by_code:
         return found, cands, None, None, "none", note
@@ -252,6 +252,7 @@ def _build(conn, draft_id, pcx, provider, store_id, workers):
         jobs.append((lid, it, pick, db.last_purchase(conn, found[2], pick[0]) if pick else None, pinned,
                      usual.name if usual else None))
     errors, last_error = 0, None
+    pcx = packs.Attaching(pcx, packs.known(conn))
     with ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix=f"draft{draft_id}") as pool:
         futs = {(pool.submit(_match_extra, pcx, provider, it) if it.extra_id is not None else
                  pool.submit(_match, pcx, provider, it, pick, last, pinned, usual)): (lid, it, pick)
@@ -306,17 +307,31 @@ def _line_out(row) -> dict:
         product = {"code": code, "name": pname, "brand": pbrand, "package_size": psize, "price": None, "stock": None}
     if product and not product.get("image") and pimage:   # a snapshot from before 0.12.0: the photo seen since
         product = {**product, "image": pimage}
-    plan = planner.plan(ListItem(key=key or "", name=name or "", qty=qty, unit=unit, prep=item.get("prep"),
-                                 staple_packs=item.get("staple_packs")), product)
+    it = ListItem(key=key or "", name=name or "", qty=qty, unit=unit, prep=item.get("prep"),
+                  staple_packs=item.get("staple_packs"))
+    plan = planner.plan(it, product)
     return {"id": lid, "item_key": key, "name": name, "qty": qty, "unit": unit, "prep": item.get("prep"),
             "recipes": item.get("recipes", []), "staple": bool(item.get("staple")),
             "staple_packs": item.get("staple_packs"), "product": product, "quantity": quantity, "source": source,
             "alternatives": alts or [], "removed": removed, "status": status,
             "packs_min": plan.packs_min if plan else None, "needs_check": bool(plan and plan.needs_check),
             "why": plan.why(quantity) if plan and not (product or {}).get("weighted") else None,
-            "pinned": bool(pinned), "note": note, "extra_id": extra_id,
+            "pinned": bool(pinned), "note": note, "extra_id": extra_id, **_pack_out(it, product),
             # what the fridge covered when the list was made (0.14.0; null for lines from before)
             "fridge": item.get("fridge"), "fridge_qty": item.get("fridge_qty")}
+
+
+def _pack_out(it, product) -> dict:
+    """What one pack holds, for the cart row (0.15.0): `pack` = {pieces, word, source: check|user|guess} or null, and
+    `pack_editable` = the product is sold by the piece, so the household can say how many are in one."""
+    if not product or product.get("weighted"):
+        return {"pack": None, "pack_editable": False}
+    pack = planner.parse_pack(product.get("package_size"), product.get("sold_by"))
+    if pack.family != "count" or pack.priced_by_weight:
+        return {"pack": None, "pack_editable": False}
+    pp = planner.pack_pieces(it, product, pack)
+    out = {"pieces": pp[0], "word": pp[1], "source": product.get("pieces_source") if pp[2] else "guess"} if pp else None
+    return {"pack": out, "pack_editable": True}
 
 
 _LINE_SQL = ("SELECT l.id, l.item, l.item_key, l.item_name, l.need_qty, l.need_unit, l.product, l.product_code, "
@@ -374,8 +389,8 @@ def _current_product(conn, code: str) -> Product | None:
     if row is None:
         return None
     detail = {k: v for k, v in (row[6] or {}).items() if k in Product.model_fields}
-    return Product(**{**detail, "code": row[0], "name": row[1] or "", "brand": row[2], "package_size": row[3],
-                      "price": row[4], "stock": row[5]})
+    return packs.attach(Product(**{**detail, "code": row[0], "name": row[1] or "", "brand": row[2],
+                                   "package_size": row[3], "price": row[4], "stock": row[5]}), packs.lookup(conn, row[0]))
 
 
 _UNSET = object()
@@ -598,6 +613,7 @@ def search_choices(conn, pcx, term: str, page: int = 0, size: int = CHOICES_PAGE
 
 def _choices(conn, pcx, it, key, default, term, page, size, store_id, current=None, quantity=None) -> dict:
     term = (term or "").strip() or default
+    pcx = packs.Attaching(pcx, packs.known(conn))
     found, total = pcx.search_page(term, page, size)
     pin = db.pinned_code(conn, key)
     seen = {p.code for p in found}
@@ -659,3 +675,29 @@ def _choices(conn, pcx, it, key, default, term, page, size, store_id, current=No
         })
     return {"term": term, "page": page, "total": total, "has_more": bool(found) and (page + 1) * size < total,
             "choices": out}
+
+
+def set_pack(conn, draft_id: int, line_id: int, pieces: int | None, word: str | None = None) -> dict:
+    """The household says how many pieces one pack of the line's product holds (None = forget it, back to the
+    guess). Saved for the product (`packs`, source 'user'); every line of this draft with that product is re-planned:
+    a quantity still at the build's number follows the new floor, one the household changed is kept. Returns the
+    draft."""
+    with conn.transaction():
+        _lock_ready(conn, draft_id)
+        line = _get_line(conn, draft_id, line_id)
+        if not line["pack_editable"]:
+            raise ValueError("this line's product isn't sold by the piece")
+        code = line["product"]["code"]
+        if pieces is None:
+            packs.forget(conn, code)
+        else:
+            packs.save(conn, code, pieces, word, "user")
+        rec = packs.lookup(conn, code)
+        for row in conn.execute(_LINE_SQL + "WHERE l.cart_id=%s AND l.product_code=%s", (draft_id, code)).fetchall():
+            ln = _line_out(row)
+            it, old, new = _line_item(ln), ln["product"], packs.attach(ln["product"], rec)
+            qty = ln["quantity"]
+            if qty and qty == planner.default_quantity(it, old, qty):
+                qty = order_quantity(new, planner.default_quantity(it, new, qty))
+            conn.execute("UPDATE cart_lines SET product=%s, quantity=%s WHERE id=%s", (Jsonb(new), qty, ln["id"]))
+    return get_draft(conn, draft_id)

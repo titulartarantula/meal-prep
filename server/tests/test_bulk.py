@@ -119,8 +119,8 @@ def test_ai_prompt_gets_cover_cost_and_estimated_size():
 
     class Spy:
         def complete_json(self, prompt, images=None):
-            seen.append(prompt); return {"code": "CLUB", "quantity": 1}
-    assert matcher._choose(Spy(), beef(), [tray(), club()]) == ("CLUB", 1)
+            seen.append(prompt); return {"code": "CLUB"}
+    assert matcher._choose(Spy(), beef(), [tray(), club()]) == "CLUB"
     assert '"min_packs": 4, "cover_cost": 44.0' in seen[0]
     assert '"package_size": "≈ 1.75 kg", "price": 42.46, "min_packs": 1, "cover_cost": 42.46' in seen[0]
 

@@ -323,6 +323,11 @@ class LinePatch(BaseModel):   # partial update: omitted fields are left unchange
     pinned: bool | None = None   # "Always buy this" for the line's item (with product_code: that product)
 
 
+class PackIn(BaseModel):    # how many pieces one pack holds ("a bunch has 6"); pieces null = forget it
+    pieces: int | None = Field(None, ge=1, le=100)
+    word: str | None = Field(None, max_length=20)
+
+
 class SearchIn(BaseModel):
     term: str = Field(min_length=1)
 
@@ -978,6 +983,12 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     @app.patch("/drafts/{draft_id}/lines/{line_id}", dependencies=A)
     def patch_line(draft_id: int, line_id: int, body: LinePatch, c=Depends(get_conn)):
         return _draft_call(drafts.update_line, c, draft_id, line_id, **body.model_dump(include=body.model_fields_set))
+
+    @app.put("/drafts/{draft_id}/lines/{line_id}/pack", dependencies=A)
+    def put_pack(draft_id: int, line_id: int, body: PackIn, c=Depends(get_conn)):
+        """How many pieces one pack of the line's product holds, saved for the product (null pieces = forget);
+        returns the draft (every line with that product is re-planned)."""
+        return _draft_call(drafts.set_pack, c, draft_id, line_id, body.pieces, body.word)
 
     @app.post("/drafts/{draft_id}/lines/{line_id}/search", dependencies=A)
     def search_line(draft_id: int, line_id: int, body: SearchIn, c=Depends(get_conn)):

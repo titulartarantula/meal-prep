@@ -158,7 +158,7 @@ def test_produce_sold_by_the_bunch_counts_pieces_per_bunch():
     onion = prod("1 ea", sold_by="SOLD_BY_EACH", name="Green Onion")
     p = planner.plan(li("scallion", 6), onion)
     assert (p.packs_min, p.enforce, p.needs_check) == (1, True, False)
-    assert p.why(1) == "Need 6 → 1 × 1 bunch (≈ 6)"
+    assert p.why(1) == "Need 6 → 1 × 1 bunch (≈ 6, a guess)"
     assert planner.plan(li("green onion", 8), onion).packs_min == 2
     assert planner.default_quantity(li("scallion", 6), onion, 6) == 1          # the AI's 6 bunches → 1
     assert planner.remembered_quantity(li("scallion", 6), onion, (6, 6, None)) == 1
@@ -292,3 +292,27 @@ def test_density_name_matching_is_word_based():
     assert planner.density(li("almond milk", 1, "cup")) == planner.density(li("whole milk", 1, "cup"))
     assert planner.density(li("buttermilk", 1, "cup")) != planner.density(li("butter", 1, "cup"))
     assert planner.density(li("ground beef", 1, "cup")) is None
+
+
+def test_learned_pieces_override_the_guess():
+    onion = Product(code="GO", name="Green Onion", package_size="1 ea", price=2.0, stock="OK", sold_by="SOLD_BY_EACH",
+                    pieces=8, pieces_word="bunch", pieces_source="check")
+    p = planner.plan(li("scallion", 8), onion)
+    assert p.packs_min == 1 and p.why(1) == "Need 8 → 1 × 1 bunch (≈ 8)"
+    assert planner.plan(li("scallion", 9), onion).packs_min == 2
+    assert planner.plan(li("green onion", 2, "bunch"), onion).packs_min == 2     # a recipe counting bunches: 1:1
+    shallots = prod("1 ea", name="Shallots").model_copy(update={"pieces": 4, "pieces_word": "bag"})
+    p = planner.plan(li("shallot", 3), shallots)                                 # learned for any product
+    assert p.packs_min == 1 and p.why(1) == "Need 3 → 1 × 1 bag (≈ 4)"
+
+
+def test_tray_weight_from_price_and_unit_price():
+    roast = prod("", sold_by="SOLD_BY_EACH_PRICED_BY_WEIGHT").model_copy(
+        update={"price": 12.37, "unit_price": 26.43, "unit_price_unit": "1 kg"})          # ≈ 468 g
+    assert planner.tray_grams(roast) == pytest.approx(468, abs=1)
+    p = planner.plan(li("chicken breast", 1, "lb"), roast)
+    assert (p.packs_min, p.enforce) == (1, True) and p.pack == "1 pack (≈ 470 g)"
+    assert planner.plan(li("chicken breast", 2, "lb"), roast).packs_min == 2
+    per100 = roast.model_copy(update={"price": 2.0, "unit_price": 0.8, "unit_price_unit": "100 g"})   # 250 g
+    assert planner.plan(li("red onion", 500, "g"), per100).packs_min == 2
+    assert planner.plan(li("red onion", 2), per100).packs_min == 2                # pieces stay 1:1

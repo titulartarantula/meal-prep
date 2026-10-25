@@ -40,9 +40,10 @@ DENSITY_PREP = [(r"cheese|cheddar|mozzarella|parmesan|parmigiano", r"shred|grat"
 EACH_G = [(r"sweet potato|yam", 300), (r"potato", 220), (r"onion", 200), (r"shallot", 40), (r"lemon", 120),
           (r"lime", 70), (r"orange", 200), (r"apple", 200), (r"carrot", 75), (r"tomato", 150),
           (r"bell pepper", 180), (r"zucchini", 250), (r"avocado", 200), (r"cucumber", 300), (r"banana", 130)]
-# Pieces in one "1 ea" pack of produce sold by the bunch (Loblaws' Green Onion and Leeks are a bunch each): item
-# name → (pieces per bunch, product-name pattern the pack must match or None). Counts lean low, so a need errs
-# towards covering. Carrots and beets are usually bags or loose, so only a pack named as a bunch counts.
+# Guessed pieces in one "1 ea" pack of produce sold by the bunch (Loblaws' Green Onion and Leeks are a bunch each),
+# used until the product's real count is learned (`packs`, Product.pieces): item name → (pieces per bunch,
+# product-name pattern the pack must match or None). Counts lean low, so a need errs towards covering. Carrots and
+# beets are usually bags or loose, so only a pack named as a bunch counts.
 BUNCH = [(r"scallion|green onion|spring onion", 6, None), (r"leek", 2, None), (r"radish", 8, None),
          (r"carrot", 5, r"bunch"), (r"beet", 3, r"bunch")]
 # Part of a bought item: unit → (parts per item, g per part or None).
@@ -131,15 +132,37 @@ def _match(table, name: str):
     return next((v for pat, v in table if re.search(rf"\b(?:{pat})(?:e?s)?\b", name)), None)
 
 
-def bunch_pieces(it, product, pack: Pack) -> int | None:
-    """Pieces in one bunch when this "1 ea" pack is a bunch of the item's produce; else None."""
-    if pack.family != "count" or pack.total != 1 or pack.priced_by_weight:
+def pack_pieces(it, product, pack: Pack) -> tuple[int, str, bool] | None:
+    """(pieces, word, learned) when one pack of this product is a bunch/bag of several of the item: what was learned
+    for the product (Product.pieces), else a guess for a "1 ea" pack of produce sold by the bunch; None otherwise."""
+    if pack.family != "count" or pack.priced_by_weight:
+        return None
+    if n := _get(product, "pieces"):
+        return int(n), _get(product, "pieces_word") or "pack", True
+    if pack.total != 1:
         return None
     pname = (_get(product, "name") or "").lower()
     hit = next((v for pat, *v in BUNCH if re.search(rf"\b(?:{pat})(?:e?s)?\b", (it.name or "").lower())), None)
     if hit is None or (hit[1] and not re.search(hit[1], pname)):
         return None
-    return hit[0]
+    return hit[0], "bunch", False
+
+
+_WEIGHT_UNITS = {"g": 1, "kg": 1000, "lb": 453.6}
+
+
+def tray_grams(product) -> float | None:
+    """The weight of one pack sold by the piece but priced by weight (a tray of meat, a red onion): its price ÷
+    its unit price ("$14.31 / 1 kg"). None when either is missing."""
+    price, up, unit = _get(product, "price"), _get(product, "unit_price"), _get(product, "unit_price_unit")
+    m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)?\s*([a-z]+)\s*", (unit or "").lower())
+    if not (price and up and up > 0 and m and m.group(2) in _WEIGHT_UNITS):
+        return None
+    return price / up * float(m.group(1) or 1) * _WEIGHT_UNITS[m.group(2)]
+
+
+def grams_text(g: float) -> str:
+    return f"≈ {g / 1000:.2f}".rstrip("0").rstrip(".") + " kg" if g >= 1000 else f"≈ {round(g, -1):g} g"
 
 
 def density(it) -> float | None:
@@ -279,15 +302,21 @@ def _plan_line(it, product) -> Plan:
             return _plan(it.qty, pack.units, text, pack)
         fam, need = "count", it.qty
     elif unit is None or unit in WHOLE:
-        if unit is None and (per := bunch_pieces(it, product, pack)):
-            return _plan(it.qty / per, 1, text, Pack("count", 1, label=f"1 bunch (≈ {per})"))
+        if unit is None and (pp := pack_pieces(it, product, pack)):
+            per, word, learned = pp
+            return _plan(it.qty / per, 1, text,
+                         Pack("count", 1, label=f"1 {word} (≈ {per}{'' if learned else ', a guess'})"))
         if pack.family == "count":
             fam, need = "count", it.qty
         elif unit is None and pack.family == "mass" and (g := _match(EACH_G, name)):
             fam, need = "mass", it.qty * g
             shown = f"{text} ({_approx(need, 'g')})"
     if pack.priced_by_weight and fam != "count":
-        return unsure("priced by weight")
+        g, need_g = tray_grams(product), need_grams(it)
+        if g is None or need_g is None:
+            return unsure("priced by weight")
+        return _plan(need_g, g, shown if fam == "mass" else f"{text} ({_approx(need_g, 'g')})",
+                     Pack("mass", g, label=f"1 pack ({grams_text(g)})"))
     if need is None or fam != pack.family:
         return unsure(f"can't compare {unit or 'pieces'} with {pack.label}")
     return _plan(need, pack.total, shown, pack)

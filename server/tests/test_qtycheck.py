@@ -91,3 +91,35 @@ def test_weighed_line_stays_within_order_limits(conn):
     assert ai.seen[0]["weighed"] is True and ai.seen[0]["quantity"] == 300
     assert d["lines"][0]["quantity"] == 500                                  # rounded to the 100 g interval
     assert d["lines"][0]["note"] == "Quantity checked: 300 g → 500 g — a bit extra for 4 sandwiches."
+
+
+def test_check_learns_what_a_pack_holds(conn, monkeypatch):
+    from mealprep import packs
+    monkeypatch.setattr(qtycheck.planner, "BUNCH", [])
+    ai = CheckAI(lambda lines: [{"id": lines[0]["id"], "quantity": 1, "reason": "one bunch has 6–8 green onions",
+                                 "pieces_per_pack": 6, "pack_word": "bunch"}])
+    d = build(conn, [scallions(8)], {"scallion": [onion()]}, ai)
+    line = d["lines"][0]
+    assert packs.lookup(conn, "GO") == (6, "bunch", "check")
+    assert line["quantity"] == 2                                             # 8 at 6 a bunch: the planner's floor
+    assert line["pack"] == {"pieces": 6, "word": "bunch", "source": "check"}
+    assert line["note"] == "Quantity checked: 8 → 2 — one bunch has 6–8 green onions."
+    d = build(conn, [scallions(8)], {"scallion": [onion()]}, CheckAI())     # next week: right from the start
+    assert d["lines"][0]["quantity"] == 2 and d["lines"][0]["note"] is None
+
+
+def test_check_never_overwrites_the_households_pack(conn):
+    from mealprep import packs
+    packs.save(conn, "GO", 10, "bunch", "user")
+    ai = CheckAI(lambda lines: [{"id": lines[0]["id"], "quantity": 2, "pieces_per_pack": 3, "pack_word": "bunch"}])
+    d = build(conn, [scallions(6)], {"scallion": [onion()]}, ai)
+    assert packs.lookup(conn, "GO") == (10, "bunch", "user")
+    assert d["lines"][0]["quantity"] == 2                                    # the quantity change itself still applies
+
+
+def test_check_learns_only_for_count_packs(conn):
+    from mealprep import packs
+    ham = ListItem(key="ham|g", name="ham", qty=300, unit="g", recipes=["Sandwiches"])
+    ai = CheckAI(lambda lines: [{"id": lines[0]["id"], "quantity": 400, "pieces_per_pack": 6, "pack_word": "bunch"}])
+    build(conn, [ham], {"ham": [deli()]}, ai)
+    assert packs.lookup(conn, "HAM") is None
