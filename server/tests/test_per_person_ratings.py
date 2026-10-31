@@ -192,29 +192,32 @@ def test_good_for_company_is_one_household_verdict_set_by_owners(conn, fam):
     assert (s["company"], s["good_for_company"], s["company_set_by"]) == ("yes", True, f["ben"])
     assert company(f["cleo_h"], "no").status_code == 403           # a contributor can't
     assert company(f["ben_h"], "sometimes").status_code == 422
+    assert company(f["ben_h"], "maybe").status_code == 422          # the verdict is yes / no (or not decided)
     assert c.put("/recipes/9999/company", headers=f["ben_h"], json={"company": "yes"}).status_code == 404
     assert [r["id"] for r in c.get("/recipes", headers=f["cleo_h"]).json() if r["ratings"]["good_for_company"]] == [rid]
     # a rating's company answer: a non-owner's is ignored; an owner's (and the phone's: Ada) sets the verdict
     eid = placed(conn, rid, day=2)
     rate(f, eid, f["cleo_h"], family=2, company="no")
     assert summary()["company"] == "yes"
-    rate(f, eid, H, family=4, company="maybe")
+    rate(f, eid, H, family=4, company="no")
     s = summary()
-    assert (s["company"], s["company_set_by_name"]) == ("maybe", "Ada")
+    assert (s["company"], s["company_set_by_name"]) == ("no", "Ada")
+    rate(f, eid, H, family=4, company="maybe")                      # an older phone's Maybe: verdict unchanged
+    assert summary()["company"] == "no"
     # everyone's `rating` carries the verdict (the phone shows and edits it); the person rows don't have it
     [e] = week(f, H)
-    assert e["rating"]["company"] == "maybe" and all("company" not in r for r in e["ratings"])
-    assert week(f, f["cleo_h"])[0]["my_rating"]["company"] == "maybe"
+    assert e["rating"]["company"] == "no" and all("company" not in r for r in e["ratings"])
+    assert week(f, f["cleo_h"])[0]["my_rating"]["company"] == "no"
     rate(f, eid, H, family=4)                                       # Android omits a null company: unchanged
-    assert summary()["company"] == "maybe"
+    assert summary()["company"] == "no"
     assert company(f["ada_h"], None).json()["company"] is None      # null clears
     assert summary()["company"] is None and summary()["company_set_by"] is None
     assert conn.execute("SELECT count(*) FROM ratings WHERE company IS NOT NULL").fetchone()[0] == 0
     db.unscope(conn)
     log = conn.execute("SELECT member_id, detail FROM audit_log WHERE action='recipe.company' ORDER BY id").fetchall()
     db.scope(conn, f["hid"])
-    assert log == [(f["ben"], {"from": None, "to": "yes"}), (f["ada"], {"from": "yes", "to": "maybe"}),
-                   (f["ada"], {"from": "maybe", "to": None})]
+    assert log == [(f["ben"], {"from": None, "to": "yes"}), (f["ada"], {"from": "yes", "to": "no"}),
+                   (f["ada"], {"from": "no", "to": None})]
 
 
 def test_old_family_rows_still_show_as_family(conn, fam):
@@ -252,6 +255,7 @@ def test_export_has_one_entry_per_time_cooked(conn, fam):
     [e] = db.rating_entries(conn, TODAY, [rid])[rid]
     assert (e["date"], e["family"]) == ("2026-10-13", 4)     # 11/3 = 3.67 → 4
     assert e["note"] == "Ben: more heat · Cleo: mild is fine"
+    assert e["company"] is None                              # never a per-time-cooked vote: the verdict is the summary's
     out = f["c"].get(f"/recipes/{rid}/export", headers=H).json()
     assert len(out["mealprep:ratings"]["entries"]) == 1
     assert out["mealprep:ratings"]["summary"]["company"] == "yes" and out["mealprep:ratings"]["good_for_company"]
@@ -269,6 +273,32 @@ def test_rerunning_the_schema_keeps_per_person_ratings(conn, fam):
     assert conn.execute("SELECT count(*) FROM ratings").fetchone()[0] == 2
     assert [r["name"] for r in week(f, H)[0]["ratings"]] == ["Ada", "Ben"]
     assert f["c"].get(f"/recipes/{rid}", headers=H).json()["ratings"]["company"] == "no"
+
+
+def test_maybe_verdicts_become_not_decided_and_are_logged_when_the_schema_runs(conn, fam):
+    f, yes_r, maybe_r = fam, setup(conn), setup(conn, "Soup")
+    db.unscope(conn)
+    conn.execute("ALTER TABLE recipe_company DROP CONSTRAINT recipe_company_verdict_check")   # as deployed before
+    conn.execute("ALTER TABLE recipe_company ADD CONSTRAINT recipe_company_verdict_check "
+                 "CHECK (verdict IN ('yes','maybe','no'))")
+    conn.execute("INSERT INTO recipe_company(recipe_id, household_id, verdict, set_by) VALUES(%s,%s,'yes',%s), "
+                 "(%s,%s,'maybe',%s)", (yes_r, f["hid"], f["ben"], maybe_r, f["hid"], f["ada"]))
+    db.migrate(conn)
+    assert conn.execute("SELECT recipe_id, verdict FROM recipe_company").fetchall() == [(yes_r, "yes")]
+    [(target, detail)] = conn.execute("SELECT target, detail FROM audit_log WHERE action='recipe.company'").fetchall()
+    assert target == f"recipe:{maybe_r}" and detail["from"] == "maybe" and detail["to"] is None
+    assert (detail["reason"], detail["set_by"]) == ("yes-no-only", f["ada"])
+    with pytest.raises(Exception):
+        with conn.transaction():
+            conn.execute("INSERT INTO recipe_company(recipe_id, household_id, verdict) VALUES(%s,%s,'maybe')",
+                         (maybe_r, f["hid"]))
+    db.migrate(conn)                                     # a second run changes nothing
+    assert conn.execute("SELECT count(*) FROM audit_log WHERE action='recipe.company'").fetchone()[0] == 1
+    db.scope(conn, f["hid"])
+    assert f["c"].get(f"/recipes/{maybe_r}", headers=H).json()["ratings"]["company"] is None
+    with pytest.raises(ValueError):
+        db.set_company(conn, maybe_r, "maybe", None)
+    assert db.adopt_company(conn, maybe_r, "maybe") is False       # an import's maybe is ignored
 
 
 def test_legacy_ratings_migration_moves_family_to_the_legacy_member_and_makes_verdicts(conn, fam):
@@ -299,7 +329,7 @@ def test_legacy_ratings_migration_moves_family_to_the_legacy_member_and_makes_ve
     assert len(h["history"]) == 1                     # Tuesday's history stays with the Family row left behind
     assert {(v["recipe_id"], v["verdict"], v["set_by"]) for v in h["verdicts"]} == \
         {(rid, "no", None), (other, "no", None), (third, "yes", f["ben"])}   # Cleo answered last on Soup; not an owner
-    assert {(c["recipe_id"], c["taken"]) for c in h["verdict_conflicts"]} == {(rid, "no"), (other, "no")}
+    assert {(c["recipe_id"], c["taken"]) for c in h["verdict_conflicts"]} == {(rid, "no")}   # Soup's maybe isn't one
     legacy_ratings.apply(conn, log)
     assert legacy_ratings.snapshot(conn) == before    # scores, notes, dates, answers untouched
     assert conn.execute("SELECT member_id FROM ratings WHERE id = ANY(%s)", ([fam_mon, fam_wed],)).fetchall() == \

@@ -427,16 +427,6 @@ def _avg(scores) -> float | None:
     return float((Decimal(sum(scores)) / Decimal(len(scores))).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
-def verdict(answers) -> str | None:
-    """Several company answers folded into one (the export of a time cooked with several old answers): more yes than
-    no = yes, more no than yes = no, otherwise (a tie, or only maybes) maybe; None without answers."""
-    answers = [a for a in answers if a]
-    if not answers:
-        return None
-    yes, no = answers.count("yes"), answers.count("no")
-    return "yes" if yes > no else "no" if no > yes else "maybe"
-
-
 def company_verdicts(conn, recipe_ids: list[int] | None = None) -> dict[int, dict]:
     """{recipe_id: {company, company_set_by, company_set_by_name, company_set_at, company_source}} for recipes that
     have a Good for company verdict (no entry = not decided)."""
@@ -450,8 +440,10 @@ def company_verdicts(conn, recipe_ids: list[int] | None = None) -> dict[int, dic
 
 
 def set_company(conn, recipe_id: int, company: str | None, by: int | None, source: str = "member") -> dict | None:
-    """Set (or with None clear) the recipe's Good for company verdict. Returns {before, after}; None if the recipe
-    doesn't exist."""
+    """Set (or with None clear) the recipe's Good for company verdict ("yes" | "no"). Returns {before, after}; None if
+    the recipe doesn't exist."""
+    if company not in ("yes", "no", None):
+        raise ValueError(f"company verdict {company!r}")
     with conn.transaction():
         if conn.execute("SELECT 1 FROM recipes WHERE id=%s FOR UPDATE", (recipe_id,)).fetchone() is None:
             return None
@@ -467,7 +459,7 @@ def set_company(conn, recipe_id: int, company: str | None, by: int | None, sourc
 
 def adopt_company(conn, recipe_id: int, company: str | None, source: str = "import") -> bool:
     """Take a verdict brought in (an import) only when the recipe has none yet. True if it was set."""
-    if company not in ("yes", "maybe", "no"):
+    if company not in ("yes", "no"):   # "maybe" (older files) is ignored: the verdict is yes / no / not decided
         return False
     return conn.execute("INSERT INTO recipe_company(recipe_id, verdict, set_by, source) VALUES(%s,%s,NULL,%s) "
                         "ON CONFLICT(recipe_id) DO NOTHING", (recipe_id, company, source)).rowcount == 1
@@ -739,31 +731,31 @@ def rating_entries(conn, today: date, recipe_ids: list[int] | None = None) -> di
     rated or were placed on a night before today (so times_cooked survives a trip to another library), the ratings
     made from the recipe (recipe_ratings) and the imported ones. Each entry: date (the night, or null), multiplier,
     family, company, note, rated_at. Newest first (rated_at, else the night). A time cooked that several people rated
-    is one entry: family = their mean (rounded half up), company = their verdict, notes "Name: note" joined."""
+    is one entry: family = their mean (rounded half up), notes "Name: note" joined. `company` is always null: Good for
+    company is one household verdict per recipe (the file's summary), never an answer counted per time cooked."""
     rows = conn.execute(
         "SELECT * FROM (" + _cooking_rows(recipe_ids, "(r.plan_id IS NOT NULL OR (p.day IS NOT NULL AND "
                                                        "p.week + p.day::int < %(t)s))")
         + ") x ORDER BY COALESCE(rated_at, d::timestamptz) DESC NULLS LAST, t DESC", {"t": today, "ids": recipe_ids})
     people = _people(conn)
     cookings: dict[tuple, dict] = {}    # insertion order = newest first
-    for rid, key, d, m, family, company, note, rated_at, _imp, member, _by, _t in rows:
+    for rid, key, d, m, family, _company, note, rated_at, _imp, member, _by, _t in rows:
         e = cookings.setdefault((rid, key), {"rid": rid, "date": d, "multiplier": float(m), "rows": []})
         if family is not None:
-            e["rows"].append((family, company, note, rated_at, member))
+            e["rows"].append((family, None, note, rated_at, member))
     out: dict[int, list[dict]] = {}
     for e in cookings.values():
         rs = e["rows"]
         if len(rs) > 1:
             family = int((Decimal(sum(r[0] for r in rs)) / len(rs)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-            company = verdict(r[1] for r in rs)
             note = " · ".join(f"{_who(people, r[4])[0]}: {r[2]}"
                              for r in sorted(rs, key=lambda r: _order(people, r[4])) if r[2]) or None
         else:
-            family, company, note = (rs[0][0], rs[0][1], rs[0][2]) if rs else (None, None, None)
+            family, note = (rs[0][0], rs[0][2]) if rs else (None, None)
         rated_at = max((r[3] for r in rs), default=None)
         out.setdefault(e["rid"], []).append({
             "date": e["date"].isoformat() if e["date"] else None, "multiplier": e["multiplier"], "family": family,
-            "company": company, "note": note,
+            "company": None, "note": note,
             "rated_at": rated_at.astimezone(timezone.utc).isoformat() if rated_at else None})
     return out
 

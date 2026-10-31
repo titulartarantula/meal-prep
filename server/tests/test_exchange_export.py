@@ -109,7 +109,7 @@ def test_ratings_always_by_default():
     n = jsonld.to_jsonld(recipe(ratings=summary), ENTRIES)
     assert n["mealprep:ratings"]["entries"] == ENTRIES
     assert n["mealprep:ratings"]["summary"]["times_cooked"] == 2 and n["mealprep:ratings"]["good_for_company"] is True
-    assert jsonld.to_jsonld(recipe(ratings=summary.model_copy(update={"company": "maybe"})), ENTRIES)[
+    assert jsonld.to_jsonld(recipe(ratings=summary.model_copy(update={"company": "no"})), ENTRIES)[
         "mealprep:ratings"]["good_for_company"] is False
     assert "mealprep:ratings" not in jsonld.to_jsonld(recipe(), ENTRIES, ratings=False)
 

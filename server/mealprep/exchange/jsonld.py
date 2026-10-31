@@ -264,7 +264,7 @@ class ImportedRating(BaseModel):
 class Incoming(BaseModel):
     recipe: Recipe                   # uid always set; id None
     ratings: list[ImportedRating] = []
-    company: Literal["yes", "maybe", "no"] | None = None   # the file's Good for company verdict (summary.company)
+    company: Literal["yes", "no"] | None = None   # the file's Good for company verdict (summary.company; "maybe" ignored)
     warnings: list[str] = []
     origin: Literal["mealprep", "schema.org"]
     link: str | None = None          # the source link used for de-dup (NYT links normalised)
@@ -612,7 +612,7 @@ def _from_block(node: dict, block: dict, warnings: list[str]) -> Incoming:
         warnings.append(f"Left out {bad} rating{'s' if bad > 1 else ''} that couldn't be read")
     link = extract_nyt_url(url) if url and kind == "nyt" and extract_nyt_url(url) else url
     summary = rblock.get("summary") if isinstance(rblock.get("summary"), dict) else {}
-    company = summary.get("company") if summary.get("company") in ("yes", "maybe", "no") else None
+    company = summary.get("company") if summary.get("company") in ("yes", "no") else None   # yes / no only
     return Incoming(recipe=r, ratings=ratings, company=company, warnings=warnings, origin="mealprep", link=link)
 
 

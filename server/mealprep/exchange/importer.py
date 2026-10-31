@@ -358,10 +358,10 @@ def tidy(ai, inc: jsonld.Incoming) -> tuple[Recipe, bool, str | None]:
 
 def incoming_company(inc) -> str | None:
     """The Good for company verdict a file brings: its summary's, else the newest entry's answer (older files). The
-    recipe keeps its own verdict if it has one (db.adopt_company)."""
-    if inc.company:
+    recipe keeps its own verdict if it has one (db.adopt_company). Only yes / no: a "maybe" is ignored."""
+    if inc.company in ("yes", "no"):
         return inc.company
-    answered = [e for e in inc.ratings if e.company]
+    answered = [e for e in inc.ratings if e.company in ("yes", "no")]
     return max(answered, key=lambda e: e.rated_at or e.date or "").company if answered else None
 
 

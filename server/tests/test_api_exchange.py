@@ -49,7 +49,7 @@ def test_export_ratings_entries(conn):
     n = c.get(f"/recipes/{rid}/export", headers=H).json()
     e = n["mealprep:ratings"]["entries"]
     assert [(x["date"], x["multiplier"], x["family"], x["company"], x["note"]) for x in e] == [
-        ("2026-10-06", 2.0, 4, "yes", "less salt"), ("2026-09-28", 1.0, None, None, None)]
+        ("2026-10-06", 2.0, 4, None, "less salt"), ("2026-09-28", 1.0, None, None, None)]   # company: the summary's
     assert e[0]["rated_at"] and e[1]["rated_at"] is None
     assert n["mealprep:ratings"]["summary"]["times_cooked"] == 2 and n["mealprep:ratings"]["good_for_company"] is True
 
@@ -295,6 +295,8 @@ def test_imported_ratings_count_and_export_back(conn):
     for n in (out, orig):
         n.pop("dateCreated")
         n["mealprep:ratings"]["summary"].pop("imported_ratings", None)
+    for e in orig["mealprep:ratings"]["entries"]:   # entries carry no company: the verdict is the summary's
+        e["company"] = None
     assert out == orig
 
 
@@ -401,3 +403,14 @@ def test_import_brings_the_good_for_company_verdict_but_never_overwrites_one(con
     choices = {i["key"]: "update" for i in post(c, "mealprep_v1.json").json()["items"]}
     apply(c, "mealprep_v1.json", choices)                    # replace with the file's version: the verdict stays
     assert c.get(f"/recipes/{rid}", headers=H).json()["ratings"]["company"] == "no"
+
+
+def test_an_imported_maybe_is_ignored(conn):
+    c = client(conn, today=date(2026, 10, 14))
+    n = json.loads((FX / "mealprep_v1.json").read_text())
+    n["mealprep:ratings"]["summary"]["company"] = "maybe"           # an older export: yes / no / maybe
+    for e in n["mealprep:ratings"]["entries"]:
+        e["company"] = "maybe" if e["company"] else None
+    rid = apply(c, json.dumps(n).encode())["items"][0]["recipe_id"]
+    assert conn.execute("SELECT count(*) FROM recipe_company WHERE recipe_id=%s", (rid,)).fetchone()[0] == 0
+    assert c.get(f"/recipes/{rid}", headers=H).json()["ratings"]["company"] is None

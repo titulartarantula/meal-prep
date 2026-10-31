@@ -292,7 +292,7 @@ ALTER TABLE rating_history ADD COLUMN IF NOT EXISTS recipe_rating_id bigint;
 -- ratings / recipe_ratings / imported_ratings stay as history but are no longer read for the verdict.
 CREATE TABLE IF NOT EXISTS recipe_company(
   recipe_id int PRIMARY KEY REFERENCES recipes ON DELETE CASCADE,
-  verdict text NOT NULL CHECK (verdict IN ('yes','maybe','no')),
+  verdict text NOT NULL CHECK (verdict IN ('yes','no')),
   set_by int,
   set_at timestamptz NOT NULL DEFAULT now(),
   source text NOT NULL DEFAULT 'member' CHECK (source IN ('member','migrated','import'))
@@ -653,6 +653,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS recipe_ratings_household_recipe_day_member_idx
   ON recipe_ratings(household_id, recipe_id, cooked_on, member_id) NULLS NOT DISTINCT;
 ALTER TABLE rating_history ADD COLUMN IF NOT EXISTS member_id int;
 ALTER TABLE rating_history ADD COLUMN IF NOT EXISTS entered_by int;
+
+-- Good for company is yes / no (2026-10-31): a "maybe" verdict becomes not decided (no row), each one logged in
+-- audit_log (action recipe.company, detail from maybe → null, reason yes-no-only); then the check allows yes / no only.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'recipe_company_verdict_check'
+             AND pg_get_constraintdef(oid) LIKE '%maybe%') THEN
+    INSERT INTO audit_log(household_id, action, target, detail)
+      SELECT household_id, 'recipe.company', 'recipe:' || recipe_id,
+             jsonb_build_object('from', 'maybe', 'to', NULL, 'reason', 'yes-no-only', 'set_by', set_by,
+                                'set_at', set_at, 'source', source)
+      FROM recipe_company WHERE verdict = 'maybe';
+    DELETE FROM recipe_company WHERE verdict = 'maybe';
+    ALTER TABLE recipe_company DROP CONSTRAINT recipe_company_verdict_check;
+    ALTER TABLE recipe_company ADD CONSTRAINT recipe_company_verdict_check CHECK (verdict IN ('yes','no'));
+  END IF;
+END $$;
 
 GRANT USAGE ON SCHEMA public TO mealprep_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mealprep_app;

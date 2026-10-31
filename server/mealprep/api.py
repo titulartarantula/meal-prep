@@ -154,7 +154,8 @@ class EntryPatch(BaseModel):   # partial update: omitted fields are left unchang
 class RatingIn(BaseModel):
     family: Annotated[int, Field(strict=True, ge=1, le=5)]
     # the recipe's household Good for company verdict, not part of the person's rating: set when the caller has
-    # recipe.company (Owners; the phones = the legacy member), ignored otherwise; omitted = left as it is, null = cleared
+    # recipe.company (Owners; the phones = the legacy member), ignored otherwise; omitted = left as it is, null = cleared.
+    # The verdict is yes or no only: "maybe" (older Android builds still offer it) leaves the verdict as it is.
     company: Literal["yes", "maybe", "no"] | None = None
     note: Annotated[str, Field(max_length=2000)] | None = None
     member_id: int | None = None     # rate for a child profile (rate.for_children); omitted = yourself
@@ -166,7 +167,7 @@ class RatingIn(BaseModel):
 
 
 class CompanyIn(BaseModel):
-    company: Literal["yes", "maybe", "no"] | None   # None = not decided (clears it)
+    company: Literal["yes", "no"] | None   # None = not decided (clears it)
 
 
 class CompanyOut(BaseModel):
@@ -591,8 +592,9 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     def company_from_rating(c, s: Scope, body: RatingIn, recipe_id: int) -> None:
         """A rating write that carries `company` sets the recipe's verdict when the caller may (recipe.company);
-        otherwise the answer is ignored (it is no longer part of a person's rating)."""
-        if "company" in body.model_fields_set and "recipe.company" in s.permissions:
+        otherwise the answer is ignored (it is no longer part of a person's rating). "maybe" leaves the verdict as it
+        is (the verdict is yes / no / not decided)."""
+        if "company" in body.model_fields_set and "recipe.company" in s.permissions and body.company != "maybe":
             set_verdict(c, s, recipe_id, body.company)
 
     def set_verdict(c, s: Scope, recipe_id: int, company: str | None) -> dict | None:
@@ -937,7 +939,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     @app.put("/recipes/{recipe_id}/company", dependencies=A)
     def put_company(recipe_id: int, body: CompanyIn, c=Depends(get_conn),
                     s: Scope = Depends(household_scope)) -> CompanyOut:
-        """The household's Good for company verdict for the recipe (yes / maybe / no; null = not decided). Owners
+        """The household's Good for company verdict for the recipe (yes / no; null = not decided). Owners
         (recipe.company); changes go to the audit log."""
         if set_verdict(c, s, recipe_id, body.company) is None:
             raise HTTPException(404, f"recipe {recipe_id}")

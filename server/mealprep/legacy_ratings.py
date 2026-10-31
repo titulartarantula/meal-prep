@@ -28,14 +28,15 @@ TABLES = ("ratings", "recipe_ratings")
 
 
 def _answers(conn, household_id: int) -> dict[int, list[tuple]]:
-    """{recipe_id: [(rated_at, company, table, row id, member), …]} newest first — every old company answer."""
+    """{recipe_id: [(rated_at, company, table, row id, member), …]} newest first — every old yes / no company answer
+    (a "maybe" never becomes a verdict: Good for company is yes / no)."""
     rows = conn.execute(
         "SELECT p.recipe_id, r.rated_at, r.company, 'ratings', r.id, r.member_id FROM ratings r "
-        "JOIN plan p ON p.id = r.plan_id WHERE r.household_id=%(h)s AND r.company IS NOT NULL "
+        "JOIN plan p ON p.id = r.plan_id WHERE r.household_id=%(h)s AND r.company IN ('yes','no') "
         "UNION ALL SELECT recipe_id, rated_at, company, 'recipe_ratings', id, member_id FROM recipe_ratings "
-        "WHERE household_id=%(h)s AND company IS NOT NULL "
+        "WHERE household_id=%(h)s AND company IN ('yes','no') "
         "UNION ALL SELECT recipe_id, COALESCE(rated_at, cooked_on::timestamptz), company, 'imported_ratings', id, "
-        "NULL::int FROM imported_ratings WHERE household_id=%(h)s AND company IS NOT NULL "
+        "NULL::int FROM imported_ratings WHERE household_id=%(h)s AND company IN ('yes','no') "
         "ORDER BY 2 DESC NULLS LAST, 5 DESC", {"h": household_id})
     out: dict[int, list[tuple]] = {}
     for rid, at, company, table, i, member in rows:

@@ -41,10 +41,14 @@ def test_put_rating_then_rerate_overwrites(conn):
 def test_blank_note_is_null_and_omitted_company_keeps_the_verdict(conn):
     c = client(conn, today=TODAY)
     eid = placed(conn, setup(conn))
-    c.put(f"/plan/{eid}/rating", headers=H, json={"family": 4, "company": "maybe", "note": "x"})
+    c.put(f"/plan/{eid}/rating", headers=H, json={"family": 4, "company": "no", "note": "x"})
     c.put(f"/plan/{eid}/rating", headers=H, json={"family": 4, "note": "   "})   # Android omits a null company
     [e] = c.get("/weeks/2026-10-11", headers=H).json()
-    assert e["rating"]["company"] == "maybe" and e["rating"]["note"] is None
+    assert e["rating"]["company"] == "no" and e["rating"]["note"] is None
+    # older Android builds still offer Maybe: it leaves the yes / no verdict as it is
+    assert c.put(f"/plan/{eid}/rating", headers=H, json={"family": 3, "company": "maybe"}).status_code == 204
+    [e] = c.get("/weeks/2026-10-11", headers=H).json()
+    assert (e["rating"]["family"], e["rating"]["company"]) == (3, "no")
     c.put(f"/plan/{eid}/rating", headers=H, json={"family": 4, "company": None})   # an explicit null clears it
     [e] = c.get("/weeks/2026-10-11", headers=H).json()
     assert e["rating"]["company"] is None
@@ -162,11 +166,11 @@ def test_resharing_existing_recipe_shows_current_rating(conn, monkeypatch):
     assert first["existing"] is False and first["recipe"]["ratings"]["times_rated"] == 0
     eid = first["entry"]["id"]
     c.patch(f"/plan/{eid}", headers=H, json={"day": 1})
-    c.put(f"/plan/{eid}/rating", headers=H, json={"family": 5, "company": "maybe", "note": "kids loved it"})
+    c.put(f"/plan/{eid}/rating", headers=H, json={"family": 5, "company": "yes", "note": "kids loved it"})
     again = c.post("/recipes/share", headers=H, json={**text, "week": "2026-10-18"}).json()
     assert again["existing"] is True
     s = again["recipe"]["ratings"]
-    assert s["last_family"] == 5 and s["company"] == "maybe" and s["notes"][0]["note"] == "kids loved it"
+    assert s["last_family"] == 5 and s["company"] == "yes" and s["notes"][0]["note"] == "kids loved it"
 
 
 def test_recipes_list_the_weeks_they_are_planned_in_from_this_week_on(conn):

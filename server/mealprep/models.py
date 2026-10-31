@@ -160,8 +160,9 @@ class CartResult(BaseModel):
 
 class Rating(BaseModel):
     family: int                  # 1–5 "was it a hit?"
-    company: str | None = None   # "yes" | "maybe" | "no": the recipe's household Good for company verdict (read);
-                                 # in a write (PUT …/rating) it sets that verdict when the caller is an Owner
+    company: str | None = None   # "yes" | "no": the recipe's household Good for company verdict (read; None = not
+                                 # decided); in a write (PUT …/rating) yes / no sets it for an Owner, "maybe" (older
+                                 # Android builds) leaves it as it is
     note: str | None = None
     rated_at: str                # ISO timestamp
 
@@ -223,7 +224,7 @@ class RatingSummary(BaseModel):
     avg_family: float | None = None
     last_family: int | None = None
     last_rated_at: str | None = None
-    company: str | None = None   # the household's Good for company verdict ("yes" | "maybe" | "no"; None = not
+    company: str | None = None   # the household's Good for company verdict ("yes" | "no"; None = not
                                  # decided), one per recipe, set by an Owner (PUT /recipes/{id}/company)
     notes: list[RatingNote] = [] # most recent first, max 5
     imported_ratings: int = 0    # of times_rated, how many came from another library's export ("incl. N from …")
