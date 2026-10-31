@@ -1,37 +1,66 @@
 import { describe, expect, it } from "vitest";
-import type { RecipeDetail } from "../api/types";
-import { cookedOn, lastRatingText } from "./Rating";
+import type { PersonRating, RecipeDetail } from "../api/types";
+import { cookedOn, initials, lastRatingText, personName, ratingOf, summaryText } from "./Rating";
 
-const r = (family: number, note: string | null = null) => ({ family, company: null, note, rated_at: "2026-10-20T23:00:00Z" });
+const pr = (member_id: number | null, family: number, note: string | null = null): PersonRating => ({
+  member_id, name: member_id == null ? "Family" : `M${member_id}`, kind: member_id == null ? "family" : "account", family,
+  company: null, note, rated_at: "2026-10-20T23:00:00Z", entered_by: null, entered_by_name: null });
+const night = (entry_id: number, day: number | null, date: string | null, ratings: PersonRating[]) =>
+  ({ entry_id, week: "2026-10-18", day, date, multiplier: 1, ratings, rating: null, my_rating: null, rating_avg: null, rating_count: ratings.length });
 
+const ME = 7;
 const detail = {
   history: [
-    { entry_id: 1, week: "2026-10-18", day: 3, date: "2026-10-21", multiplier: 1, rating: null },
-    { entry_id: 2, week: "2026-10-18", day: 3, date: "2026-10-21", multiplier: 1, rating: r(4) },
-    { entry_id: 3, week: "2026-10-18", day: 5, date: "2026-10-23", multiplier: 1, rating: null },
-    { entry_id: 4, week: "2026-10-25", day: null, date: null, multiplier: 1, rating: null },
+    night(1, 3, "2026-10-21", [pr(2, 3)]),
+    night(2, 3, "2026-10-21", [pr(ME, 4), pr(null, 5)]),
+    night(3, 5, "2026-10-23", []),
+    night(4, null, null, []),
   ],
-  rated_history: [{ date: "2026-10-12", rating: r(2, "dry") }],
+  rated_history: [{ date: "2026-10-12", ratings: [pr(ME, 2, "dry"), pr(2, 4)], rating: pr(ME, 2, "dry") }],
 } as unknown as RecipeDetail;
 
-describe("cookedOn: what a day stands for when rating from the recipe", () => {
-  it("a planned night that day, the rated one first", () => {
-    expect(cookedOn(detail, "2026-10-21")).toEqual({ night: 3, rating: r(4) });
-    expect(cookedOn(detail, "2026-10-23")).toEqual({ night: 5, rating: null });
+describe("cookedOn: what a day stands for when rating from the recipe, for one person", () => {
+  it("a planned night that day, the one this person rated first", () => {
+    expect(cookedOn(detail, "2026-10-21", null, ME)).toMatchObject({ night: 3, rating: pr(ME, 4) });
+    expect(cookedOn(detail, "2026-10-21", null, ME).ratings).toHaveLength(2);
+    expect(cookedOn(detail, "2026-10-21", 2, ME)).toMatchObject({ night: 3, rating: pr(2, 3) });
+    expect(cookedOn(detail, "2026-10-23", null, ME)).toEqual({ night: 5, rating: null, ratings: [] });
   });
-  it("else the recipe's own rating that day, else nothing", () => {
-    expect(cookedOn(detail, "2026-10-12")).toEqual({ night: null, rating: r(2, "dry") });
-    expect(cookedOn(detail, "2026-10-13")).toEqual({ night: null, rating: null });
-    expect(cookedOn(undefined, "2026-10-13")).toEqual({ night: null, rating: null });
+  it("else the recipe's own ratings that day, else nothing", () => {
+    expect(cookedOn(detail, "2026-10-12", null, ME)).toMatchObject({ night: null, rating: pr(ME, 2, "dry") });
+    expect(cookedOn(detail, "2026-10-12", 9, ME)).toMatchObject({ night: null, rating: null });
+    expect(cookedOn(detail, "2026-10-13", null, ME)).toEqual({ night: null, rating: null, ratings: [] });
+    expect(cookedOn(undefined, "2026-10-13")).toEqual({ night: null, rating: null, ratings: [] });
+  });
+  it("without a member (the shared token) it's the Family's rating", () => {
+    expect(ratingOf(detail.history[1].ratings, null, null)).toEqual(pr(null, 5));
   });
 });
 
 describe("lastRatingText", () => {
-  it("is null before the first rating", () => {
+  const people = [{ member_id: ME, name: "Sam", kind: "account", family: 4, rated_at: "2026-10-20T16:00:00Z", avg: 4, count: 1 },
+    { member_id: 4, name: "Pip", kind: "child", family: 5, rated_at: "2026-10-12T16:00:00Z", avg: 5, count: 1 }];
+  it("is null before the person's first rating", () => {
     expect(lastRatingText(undefined)).toBeNull();
-    expect(lastRatingText({ times_cooked: 0, times_rated: 0, notes: [], imported_ratings: 0 } as never)).toBeNull();
+    expect(lastRatingText({ people: [] } as never, null, ME)).toBeNull();
   });
-  it("gives the score and the day it was rated", () => {
-    expect(lastRatingText({ last_family: 4, last_rated_at: "2026-10-20T16:00:00Z" } as never)).toBe("Your last rating: 4/5 on Oct 20");
+  it("gives your score and the day, or a child's", () => {
+    expect(lastRatingText({ people } as never, null, ME)).toBe("Your last rating: 4/5 on Oct 20");
+    expect(lastRatingText({ people } as never, 4, ME)).toBe("Pip's last rating: 5/5 on Oct 12");
+  });
+});
+
+describe("names, chips and the summary line", () => {
+  it("marks your own row, Family's chip says Fam", () => {
+    expect(personName({ member_id: ME, name: "Sam" }, ME)).toBe("Sam (you)");
+    expect(personName({ member_id: null, name: "Family" }, null)).toBe("Family");
+    expect(initials({ name: "robin", kind: "account" })).toBe("R");
+    expect(initials({ name: "Family", kind: "family" })).toBe("Fam");
+  });
+  it("says the average and how many ratings", () => {
+    expect(summaryText({ times_rated: 2, rating_count: 5, avg_family: 3.8, company: "yes", notes: [{ note: "spicy" }] } as never))
+      .toBe("Average 3.8/5 from 5 ratings · Company: yes · “spicy”");
+    expect(summaryText({ times_rated: 1, rating_count: 1, avg_family: 4, company: null, notes: [] } as never)).toBe("Average 4.0/5 from 1 rating");
+    expect(summaryText({ times_rated: 0 } as never)).toBeNull();
   });
 });

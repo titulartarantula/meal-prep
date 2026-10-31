@@ -1,12 +1,12 @@
 import { useMemo, useState, type DragEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  useCan, useMoveEntry, useRecipes, useRemoveEntry, useWeek, useWeekDraft, useWeeks,
+  useCan, useMemberId, useMoveEntry, useRecipes, useRemoveEntry, useWeek, useWeekDraft, useWeeks,
 } from "../api/queries";
 import type { PlanEntry, Recipe } from "../api/types";
 import { Icon, Star } from "../components/Icon";
 import { AddRecipeDialog } from "../components/AddRecipeDialog";
-import { RateDialog, RatingBanner, pendingEntry, usePendingBanner } from "../components/Rating";
+import { MiniStars, PeopleRatings, RateDialog, RatingBanner, pendingEntry, usePendingBanner } from "../components/Rating";
 import { Button, ErrorNote, IconButton, Loading, Menu, MenuItem, Photo, useToast } from "../components/ui";
 import { formatAvg, formatMinutes } from "../lib/format";
 import { useCompact } from "../lib/media";
@@ -40,7 +40,9 @@ export function ThisWeek() {
   // Touch layouts place dinners with the ⋮ menu: HTML drag-and-drop doesn't start from a finger.
   const compact = useCompact();
   const drag = editable && !compact;
-  const [pending, rateLater] = usePendingBanner(can("rate.self"));
+  const canRate = can("rate.self");
+  const me = useMemberId();
+  const [pending, rateLater] = usePendingBanner(canRate);
 
   const go = (w: string) => navigate(w === thisWeek ? "/week" : `/week/${w}`);
 
@@ -117,7 +119,7 @@ export function ThisWeek() {
                 <div className="night-head">
                   <span className="dow">{DAYS[d]}</span><span className="date">{shortDate(date)}</span>
                   {tonight && <span className="pill tonight">Tonight</span>}
-                  {!tonight && es[0]?.rating && <span className="tag-quiet"><Icon name="check" size={14} />Rated</span>}
+                  {!tonight && es[0]?.rating_count ? <span className="tag-quiet"><Icon name="check" size={14} />Rated</span> : null}
                 </div>
                 {es.length === 0 ? (
                   <button type="button" className="empty" onClick={() => setAdding(d)} disabled={!editable}>
@@ -129,7 +131,7 @@ export function ThisWeek() {
                   <div className={es.length > 1 ? "stack" : "single"}>
                     {es.map((e) => (
                       <NightCard key={e.id} entry={e} recipe={byId.get(e.recipe_id)} compact={es.length > 1} past={past || tonight}
-                        editable={editable} draggable={drag} onRate={() => setRating(e)} onRemove={() => removeEntry(e)}
+                        editable={editable} canRate={canRate} me={me} draggable={drag} onRate={() => setRating(e)} onRemove={() => removeEntry(e)}
                         onMove={(day) => move.mutate({ id: e.id, day })} />
                     ))}
                   </div>
@@ -193,10 +195,12 @@ export function ThisWeek() {
   );
 }
 
-function NightCard({ entry, recipe, compact, past, editable, draggable, onRate, onRemove, onMove }: {
-  entry: PlanEntry; recipe?: Recipe; compact: boolean; past: boolean; editable: boolean; draggable: boolean;
-  onRate: () => void; onRemove: () => void; onMove: (day: number | null) => void;
+function NightCard({ entry, recipe, compact, past, editable, canRate, me, draggable, onRate, onRemove, onMove }: {
+  entry: PlanEntry; recipe?: Recipe; compact: boolean; past: boolean; editable: boolean; canRate: boolean; me: number | null;
+  draggable: boolean; onRate: () => void; onRemove: () => void; onMove: (day: number | null) => void;
 }) {
+  const mine = entry.my_rating;
+  const others = (entry.ratings ?? []).filter((r) => (r.member_id ?? null) !== me);
   const title = entry.title ?? recipe?.title ?? "Recipe";
   const avg = formatAvg(recipe?.ratings.avg_family);
   return (
@@ -210,7 +214,7 @@ function NightCard({ entry, recipe, compact, past, editable, draggable, onRate, 
             <Menu label={`Options for ${title}`}>
               {(close) => (
                 <>
-                  {(past || entry.rating) && <MenuItem icon="star" onSelect={() => { close(); onRate(); }}>{entry.rating ? "Change rating" : "Rate dinner"}</MenuItem>}
+                  {canRate && (past || entry.rating_count > 0) && <MenuItem icon="star" onSelect={() => { close(); onRate(); }}>{mine ? "Change your rating" : "Rate dinner"}</MenuItem>}
                   <div className="menu-label">Move to</div>
                   <div className="menu-days">
                     {DAYS.map((dn, d) => (
@@ -227,18 +231,21 @@ function NightCard({ entry, recipe, compact, past, editable, draggable, onRate, 
         </div>
         <div className="meta">
           {formatMinutes(recipe?.total_minutes) && <span><Icon name="clock" size={14} />{formatMinutes(recipe?.total_minutes)}</span>}
-          {avg ? <span title={`Average of ${recipe?.ratings.times_rated} ratings`}><Star /><b>{avg}</b><span className="muted">({recipe?.ratings.times_rated})</span></span>
+          {avg ? <span title={`Family average of ${recipe?.ratings.rating_count} ratings`}><Star /><b>{avg}</b><span className="muted">({recipe?.ratings.rating_count})</span></span>
             : <span className="muted">New recipe</span>}
           {entry.multiplier !== 1 && <span className="muted">×{entry.multiplier}</span>}
         </div>
-        {entry.rating ? (
-          <button type="button" className="rated" onClick={onRate} disabled={!editable} aria-label={`Rated ${entry.rating.family} of 5. Change rating`}>
-            {[1, 2, 3, 4, 5].map((n) => <Star key={n} filled={n <= entry.rating!.family} />)}
-            {entry.rating.note && <span className="rated-note">“{entry.rating.note}”</span>}
+        {others.length > 0 && <PeopleRatings rows={others} me={me} label={`Ratings of ${title}`} />}
+        {mine ? (
+          <button type="button" className="rated" onClick={onRate} disabled={!canRate} aria-label={`You rated it ${mine.family} of 5. Change your rating`}>
+            <span className="who">You</span>
+            <MiniStars n={mine.family} size={13} />
+            {mine.note && <span className="rated-note">“{mine.note}”</span>}
           </button>
-        ) : past && editable ? (
+        ) : past && canRate ? (
           <button type="button" className="rate-cta" onClick={onRate}><Icon name="star" size={14} />How was it?</button>
         ) : null}
+        {entry.rating_count > 1 && entry.rating_avg != null && <small className="muted">Dinner average {formatAvg(entry.rating_avg)} from {entry.rating_count}</small>}
       </div>
     </div>
   );

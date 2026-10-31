@@ -14,6 +14,20 @@ export type ListItem = S["ListItem"];
 export type Staple = S["Staple"];
 export type RatingIn = S["RatingIn"];
 export type RecipeRatingOut = S["RecipeRatingOut"];
+export type PersonRating = S["PersonRating"];
+export type PersonSummary = S["PersonSummary"];
+
+/** GET /household/members (a plain dict on the server). */
+export interface Member {
+  id: number;
+  name: string;
+  kind: "account" | "child";
+  birth_year: number | null;
+  signed_in: boolean;
+  email_set: boolean;
+  joined_at: string;
+  roles: string[];
+}
 
 export type Permission =
   | "recipe.read" | "plan.read" | "rate.self" | "rate.for_children" | "request.create" | "plan.edit" | "recipe.edit"

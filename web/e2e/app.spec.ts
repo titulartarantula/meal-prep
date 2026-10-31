@@ -92,7 +92,7 @@ test.describe("signed in", () => {
     await dlg.getByLabel(/Note/).fill("Needs more lemon");
     await dlg.getByRole("button", { name: "Save rating" }).click();
     await expect(dlg).toBeHidden();
-    await expect(page.getByRole("article", { name: /^Thursday/ }).getByRole("button", { name: /Rated 4 of 5/ })).toBeVisible();
+    await expect(page.getByRole("article", { name: /^Thursday/ }).getByRole("button", { name: /You rated it 4 of 5/ })).toBeVisible();
   });
 
   test("this week: the status strip has no prep step; the main action is docked at the bottom on a phone", async ({ page }) => {
@@ -147,7 +147,7 @@ test.describe("signed in", () => {
     await page.getByRole("button", { name: "Previous week" }).click();
     await page.getByRole("article", { name: /^Wednesday/ }).getByRole("button", { name: "How was it?" }).click();
     await expect(dlg.getByRole("heading", { level: 2 })).toHaveText("How was Wednesday's Turkey chili with cornbread?");
-    await expect(dlg).toContainText("So far: Family 4.1/5 · Company: maybe · “Kids wanted more cornbread”");
+    await expect(dlg).toContainText("So far: Average 4.1/5 from 4 ratings · Company: maybe · “Kids wanted more cornbread”");
     await expect(dlg.getByRole("heading", { name: "Earlier notes" })).toBeVisible();
     await expect(dlg.getByRole("listitem").filter({ hasText: "A bit too spicy" })).toBeVisible();
     const company = dlg.getByRole("radiogroup", { name: "Would you make it for company?" });
@@ -194,7 +194,7 @@ test.describe("signed in", () => {
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
     }));
     await expect(dlg).toContainText("Today.");
-    await expect(dlg).toContainText("So far: Family 4.3/5");
+    await expect(dlg).toContainText("So far: Average 4.3/5 from 3 ratings");
     await expect(dlg.getByRole("button", { name: "Save rating" })).toBeDisabled();
     await dlg.getByRole("radio", { name: "5 stars" }).click();
     await dlg.getByRole("radiogroup", { name: "Would you make it for company?" }).getByRole("radio", { name: "Yes" }).click();
@@ -211,7 +211,7 @@ test.describe("signed in", () => {
     await page.getByRole("button", { name: /^Crispy tofu/ }).click();
     const drawer = page.getByRole("dialog", { name: "Crispy tofu with peanut noodles" });
     await expect(drawer).toContainText(/Your last rating: 5\/5 on \w{3} \d+/);
-    await expect(drawer.getByRole("list").filter({ hasText: "Extra lime next time" })).toBeVisible();
+    await expect(drawer.getByRole("list", { name: /^Ratings, / }).filter({ hasText: "Extra lime next time" })).toBeVisible();
     await shot(page, "16b-recipe-drawer-rate");
     await drawer.getByRole("button", { name: "Rate", exact: true }).click();
     await expect(dlg.getByRole("radio", { name: "5 stars" })).toHaveAttribute("aria-checked", "true");
@@ -238,7 +238,96 @@ test.describe("signed in", () => {
     await expect(chili).toBeHidden();
     await page.getByRole("link", { name: "This week" }).click();
     await page.getByRole("button", { name: "Previous week" }).click();
-    await expect(page.getByRole("article", { name: /^Wednesday/ }).getByRole("button", { name: /Rated 4 of 5/ })).toBeVisible();
+    await expect(page.getByRole("article", { name: /^Wednesday/ }).getByRole("button", { name: /You rated it 4 of 5/ })).toBeVisible();
+  });
+
+  test("per-person ratings on a dinner: everyone's rating and note on the night, rate for yourself or for a child profile", async ({ page }) => {
+    // this week's tacos: Alex rated them, Alex entered Pip's, and the shared phone's (Family) rating
+    const night = page.getByRole("article", { name: /^Tuesday/ });
+    const people = night.getByRole("list", { name: /^Ratings of Chicken tinga tacos/ });
+    await expect(people.getByRole("listitem")).toHaveCount(3);
+    await expect(people.getByRole("listitem").nth(0)).toContainText("Alex");
+    await expect(people.getByRole("listitem").nth(0)).toContainText("“Extra lime”");
+    await expect(people.getByRole("listitem").nth(1)).toContainText(/Pip.*“Picked out the onions”.*entered by Alex/);
+    await expect(people.getByRole("listitem").nth(2)).toContainText("Family");
+    await expect(night).toContainText("Dinner average 4.7 from 3");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "17-night-people");
+
+    // rate it: "Rating for" Me / Pip; the others' ratings of the dinner are shown
+    await night.getByRole("button", { name: /^Options for Chicken tinga tacos/ }).click();
+    await page.getByRole("menu").getByRole("menuitem", { name: "Rate dinner" }).click();
+    const dlg = page.getByRole("dialog", { name: /Chicken tinga tacos/ });
+    const forWhom = dlg.getByRole("radiogroup", { name: "Rating for" });
+    await expect(forWhom.getByRole("radio", { name: "Me" })).toHaveAttribute("aria-checked", "true");
+    await expect(dlg.getByRole("list", { name: "This dinner so far" }).getByRole("listitem")).toHaveCount(3);
+    await expect(dlg).toContainText("Your score: was it a hit?");
+    await expect(dlg.getByRole("button", { name: "Save rating" })).toBeDisabled();
+    // Pip's rating (entered by Alex) fills in; updating it is entered by you
+    await forWhom.getByRole("radio", { name: "Pip" }).click();
+    await expect(dlg).toContainText("Pip's score: was it a hit?");
+    await expect(dlg.getByRole("radio", { name: "4 stars" })).toHaveAttribute("aria-checked", "true");
+    await expect(dlg.getByLabel(/^Note/)).toHaveValue("Picked out the onions");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "18-rate-for-child");
+    await dlg.getByRole("radio", { name: "5 stars" }).click();
+    await dlg.getByRole("button", { name: "Update rating" }).click();
+    await expect(dlg).toBeHidden();
+    await expect(people.getByRole("listitem").nth(1)).toContainText(/Pip.*entered by Sam/);
+    // and your own
+    await night.getByRole("button", { name: /^Options for Chicken tinga tacos/ }).click();
+    await page.getByRole("menu").getByRole("menuitem", { name: "Rate dinner" }).click();
+    await expect(forWhom.getByRole("radio", { name: "Me" })).toHaveAttribute("aria-checked", "true");
+    await dlg.getByRole("radio", { name: "3 stars" }).click();
+    await dlg.getByLabel(/^Note/).fill("Too spicy for me");
+    await dlg.getByRole("button", { name: "Save rating" }).click();
+    await expect(dlg).toBeHidden();
+    await expect(night.getByRole("button", { name: /You rated it 3 of 5/ })).toBeVisible();
+    await expect(night).toContainText("Dinner average 4.5 from 4");
+    await expect(people.getByRole("listitem")).toHaveCount(3);          // yours is the button, not in the list
+
+    // the recipe: a chip per person on its card, and each person's latest + average in the drawer
+    await page.getByRole("link", { name: "Recipes" }).click();
+    const tacos = page.getByRole("list", { name: "Recipes" }).getByRole("listitem").filter({ hasText: "Chicken tinga tacos" });
+    await expect(tacos.locator(".pchip")).toHaveText([/^S3/, /^A5/, /^R4/, /^P5/, "+1"]);   // + the Family's
+    await page.getByRole("button", { name: /^Chicken tinga tacos/ }).click();
+    const drawer = page.getByRole("dialog", { name: "Chicken tinga tacos with pickled onions" });
+    const rows = drawer.getByRole("region", { name: "Ratings" });
+    await expect(rows.getByRole("listitem").filter({ hasText: "Sam (you)" })).toContainText("“Too spicy for me”");
+    await expect(rows.getByRole("listitem").filter({ hasText: "Pip" })).toContainText("1 rating");
+    await expect(rows.getByRole("listitem").filter({ hasText: "Family" })).toContainText("avg 4.8 from 5");
+    await expect(drawer).toContainText("Your last rating: 3/5");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "19-drawer-people");
+  });
+
+  test("a contributor rates for themselves (no Rating for), and the company filter goes by everyone's answers", async ({ page, context }) => {
+    await context.addCookies([{ name: "mp_mock_member", value: "3", url: "http://localhost:5198" }]);
+    await page.goto("/recipes");
+    // Robin can rate but can't plan: no add-to-week, no Rating for
+    const grid = page.getByRole("list", { name: "Recipes" });
+    await page.getByRole("button", { name: "Rate Roast chicken with lemon potatoes" }).click();
+    const dlg = page.getByRole("dialog", { name: "Rate Roast chicken with lemon potatoes" });
+    await expect(dlg.getByRole("radiogroup", { name: "Rating for" })).toHaveCount(0);
+    await dlg.getByRole("radio", { name: "2 stars" }).click();
+    await dlg.getByRole("radiogroup", { name: "Would you make it for company?" }).getByRole("radio", { name: "No" }).click();
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "20-contributor-rates");
+    await dlg.getByRole("button", { name: "Save rating" }).click();
+    await expect(dlg).toBeHidden();
+    const chicken = grid.getByRole("listitem").filter({ hasText: "Roast chicken" });
+    await expect(chicken.locator(".pchip").filter({ hasText: /^R/ })).toContainText("2");
+    // the Family said yes, Robin says no: a tie isn't "good for company"; the tacos (two yes) still are
+    await expect(chicken).not.toContainText("good for company");
+    await page.getByRole("button", { name: "Good for company", exact: true }).click();
+    await expect(grid).not.toContainText("Roast chicken");
+    await expect(grid).toContainText("Chicken tinga tacos");
+    await page.getByRole("button", { name: /^Chicken tinga tacos/ }).click();
+    await expect(page.getByRole("dialog", { name: /Chicken tinga tacos/ }).getByRole("button", { name: "Add to week" })).toHaveCount(0);
   });
 
   test("recipes: edit a recipe (409 when it changed meanwhile, discard), edit the source with the book search", async ({ page }) => {

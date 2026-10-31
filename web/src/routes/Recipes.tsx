@@ -1,15 +1,15 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useAddToWeek, useCan, useRecipe, useRecipes } from "../api/queries";
+import { useAddToWeek, useCan, useMemberId, useRecipe, useRecipes } from "../api/queries";
 import type { Recipe } from "../api/types";
 import { Icon, Star } from "../components/Icon";
 import { ImportDialog } from "../components/ImportDialog";
-import { lastRatingText, RateRecipeDialog } from "../components/Rating";
+import { lastRatingText, MiniStars, PeopleChips, PeopleRatings, personName, RateRecipeDialog } from "../components/Rating";
 import { EditRecipeDialog, EditSourceDialog } from "../components/RecipeEdit";
 import { Button, ErrorNote, Loading, Modal, Photo, useToast } from "../components/ui";
 import { amount, formatAvg, formatMinutes } from "../lib/format";
 import { page, sourceLabel } from "../lib/sources";
-import { DAYS_LONG, shiftWeek, toISO, weekName, weekNameInline, weekOf, weekRange } from "../lib/weeks";
+import { DAYS_LONG, parseISO, shiftWeek, shortDate, toISO, weekName, weekNameInline, weekOf, weekRange } from "../lib/weeks";
 
 type Sort = "newest" | "favourites" | "az";
 
@@ -28,7 +28,7 @@ export function Recipes() {
   const list = useMemo(() => {
     const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
     const words = norm(q).split(/\s+/).filter(Boolean);
-    const out = (recipes.data ?? []).filter((r) => (source === "all" || r.source_kind === source) && (!company || r.ratings.company === "yes") &&
+    const out = (recipes.data ?? []).filter((r) => (source === "all" || r.source_kind === source) && (!company || r.ratings.good_for_company) &&
       words.every((w) => norm(r.title + " " + (r.source_title ?? "")).includes(w)));
     if (sort === "favourites") out.sort((a, b) => (b.ratings.avg_family ?? -1) - (a.ratings.avg_family ?? -1) || b.ratings.times_cooked - a.ratings.times_cooked);
     if (sort === "az") out.sort((a, b) => a.title.localeCompare(b.title));
@@ -96,10 +96,11 @@ function RecipeTile({ r, onOpen, onRate }: { r: Recipe; onOpen: () => void; onRa
           <b>{r.title}</b>
           <span className="meta">
             {formatMinutes(r.total_minutes) && <span><Icon name="clock" size={14} />{formatMinutes(r.total_minutes)}</span>}
-            {r.ratings.avg_family ? <span><Star /><b>{formatAvg(r.ratings.avg_family)}</b></span> : <span className="muted">New</span>}
+            {r.ratings.avg_family ? <span><Star /><b>{formatAvg(r.ratings.avg_family)}</b><span className="visually-hidden"> family average</span></span> : <span className="muted">New</span>}
             {r.ratings.times_cooked > 0 && <span className="muted">cooked {r.ratings.times_cooked}×</span>}
-            {r.ratings.company === "yes" && <span className="muted">good for company</span>}
+            {r.ratings.good_for_company && <span className="muted">good for company</span>}
           </span>
+          <PeopleChips people={r.ratings.people} />
           <span className="tile-src">{sourceText(r)}{planned && <span className="tag neutral">{planned}</span>}</span>
         </span>
       </button>
@@ -132,10 +133,11 @@ function RecipeDrawer({ id, onClose, onRate }: { id: number | null; onClose: () 
   // the times cooked, newest first: rated dinners and past nights on the plan, and the days rated from the recipe
   const today = toISO(new Date());
   const cooked = d ? [
-    ...d.history.filter((h) => h.rating || (h.date && h.date < today))
-      .map((h) => ({ key: `p${h.entry_id}`, date: h.date ?? null, rating: h.rating ?? null })),
-    ...(d.rated_history ?? []).map((h) => ({ key: `r${h.date}`, date: h.date, rating: h.rating })),
+    ...d.history.filter((h) => h.rating_count || (h.date && h.date < today))
+      .map((h) => ({ key: `p${h.entry_id}`, date: h.date ?? null, ratings: h.ratings ?? [] })),
+    ...(d.rated_history ?? []).map((h) => ({ key: `r${h.date}`, date: h.date, ratings: h.ratings ?? [] })),
   ].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")) : [];
+  const me = useMemberId();
   return (
     <Modal open={id != null} onClose={onClose} drawer title={d?.title ?? "Recipe"}>
       {r.isPending ? <Loading /> : r.error ? <ErrorNote error={r.error} /> : d && (
@@ -144,7 +146,8 @@ function RecipeDrawer({ id, onClose, onRate }: { id: number | null; onClose: () 
           <div className="meta big">
             {formatMinutes(d.total_minutes) && <span><Icon name="clock" size={15} />{formatMinutes(d.total_minutes)}</span>}
             {d.servings && <span>Serves {d.servings}</span>}
-            {d.ratings.avg_family ? <span><Star size={15} /><b>{formatAvg(d.ratings.avg_family)}</b> from {d.ratings.times_rated}</span> : <span className="muted">Not rated yet</span>}
+            {d.ratings.avg_family ? <span><Star size={15} /><b>{formatAvg(d.ratings.avg_family)}</b> family average from {d.ratings.rating_count} {d.ratings.rating_count === 1 ? "rating" : "ratings"}</span> : <span className="muted">Not rated yet</span>}
+            {d.ratings.good_for_company && <span>Good for company</span>}
             {d.source_url && <a href={d.source_url} target="_blank" rel="noreferrer">{d.source_kind === "nyt" ? "Open on NYT Cooking" : "The recipe's page"} <Icon name="external" size={13} /></a>}
           </div>
           <div className="source-line">
@@ -155,7 +158,23 @@ function RecipeDrawer({ id, onClose, onRate }: { id: number | null; onClose: () 
             {can("rate.self") && <Button kind="outline" size="sm" icon="star" onClick={() => onRate(d)}>Rate</Button>}
             {canEdit && <Button kind="outline" size="sm" icon="edit" onClick={() => setEditing("recipe")}>Edit recipe</Button>}
           </div>
-          {lastRatingText(d.ratings) && <p className="muted small">{lastRatingText(d.ratings)}</p>}
+          {lastRatingText(d.ratings, null, me) && <p className="muted small">{lastRatingText(d.ratings, null, me)}</p>}
+          {d.ratings.people.length > 0 && (
+            <section aria-labelledby="who-rated">
+              <h3 className="section-h" id="who-rated">Ratings</h3>
+              <ul className="person-summary">
+                {d.ratings.people.map((p) => (
+                  <li key={p.member_id ?? "family"}>
+                    <span className="who">{personName(p, me)}</span>
+                    <MiniStars n={p.family} size={13} />
+                    <span className="muted">{p.count > 1 ? `avg ${formatAvg(p.avg)} from ${p.count}` : "1 rating"}{p.date ? ` · last ${shortDate(parseISO(p.date))}` : ""}</span>
+                    {p.note && <span className="pr-note">“{p.note}”</span>}
+                  </li>
+                ))}
+              </ul>
+              {d.ratings.people.some((p) => p.kind === "family") && <p className="muted small">Family = ratings from before everyone rated for themselves, and from the shared phone app.</p>}
+            </section>
+          )}
           {d.description && <p>{d.description}</p>}
 
           {can("plan.edit") && (
@@ -200,12 +219,15 @@ function RecipeDrawer({ id, onClose, onRate }: { id: number | null; onClose: () 
             <section>
               <h3 className="section-h">History</h3>
               <ul className="history">
-                {cooked.slice(0, 6).map((h) => (
-                  <li key={h.key}>
-                    <span>{h.date ? new Date(h.date + "T12:00").toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }) : "No night"}</span>
-                    <span>{h.rating ? <>{[1, 2, 3, 4, 5].map((n) => <Star key={n} filled={n <= h.rating!.family} />)}{h.rating.note && <span className="muted"> “{h.rating.note}”</span>}</> : <span className="muted">Not rated</span>}</span>
-                  </li>
-                ))}
+                {cooked.slice(0, 6).map((h) => {
+                  const when = h.date ? new Date(h.date + "T12:00").toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }) : "No night";
+                  return (
+                    <li key={h.key}>
+                      <span>{when}</span>
+                      {h.ratings.length ? <PeopleRatings rows={h.ratings} me={me} label={`Ratings, ${when}`} /> : <span className="muted">Not rated</span>}
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           )}

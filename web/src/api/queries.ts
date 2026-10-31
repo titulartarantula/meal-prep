@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ApiError, del, get, patch, post, put, setSession } from "./client";
 import type {
-  BookHit, Choices, Draft, ImportReport, ListItem, Me, PendingRating, Permission, PlanEntry, Recipe, RecipeDetail, RecipePatch,
+  BookHit, Choices, Draft, ImportReport, ListItem, Me, Member, PendingRating, Permission, PlanEntry, Recipe, RecipeDetail, RecipePatch,
   RecipeRatingOut, RecipeSource, RatingIn, ShareResult, Staple, WeekSummary,
 } from "./types";
 
@@ -14,6 +14,7 @@ export const keys = {
   week: (w: string) => ["week", w] as const,
   weekDraft: (w: string) => ["weekDraft", w] as const,
   pending: ["pendingRatings"] as const,
+  members: ["members"] as const,
   sources: ["recipeSources"] as const,
   draft: (id: number) => ["draft", id] as const,
   staples: ["staples"] as const,
@@ -143,14 +144,29 @@ export function useAddToWeek() {
   });
 }
 
+/** Whose ratings are "yours": the signed-in member; the shared token (dev) rates as Family (null), as on the server. */
+export function useMemberId(): number | null {
+  const me = useMe().data;
+  return me && me.via !== "legacy" ? me.member_id : null;
+}
+
+/** The household's members (names for "Rating for", child profiles a parent can rate for). */
+export function useMembers(enabled = true) {
+  return useQuery({ queryKey: keys.members, queryFn: () => get<Member[]>("/household/members"), enabled, staleTime: 5 * 60_000 });
+}
+
+/** ?member_id= when rating for someone else (a child profile); nothing for yourself. */
+const forWhom = (member: number | null | undefined) => (member != null ? `?${new URLSearchParams({ member_id: String(member) })}` : "");
+
+/** Your rating of a dinner (or, with member, a child profile's); rating null = remove it. */
 export function useRate(week: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, rating }: { id: number; rating: RatingIn | null }) =>
-      rating ? put<void>(`/plan/${id}/rating`, rating) : del<void>(`/plan/${id}/rating`),
+    mutationFn: ({ id, rating, member }: { id: number; rating: RatingIn | null; member?: number | null }) =>
+      rating ? put<void>(`/plan/${id}/rating`, { ...rating, member_id: member ?? null }) : del<void>(`/plan/${id}/rating${forWhom(member)}`),
     onSuccess: () => {
+      for (const k of [["week"], keys.recipes, ["recipe"], keys.pending]) qc.invalidateQueries({ queryKey: k });
       invalidateWeek(qc, week);
-      qc.invalidateQueries({ queryKey: ["recipe"] });
     },
   });
 }
@@ -161,9 +177,9 @@ export function useRate(week: string) {
 export function useRateRecipe() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, day, rating }: { id: number; day: string; rating: RatingIn | null }): Promise<RecipeRatingOut | void> =>
-      rating ? put<RecipeRatingOut>(`/recipes/${id}/rating`, { ...rating, cooked_on: day })
-        : del<void>(`/recipes/${id}/rating?${new URLSearchParams({ cooked_on: day })}`),
+    mutationFn: ({ id, day, rating, member }: { id: number; day: string; rating: RatingIn | null; member?: number | null }): Promise<RecipeRatingOut | void> =>
+      rating ? put<RecipeRatingOut>(`/recipes/${id}/rating`, { ...rating, cooked_on: day, member_id: member ?? null })
+        : del<void>(`/recipes/${id}/rating?${new URLSearchParams({ cooked_on: day, ...(member != null ? { member_id: String(member) } : {}) })}`),
     onSuccess: () => {
       for (const k of [["week"], keys.weeks, keys.recipes, ["recipe"], keys.pending]) qc.invalidateQueries({ queryKey: k });
     },

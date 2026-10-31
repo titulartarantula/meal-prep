@@ -541,7 +541,7 @@
   "/recipes/{recipe_id}/rating": {
    "put": {
     "summary": "Put Recipe Rating",
-    "description": "Rate the recipe from the recipe itself (not from a night on the plan). cooked_on (default: the newest dinner\nof it still waiting for a rating, else today) can't be later than today. A night on the plan for it that day\ntakes the rating, so it's the same as rating that dinner; otherwise it's one rating per recipe and day.",
+    "description": "Rate the recipe from the recipe itself (not from a night on the plan), as yourself or (member_id) for a\nchild profile. cooked_on (default: the newest dinner of it still waiting for this person's rating, else today)\ncan't be later than today. A night on the plan for it that day takes the rating, so it's the same as rating\nthat dinner; otherwise it's one rating per recipe, day and person.",
     "operationId": "put_recipe_rating_recipes__recipe_id__rating_put",
     "parameters": [
      {
@@ -589,7 +589,7 @@
    },
    "delete": {
     "summary": "Delete Recipe Rating",
-    "description": "Remove the rating of the time it was cooked that day (the planned night's or the recipe's own).",
+    "description": "Remove your (or a child profile's) rating of the time it was cooked that day (the planned night's or the\nrecipe's own).",
     "operationId": "delete_recipe_rating_recipes__recipe_id__rating_delete",
     "parameters": [
      {
@@ -609,6 +609,22 @@
        "type": "string",
        "format": "date",
        "title": "Cooked On"
+      }
+     },
+     {
+      "name": "member_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Member Id"
       }
      }
     ],
@@ -632,7 +648,7 @@
   "/ratings/pending": {
    "get": {
     "summary": "Ratings Pending",
-    "description": "Placed nights before today (last 14 days) with no rating yet \u2014 the app's morning-after prompt.",
+    "description": "Placed nights before today (last 14 days) you haven't rated yet \u2014 the morning-after prompt. The shared\ntoken: nights nobody has rated.",
     "operationId": "ratings_pending_ratings_pending_get",
     "parameters": [
      {
@@ -901,6 +917,7 @@
   "/plan/{entry_id}/rating": {
    "put": {
     "summary": "Put Rating",
+    "description": "Your rating of that dinner (member_id: a child profile's); the shared token rates as Family.",
     "operationId": "put_rating_plan__entry_id__rating_put",
     "parameters": [
      {
@@ -950,6 +967,22 @@
       "schema": {
        "type": "integer",
        "title": "Entry Id"
+      }
+     },
+     {
+      "name": "member_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Member Id"
       }
      }
     ],
@@ -3362,8 +3395,73 @@
     ],
     "title": "CartIn"
    },
+   "CompanyVotes": {
+    "properties": {
+     "yes": {
+      "type": "integer",
+      "title": "Yes",
+      "default": 0
+     },
+     "maybe": {
+      "type": "integer",
+      "title": "Maybe",
+      "default": 0
+     },
+     "no": {
+      "type": "integer",
+      "title": "No",
+      "default": 0
+     }
+    },
+    "type": "object",
+    "title": "CompanyVotes"
+   },
    "CookedEntry": {
     "properties": {
+     "rating": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Rating"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "my_rating": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Rating"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "ratings": {
+      "items": {
+       "$ref": "#/components/schemas/PersonRating"
+      },
+      "type": "array",
+      "title": "Ratings",
+      "default": []
+     },
+     "rating_avg": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rating Avg"
+     },
+     "rating_count": {
+      "type": "integer",
+      "title": "Rating Count",
+      "default": 0
+     },
      "entry_id": {
       "type": "integer",
       "title": "Entry Id"
@@ -3397,16 +3495,6 @@
      "multiplier": {
       "type": "number",
       "title": "Multiplier"
-     },
-     "rating": {
-      "anyOf": [
-       {
-        "$ref": "#/components/schemas/Rating"
-       },
-       {
-        "type": "null"
-       }
-      ]
      }
     },
     "type": "object",
@@ -3415,8 +3503,7 @@
      "week",
      "day",
      "date",
-     "multiplier",
-     "rating"
+     "multiplier"
     ],
     "title": "CookedEntry"
    },
@@ -4429,6 +4516,175 @@
     "type": "object",
     "title": "PackIn"
    },
+   "PersonRating": {
+    "properties": {
+     "member_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Member Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "kind": {
+      "type": "string",
+      "title": "Kind"
+     },
+     "family": {
+      "type": "integer",
+      "title": "Family"
+     },
+     "company": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "rated_at": {
+      "type": "string",
+      "title": "Rated At"
+     },
+     "entered_by": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Entered By"
+     },
+     "entered_by_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Entered By Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "member_id",
+     "name",
+     "kind",
+     "family",
+     "rated_at"
+    ],
+    "title": "PersonRating",
+    "description": "One person's rating of one time cooked (per-person ratings, 2026-10-31)."
+   },
+   "PersonSummary": {
+    "properties": {
+     "member_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Member Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "kind": {
+      "type": "string",
+      "title": "Kind"
+     },
+     "family": {
+      "type": "integer",
+      "title": "Family"
+     },
+     "company": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "date": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date"
+     },
+     "rated_at": {
+      "type": "string",
+      "title": "Rated At"
+     },
+     "avg": {
+      "type": "number",
+      "title": "Avg"
+     },
+     "count": {
+      "type": "integer",
+      "title": "Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "member_id",
+     "name",
+     "kind",
+     "family",
+     "rated_at",
+     "avg",
+     "count"
+    ],
+    "title": "PersonSummary",
+    "description": "One person's ratings of a recipe: their latest (score, company, note, day cooked) and their average."
+   },
    "PickIn": {
     "properties": {
      "product_code": {
@@ -4444,6 +4700,50 @@
    },
    "PlanEntry": {
     "properties": {
+     "rating": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Rating"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "my_rating": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Rating"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "ratings": {
+      "items": {
+       "$ref": "#/components/schemas/PersonRating"
+      },
+      "type": "array",
+      "title": "Ratings",
+      "default": []
+     },
+     "rating_avg": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rating Avg"
+     },
+     "rating_count": {
+      "type": "integer",
+      "title": "Rating Count",
+      "default": 0
+     },
      "id": {
       "type": "integer",
       "title": "Id"
@@ -4472,16 +4772,6 @@
       "title": "Multiplier",
       "default": 1.0
      },
-     "rating": {
-      "anyOf": [
-       {
-        "$ref": "#/components/schemas/Rating"
-       },
-       {
-        "type": "null"
-       }
-      ]
-     },
      "title": {
       "anyOf": [
        {
@@ -4504,18 +4794,52 @@
    },
    "RatedEntry": {
     "properties": {
+     "rating": {
+      "$ref": "#/components/schemas/Rating"
+     },
+     "my_rating": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Rating"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "ratings": {
+      "items": {
+       "$ref": "#/components/schemas/PersonRating"
+      },
+      "type": "array",
+      "title": "Ratings",
+      "default": []
+     },
+     "rating_avg": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rating Avg"
+     },
+     "rating_count": {
+      "type": "integer",
+      "title": "Rating Count",
+      "default": 0
+     },
      "date": {
       "type": "string",
       "title": "Date"
-     },
-     "rating": {
-      "$ref": "#/components/schemas/Rating"
      }
     },
     "type": "object",
     "required": [
-     "date",
-     "rating"
+     "rating",
+     "date"
     ],
     "title": "RatedEntry"
    },
@@ -4594,6 +4918,17 @@
        }
       ],
       "title": "Note"
+     },
+     "member_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Member Id"
      }
     },
     "type": "object",
@@ -4622,6 +4957,28 @@
      "rated_at": {
       "type": "string",
       "title": "Rated At"
+     },
+     "member_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Member Id"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
      }
     },
     "type": "object",
@@ -4700,6 +5057,32 @@
       "type": "integer",
       "title": "Imported Ratings",
       "default": 0
+     },
+     "rating_count": {
+      "type": "integer",
+      "title": "Rating Count",
+      "default": 0
+     },
+     "people": {
+      "items": {
+       "$ref": "#/components/schemas/PersonSummary"
+      },
+      "type": "array",
+      "title": "People",
+      "default": []
+     },
+     "company_votes": {
+      "$ref": "#/components/schemas/CompanyVotes",
+      "default": {
+       "yes": 0,
+       "maybe": 0,
+       "no": 0
+      }
+     },
+     "good_for_company": {
+      "type": "boolean",
+      "title": "Good For Company",
+      "default": false
      }
     },
     "type": "object",
@@ -4922,7 +5305,15 @@
        "times_cooked": 0,
        "times_rated": 0,
        "notes": [],
-       "imported_ratings": 0
+       "imported_ratings": 0,
+       "rating_count": 0,
+       "people": [],
+       "company_votes": {
+        "maybe": 0,
+        "no": 0,
+        "yes": 0
+       },
+       "good_for_company": false
       }
      },
      "planned_weeks": {
@@ -5195,7 +5586,15 @@
        "times_cooked": 0,
        "times_rated": 0,
        "notes": [],
-       "imported_ratings": 0
+       "imported_ratings": 0,
+       "rating_count": 0,
+       "people": [],
+       "company_votes": {
+        "maybe": 0,
+        "no": 0,
+        "yes": 0
+       },
+       "good_for_company": false
       }
      },
      "planned_weeks": {
@@ -5464,6 +5863,17 @@
        }
       ],
       "title": "Note"
+     },
+     "member_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Member Id"
      },
      "cooked_on": {
       "anyOf": [

@@ -15,6 +15,9 @@ export interface MockRecipe {
   photo: string | null; // palette key for a generated SVG "photo"; "broken" = a link that 404s (shows the placeholder); null = no image
   avg: number | null;
   cooked: number;
+  /** Invented per-person history (rater: "family" or a member id → latest score, average, count, company?, note?);
+   * without it the history is the Family's: avg over `cooked`, latest answer `company`. */
+  raters?: Record<string, readonly [number, number, number, ("yes" | "maybe" | "no")?, string?]>;
   description?: string;
   ingredients: [number | null, string | null, string, string?][]; // qty, unit, name, prep
   steps: string[];
@@ -23,6 +26,7 @@ export interface MockRecipe {
 export const RECIPES: MockRecipe[] = [
   { id: 1, title: "Sheet-pan gnocchi with sausage & peppers", minutes: 35, servings: 4, source: "nyt", source_kind: "nyt",
     photo: "gnocchi", avg: 4.8, cooked: 6, company: "yes", notes: ["Double the peppers"],
+    raters: { 1: [5, 5, 2, "yes"], 2: [4, 4.5, 2, "maybe"], 4: [5, 5, 1], family: [5, 4.8, 4, "yes"] },
     ingredients: [[500, "g", "potato gnocchi"], [500, "g", "mild Italian sausage"], [2, null, "bell peppers", "sliced"],
       [1, null, "red onion", "cut in wedges"], [2, "tbsp", "olive oil"], [null, null, "parmesan", "to serve"]],
     steps: ["Heat the oven to 425°F.", "Toss gnocchi, peppers and onion with oil on a sheet pan; nestle in the sausage.",
@@ -34,7 +38,7 @@ export const RECIPES: MockRecipe[] = [
     steps: ["Whisk miso, maple and vinegar.", "Brush over the salmon and broil 8 minutes.", "Sauté the bok choy; scatter sesame."] },
   { id: 3, title: "Chicken tinga tacos with pickled onions", minutes: 40, servings: 4, source: "book", source_kind: "book",
     source_title: "Weeknight Mexican", source_ref: "88", source_author: "Ada Example", photo: "tacos", avg: 4.8, cooked: 5,
-    company: "yes",
+    company: "yes", raters: { 2: [5, 5, 1, "yes", "Extra lime"], 3: [4, 4, 1], family: [5, 4.8, 4, "yes"] },
     ingredients: [[700, "g", "boneless skinless chicken thighs"], [2, null, "chipotles in adobo"], [1, "can", "diced tomatoes"],
       [12, null, "corn tortillas"], [1, null, "red onion", "thinly sliced"], [1, null, "lime"]],
     steps: ["Simmer the chicken with tomatoes and chipotle 20 minutes.", "Shred and return to the sauce.",
@@ -82,7 +86,21 @@ export const BOOKS = [
   { title: "Pantry Suppers", subtitle: "Cooking from the cupboard", authors: ["Ed Fixture"], year: 2023, isbn: null },
 ];
 
-/** Plan entries per week offset from this week: [recipe, day | null, rating | null]. */
+/** The invented household: Sam (signed in by default), Alex (a parent), Robin (a teen: Contributor), Pip (a child
+ * profile: can't sign in; a parent rates for Pip). `mp_mock_member=<id>` (cookie) signs in as someone else. */
+export const MEMBERS = [
+  { id: 1, name: "Sam", kind: "account" as const, roles: ["owner", "approver", "planner", "contributor"], birth_year: null },
+  { id: 2, name: "Alex", kind: "account" as const, roles: ["owner", "planner", "contributor"], birth_year: null },
+  { id: 3, name: "Robin", kind: "account" as const, roles: ["contributor"], birth_year: 2012 },
+  { id: 4, name: "Pip", kind: "child" as const, roles: ["child"], birth_year: 2017 },
+];
+
+/** Per-person ratings already on this week's dinners: [recipe, member (null = Family), score, note?, entered by?]. */
+export const NIGHT_RATINGS: [number, number | null, number, string?, number?][] = [
+  [3, 2, 5, "Extra lime"], [3, 4, 4, "Picked out the onions", 2], [1, 2, 4],
+];
+
+/** Plan entries per week offset from this week: [recipe, day | null, Family rating | null]. */
 export const PLAN: Record<number, [number, number | null, number | null][]> = {
   [-1]: [[11, 1, 5], [10, 3, null], [12, 5, null], [4, 6, null]],
   0: [[1, 0, 5], [2, 1, 4], [3, 2, 5], [4, 3, 4], [5, 4, null], [6, 5, null], [7, null, null], [8, null, null]],

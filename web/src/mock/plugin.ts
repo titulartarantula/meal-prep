@@ -2,9 +2,17 @@
 // and tested without the live server or its database. It follows the real routes' shapes, not their rules.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
-import { BOOKS, BUILD, PLAN, PRODUCTS, RECIPES, photoSvg, productSvg, type MockProduct, type MockRecipe } from "./fixtures.ts";
+import { BOOKS, BUILD, MEMBERS, NIGHT_RATINGS, PLAN, PRODUCTS, RECIPES, photoSvg, productSvg, type MockProduct, type MockRecipe } from "./fixtures.ts";
+import { cooked, put, summary, type PR } from "./ratings.ts";
 
 const COOKIE = "mp_mock_session";
+const AS = "mp_mock_member";   // sign in as another member of the invented household (e2e)
+
+const PERMS: Record<string, string[]> = {
+  owner: ["members.manage", "roles.assign", "household.settings"], approver: ["request.approve", "cart.build", "cart.send"],
+  planner: ["plan.edit", "recipe.edit", "fridge.edit", "rate.for_children"],
+  contributor: ["recipe.read", "plan.read", "rate.self", "request.create"], child: [],
+};
 
 function iso(d: Date) {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -14,10 +22,9 @@ function sunday(d = new Date(), weeks = 0) {
   return iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay() + 7 * weeks));
 }
 
-interface Entry { id: number; week: string; recipe_id: number; day: number | null; multiplier: number;
-  rating: { family: number; company: string | null; note: string | null; rated_at: string } | null }
+interface Entry { id: number; week: string; recipe_id: number; day: number | null; multiplier: number; ratings: PR[] }
 /** A rating made from the recipe (PUT /recipes/{id}/rating) for a day with no dinner of it on the plan. */
-interface Rated { recipe_id: number; cooked_on: string; rating: NonNullable<Entry["rating"]> }
+interface Rated extends PR { recipe_id: number; cooked_on: string }
 interface Line { id: number; item_key: string; name: string; qty: number | null; unit: string | null; recipes: string[];
   product: ReturnType<typeof product> | null; quantity: number | null; source: string; alternatives: unknown[];
   removed: boolean; status: string; staple: boolean; pinned: boolean; note: string | null; why: string | null;
@@ -38,9 +45,15 @@ function fresh() {
   const entries: Entry[] = [];
   for (const [off, list] of Object.entries(PLAN)) {
     for (const [rid, day, stars] of list) {
+      const at = new Date(Date.now() - 3600e3).toISOString();
       entries.push({ id: ++id, week: sunday(new Date(), Number(off)), recipe_id: rid, day, multiplier: 1,
-        rating: stars ? { family: stars, company: null, note: null, rated_at: new Date().toISOString() } : null });
+        ratings: stars ? [{ member_id: null, entered_by: null, family: stars, company: null, note: null, rated_at: at }] : [] });
     }
+  }
+  for (const [rid, member, stars, note, by] of NIGHT_RATINGS) {
+    const e = entries.find((x) => x.week === sunday() && x.recipe_id === rid)!;
+    e.ratings.push({ member_id: member, entered_by: by ?? member, family: stars, company: null, note: note ?? null,
+      rated_at: new Date(Date.now() - 1800e3).toISOString() });
   }
   const sent: Draft = { id: 1, status: "sent", weeks: [sunday()], lines: [], pcx_cart_id: "8f3c2d1e-0000-4000-8000-000000000001",
     created_at: new Date(Date.now() - 6 * 864e5).toISOString(), sent_at: new Date(Date.now() - 6 * 864e5).toISOString(), built: 0, total: 0 };
@@ -69,6 +82,9 @@ export function mockApi(): Plugin {
     const path = url.pathname.replace(/^\/api/, "");
     const m = req.method!;
     const signedIn = (req.headers.cookie ?? "").includes(`${COOKIE}=1`);
+    const me = Number((req.headers.cookie ?? "").match(new RegExp(`${AS}=(\\d+)`))?.[1] ?? 1);
+    const self = MEMBERS.find((x) => x.id === me) ?? MEMBERS[0];
+    const perms = [...new Set(self.roles.flatMap((r) => PERMS[r] ?? []))].sort();
     const body = m === "GET" ? null : await readBody(req);
     let g: RegExpMatchArray | null;
 
@@ -84,12 +100,33 @@ export function mockApi(): Plugin {
     if (m !== "GET" && req.headers["x-csrf-token"] !== "mock-csrf") return send(res, 403, { detail: "Missing or wrong X-CSRF-Token header." });
 
     if (path === "/auth/me") {
-      return send(res, 200, { via: "cookie", user: { id: 1, email: "sam@example.com", name: "Sam Rivera", picture: null },
-        households: [{ id: 1, name: "Rivera household", member_id: 1 }], household: { id: 1, name: "Rivera household", store_id: 1092 },
-        member_id: 1, roles: ["owner", "approver", "planner", "contributor"], csrf_token: "mock-csrf",
-        permissions: ["cart.build", "cart.send", "household.settings", "members.manage", "plan.edit", "plan.read", "rate.for_children",
-          "rate.self", "recipe.edit", "recipe.read", "request.approve", "request.create", "roles.assign", "fridge.edit"] });
+      return send(res, 200, { via: "cookie", user: { id: me, email: `${self.name.toLowerCase()}@example.com`, name: `${self.name} Rivera`, picture: null },
+        households: [{ id: 1, name: "Rivera household", member_id: me }], household: { id: 1, name: "Rivera household", store_id: 1092 },
+        member_id: me, roles: self.roles, csrf_token: "mock-csrf", permissions: perms });
     }
+    if (path === "/household/members") {
+      return send(res, 200, MEMBERS.map((x) => ({ id: x.id, name: x.name, kind: x.kind, birth_year: x.birth_year, signed_in: x.kind === "account",
+        email_set: false, joined_at: "2026-10-30T21:15:00Z", roles: x.roles })));
+    }
+    // a rating's person: yourself, or (member_id, rate.for_children) a child profile
+    const rater = (id: number | null | undefined): number | "forbidden" | "unknown" => {
+      if (id == null || id === me) return me;
+      const x = MEMBERS.find((y) => y.id === id);
+      if (!x) return "unknown";
+      return x.kind === "child" && perms.includes("rate.for_children") ? id : "forbidden";
+    };
+    const refuse = (r: number | "forbidden" | "unknown") =>
+      r === "unknown" ? send(res, 404, { detail: "member" }) : send(res, 403, { detail: "You can only rate for yourself or a child profile." });
+    const nightOf = (e: Entry) => (e.day == null ? null : iso(addDays(e.week, e.day)));
+    const pendingFor = (who: number) => {
+      const today = iso(new Date()), from = iso(new Date(Date.now() - 14 * 864e5));
+      return db.entries.filter((e) => e.day != null && !e.ratings.some((p) => p.member_id === who) &&
+          !db.rated.some((x) => x.recipe_id === e.recipe_id && x.cooked_on === nightOf(e) && x.member_id === who))
+        .map((e) => ({ e, date: nightOf(e)! })).filter(({ date }) => date < today && date >= from)
+        .sort((a, b) => b.date.localeCompare(a.date) || a.e.id - b.e.id);
+    };
+    const entryOut = (e: Entry) => ({ id: e.id, week: e.week, recipe_id: e.recipe_id, day: e.day, multiplier: e.multiplier,
+      title: db.recipes.find((r) => r.id === e.recipe_id)?.title, ...cooked(e.ratings, me) });
     if (path === "/auth/logout") {
       res.writeHead(204, { "Set-Cookie": `${COOKIE}=; Path=/; Max-Age=0` });
       return res.end();
@@ -99,9 +136,9 @@ export function mockApi(): Plugin {
       const r = db.recipes.find((x) => x.id === Number(g![1]));
       if (!r) return send(res, 404, { detail: "recipe" });
       const history = db.entries.filter((e) => e.recipe_id === r.id && e.day != null).map((e) => ({
-        entry_id: e.id, week: e.week, day: e.day, date: iso(addDays(e.week, e.day!)), multiplier: 1, rating: e.rating }));
-      const rated_history = db.rated.filter((x) => x.recipe_id === r.id).sort((a, b) => b.cooked_on.localeCompare(a.cooked_on))
-        .map((x) => ({ date: x.cooked_on, rating: x.rating }));
+        entry_id: e.id, week: e.week, day: e.day, date: iso(addDays(e.week, e.day!)), multiplier: 1, ...cooked(e.ratings, me) }));
+      const days = [...new Set(db.rated.filter((x) => x.recipe_id === r.id).map((x) => x.cooked_on))].sort().reverse();
+      const rated_history = days.map((d) => ({ date: d, ...cooked(db.rated.filter((x) => x.recipe_id === r.id && x.cooked_on === d), me) }));
       return send(res, 200, { ...recipeOut(r, db.entries, db.rated), history, imported_history: [], rated_history });
     }
     if ((g = path.match(/^\/recipes\/(\d+)\/rating$/))) {
@@ -110,30 +147,29 @@ export function mockApi(): Plugin {
       const rid = Number(g[1]);
       if (!db.recipes.some((x) => x.id === rid)) return send(res, 404, { detail: "recipe" });
       const today = iso(new Date());
-      const b = (body ?? {}) as { family: number; company?: string | null; note?: string | null; cooked_on?: string | null };
+      const b = (body ?? {}) as { family: number; company?: string | null; note?: string | null; cooked_on?: string | null; member_id?: number | null };
+      const who = rater(m === "DELETE" ? (url.searchParams.get("member_id") ? Number(url.searchParams.get("member_id")) : null) : b.member_id);
+      if (typeof who !== "number") return refuse(who);
       let day = m === "DELETE" ? url.searchParams.get("cooked_on") : b.cooked_on ?? null;
       if (m === "DELETE" && !day) return send(res, 422, { detail: "cooked_on" });
       if (day && day > today) return send(res, 422, { detail: "cooked_on can't be in the future" });
-      const nightOf = (e: Entry) => (e.day == null ? null : iso(addDays(e.week, e.day)));
-      if (!day) {
-        const from = iso(new Date(Date.now() - 14 * 864e5));
-        const waiting = db.entries.filter((e) => e.recipe_id === rid && !e.rating && nightOf(e) && nightOf(e)! < today && nightOf(e)! >= from)
-          .sort((a, c) => nightOf(c)!.localeCompare(nightOf(a)!))[0];
-        day = waiting ? nightOf(waiting)! : today;
-      }
+      if (!day) day = pendingFor(who).find(({ e }) => e.recipe_id === rid)?.date ?? today;
       const nights = db.entries.filter((e) => e.recipe_id === rid && nightOf(e) === day);
-      const night = m === "DELETE" ? nights.find((e) => e.rating) : nights.find((e) => !e.rating) ?? nights[0];
+      const has = (e: Entry) => e.ratings.some((p) => p.member_id === who);
+      const night = m === "DELETE" ? nights.find(has) : nights.find((e) => !has(e)) ?? nights[0];
+      const own = (x: Rated) => x.recipe_id === rid && x.cooked_on === day && x.member_id === who;
       if (m === "DELETE") {
-        if (night) night.rating = null;
-        else db.rated = db.rated.filter((x) => !(x.recipe_id === rid && x.cooked_on === day));
+        if (night) night.ratings = put(night.ratings, { member_id: who, remove: true });
+        else db.rated = db.rated.filter((x) => !own(x));
         return send(res, 204);
       }
-      const rating = { family: b.family, company: b.company ?? null, note: b.note?.trim() || null, rated_at: new Date().toISOString() };
+      const p: PR = { member_id: who, entered_by: me, family: b.family, company: b.company ?? null, note: b.note?.trim() || null,
+        rated_at: new Date().toISOString() };
       if (night) {
-        night.rating = rating;
+        night.ratings = put(night.ratings, p);
         return send(res, 200, { cooked_on: day, entry_id: night.id, recipe_rating_id: null });
       }
-      db.rated = [...db.rated.filter((x) => !(x.recipe_id === rid && x.cooked_on === day)), { recipe_id: rid, cooked_on: day, rating }];
+      db.rated = [...db.rated.filter((x) => !own(x)), { ...p, recipe_id: rid, cooked_on: day }];
       return send(res, 200, { cooked_on: day, entry_id: null, recipe_rating_id: db.rated.length });
     }
     if ((g = path.match(/^\/recipes\/(\d+)$/)) && m === "PATCH") {
@@ -179,11 +215,7 @@ export function mockApi(): Plugin {
         .map((b) => ({ ...b, publisher: null, source: "openlibrary" })));
     }
     if (path === "/ratings/pending") {
-      const today = iso(new Date()), from = iso(new Date(Date.now() - 14 * 864e5));
-      return send(res, 200, db.entries.filter((e) => e.day != null && !e.rating &&
-          !db.rated.some((x) => x.recipe_id === e.recipe_id && x.cooked_on === iso(addDays(e.week, e.day!))))
-        .map((e) => ({ e, date: iso(addDays(e.week, e.day!)) })).filter(({ date }) => date < today && date >= from)
-        .sort((a, b) => b.date.localeCompare(a.date) || a.e.id - b.e.id)
+      return send(res, 200, pendingFor(me)
         .map(({ e, date }) => ({ entry_id: e.id, week: e.week, day: e.day, date, recipe_id: e.recipe_id,
           title: db.recipes.find((r) => r.id === e.recipe_id)?.title ?? "", multiplier: e.multiplier })));
     }
@@ -222,13 +254,12 @@ export function mockApi(): Plugin {
     }
     if ((g = path.match(/^\/weeks\/([\d-]+)$/))) {
       return send(res, 200, db.entries.filter((e) => e.week === g![1])
-        .sort((a, b) => (a.day ?? 99) - (b.day ?? 99) || a.id - b.id)
-        .map((e) => ({ ...e, title: db.recipes.find((r) => r.id === e.recipe_id)?.title })));
+        .sort((a, b) => (a.day ?? 99) - (b.day ?? 99) || a.id - b.id).map(entryOut));
     }
     if ((g = path.match(/^\/weeks\/([\d-]+)\/entries$/))) {
-      const e: Entry = { id: ++db.nextId, week: g[1], recipe_id: (body as { recipe_id: number }).recipe_id, day: null, multiplier: 1, rating: null };
+      const e: Entry = { id: ++db.nextId, week: g[1], recipe_id: (body as { recipe_id: number }).recipe_id, day: null, multiplier: 1, ratings: [] };
       db.entries.push(e);
-      return send(res, 200, { ...e, title: db.recipes.find((r) => r.id === e.recipe_id)?.title });
+      return send(res, 200, entryOut(e));
     }
     if ((g = path.match(/^\/weeks\/([\d-]+)\/draft$/))) {
       const d = [...db.drafts].reverse().find((d) => d.weeks.includes(g![1]));
@@ -244,8 +275,11 @@ export function mockApi(): Plugin {
     if ((g = path.match(/^\/plan\/(\d+)\/rating$/))) {
       const e = db.entries.find((e) => e.id === Number(g![1]));
       if (!e) return send(res, 404, { detail: "entry" });
-      const b = body as { family: number; company?: string | null; note: string | null };
-      e.rating = m === "DELETE" ? null : { family: b.family, company: b.company ?? null, note: b.note ?? null, rated_at: new Date().toISOString() };
+      const b = (body ?? {}) as { family: number; company?: string | null; note: string | null; member_id?: number | null };
+      const who = rater(m === "DELETE" ? (url.searchParams.get("member_id") ? Number(url.searchParams.get("member_id")) : null) : b.member_id);
+      if (typeof who !== "number") return refuse(who);
+      e.ratings = put(e.ratings, m === "DELETE" ? { member_id: who, remove: true }
+        : { member_id: who, entered_by: me, family: b.family, company: b.company ?? null, note: b.note?.trim() || null, rated_at: new Date().toISOString() });
       return send(res, 204);
     }
     if (path === "/staples") {
@@ -363,26 +397,21 @@ function recipesFor(recipes: MockRecipe[], key: string): string[] {
 }
 
 function recipeOut(r: MockRecipe & { revision?: number; notesText?: string | null }, entries: Entry[], own: Rated[] = []) {
-  // the household's own ratings on top of the invented history: newest first
-  const rated = [...entries.filter((e) => e.recipe_id === r.id && e.rating),
-    ...own.filter((x) => x.recipe_id === r.id).map((x) => ({ day: 0, week: x.cooked_on, rating: x.rating }))]
-    .sort((a, b) => b.rating!.rated_at.localeCompare(a.rating!.rated_at));
-  // ratings made from the recipe count on top of the invented average (plan ratings don't, as before)
-  const mine = own.filter((x) => x.recipe_id === r.id);
-  const base = r.avg ? r.cooked : 0;
-  const times = base + mine.length;
-  const avg = times ? Math.round(((r.avg ?? 0) * base + mine.reduce((t, x) => t + x.rating.family, 0)) / times * 10) / 10 : null;
-  const notes = [...rated.filter((e) => e.rating!.note).map((e) => ({ note: e.rating!.note!, date: e.day == null ? null : iso(addDays(e.week, e.day)),
-    rated_at: e.rating!.rated_at })), ...(r.notes ?? []).map((note, i) => ({ note, date: iso(new Date(Date.now() - (30 + 14 * i) * 864e5)), rated_at: "2026-09-01T18:00:00Z" }))].slice(0, 5);
-  const company = rated.find((e) => e.rating!.company)?.rating!.company ?? r.company ?? null;
+  // the household's own ratings (every time cooked with one, dinners and days rated from the recipe) on top of the
+  // invented history
+  const days: [string, PR[]][] = [
+    ...entries.filter((e) => e.recipe_id === r.id && e.ratings.length)
+      .map((e): [string, PR[]] => [e.day == null ? e.week : iso(addDays(e.week, e.day)), e.ratings]),
+    ...[...new Set(own.filter((x) => x.recipe_id === r.id).map((x) => x.cooked_on))]
+      .map((d): [string, PR[]] => [d, own.filter((x) => x.recipe_id === r.id && x.cooked_on === d)]),
+  ];
   return { id: r.id, title: r.title, source: r.source, source_url: r.source_kind === "nyt" ? `https://cooking.nytimes.com/recipes/${1000 + r.id}` : null,
     servings: r.servings || null, source_kind: r.source_kind, source_title: r.source_title ?? null, source_ref: r.source_ref ?? null,
     source_author: r.source_author ?? null, source_isbn: null, notes: r.notesText ?? null,
     total_minutes: r.minutes, image: r.photo ? `/api/_mock/photo/${r.photo}.svg` : null, description: r.description ?? null,
     ingredients: r.ingredients.map(([qty, unit, name, prep]) => ({ raw: [qty, unit, name].filter(Boolean).join(" "), name, qty, unit, prep: prep ?? null,
       likely_on_hand: false, expanded: false })),
-    steps: r.steps, ratings: { times_cooked: r.cooked + mine.length, times_rated: times, avg_family: avg,
-      last_family: rated[0]?.rating!.family ?? null, last_rated_at: rated[0]?.rating!.rated_at ?? null, company, notes, imported_ratings: 0 }, planned_weeks: [], schema_extra: {}, revision: `r${r.revision ?? 1}` };
+    steps: r.steps, ratings: summary(r, days), planned_weeks: [], schema_extra: {}, revision: `r${r.revision ?? 1}` };
 }
 
 function addDays(week: string, n: number) {

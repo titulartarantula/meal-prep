@@ -60,6 +60,7 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 | "So far" + earlier notes in the rating screen | Yes | |
 | "How was …?" banner (newest unrated dinner, Later) | Yes | Later hides it on that browser until tomorrow. Past nights also show "How was it?" on their card. |
 | Rate a recipe from the recipe itself (not from a night on the plan) | Yes (web only) | Web: a star button on each recipe card and Rate in the recipe drawer; "Cooked on" (the dinner of it still waiting for a rating, else today), your last rating. A dinner of it on the plan that day takes the rating, so nothing is counted twice. Server: `PUT` / `DELETE /recipes/{id}/rating`. **Android doesn't have it yet**; it could use the same endpoints later (it already shows these ratings in the recipe's summary). |
+| Per-person ratings: each member rates for themselves, a parent rates for a child profile; the family average plus each person's rating and note on the night, the recipe card (chips) and the drawer | Web only | Web: the rating dialogs rate as you, with "Rating for: Me / <child>" for members with rate.for_children; the How was banner asks about dinners **you** haven't rated. Good for company goes by everyone's latest answer (more yes than no). **Android: later** (plan Task 7, with Google sign-in): until then the phones use the shared token, which rates as "Family" (one rater in the average, like every rating from before profiles), still sees a night someone rated on the web as rated (its `rating` falls back to the newest), and its summaries already include everyone's ratings. |
 
 ## Shopping and cart
 
@@ -120,4 +121,4 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 - **Phone only, biggest gaps:** cookbook photos, export, fridge cleaner, notifications, offline, staples editing, pins
   and pack sizes, chooser filters and detail.
 - **Retired everywhere (2026-10-31):** Sunday prep and cook cards.
-- **Web only:** Google sign-in + households + roles, recipe photos, cart filters, theme switch, add to home screen.
+- **Web only:** Google sign-in + households + roles, per-person ratings, recipe photos, cart filters, theme switch, add to home screen.

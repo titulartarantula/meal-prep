@@ -263,15 +263,17 @@ export interface paths {
         get?: never;
         /**
          * Put Recipe Rating
-         * @description Rate the recipe from the recipe itself (not from a night on the plan). cooked_on (default: the newest dinner
-         *     of it still waiting for a rating, else today) can't be later than today. A night on the plan for it that day
-         *     takes the rating, so it's the same as rating that dinner; otherwise it's one rating per recipe and day.
+         * @description Rate the recipe from the recipe itself (not from a night on the plan), as yourself or (member_id) for a
+         *     child profile. cooked_on (default: the newest dinner of it still waiting for this person's rating, else today)
+         *     can't be later than today. A night on the plan for it that day takes the rating, so it's the same as rating
+         *     that dinner; otherwise it's one rating per recipe, day and person.
          */
         put: operations["put_recipe_rating_recipes__recipe_id__rating_put"];
         post?: never;
         /**
          * Delete Recipe Rating
-         * @description Remove the rating of the time it was cooked that day (the planned night's or the recipe's own).
+         * @description Remove your (or a child profile's) rating of the time it was cooked that day (the planned night's or the
+         *     recipe's own).
          */
         delete: operations["delete_recipe_rating_recipes__recipe_id__rating_delete"];
         options?: never;
@@ -288,7 +290,8 @@ export interface paths {
         };
         /**
          * Ratings Pending
-         * @description Placed nights before today (last 14 days) with no rating yet — the app's morning-after prompt.
+         * @description Placed nights before today (last 14 days) you haven't rated yet — the morning-after prompt. The shared
+         *     token: nights nobody has rated.
          */
         get: operations["ratings_pending_ratings_pending_get"];
         put?: never;
@@ -376,7 +379,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Put Rating */
+        /**
+         * Put Rating
+         * @description Your rating of that dinner (member_id: a child profile's); the shared token rates as Family.
+         */
         put: operations["put_rating_plan__entry_id__rating_put"];
         post?: never;
         /** Delete Rating */
@@ -1299,8 +1305,40 @@ export interface components {
              */
             weeks: string[];
         };
+        /** CompanyVotes */
+        CompanyVotes: {
+            /**
+             * Yes
+             * @default 0
+             */
+            yes: number;
+            /**
+             * Maybe
+             * @default 0
+             */
+            maybe: number;
+            /**
+             * No
+             * @default 0
+             */
+            no: number;
+        };
         /** CookedEntry */
         CookedEntry: {
+            rating?: components["schemas"]["Rating"] | null;
+            my_rating?: components["schemas"]["Rating"] | null;
+            /**
+             * Ratings
+             * @default []
+             */
+            ratings: components["schemas"]["PersonRating"][];
+            /** Rating Avg */
+            rating_avg?: number | null;
+            /**
+             * Rating Count
+             * @default 0
+             */
+            rating_count: number;
             /** Entry Id */
             entry_id: number;
             /** Week */
@@ -1311,7 +1349,6 @@ export interface components {
             date: string | null;
             /** Multiplier */
             multiplier: number;
-            rating: components["schemas"]["Rating"] | null;
         };
         /** DraftIn */
         DraftIn: {
@@ -1646,6 +1683,56 @@ export interface components {
             /** Word */
             word?: string | null;
         };
+        /**
+         * PersonRating
+         * @description One person's rating of one time cooked (per-person ratings, 2026-10-31).
+         */
+        PersonRating: {
+            /** Member Id */
+            member_id: number | null;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Family */
+            family: number;
+            /** Company */
+            company?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Rated At */
+            rated_at: string;
+            /** Entered By */
+            entered_by?: number | null;
+            /** Entered By Name */
+            entered_by_name?: string | null;
+        };
+        /**
+         * PersonSummary
+         * @description One person's ratings of a recipe: their latest (score, company, note, day cooked) and their average.
+         */
+        PersonSummary: {
+            /** Member Id */
+            member_id: number | null;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Family */
+            family: number;
+            /** Company */
+            company?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Rated At */
+            rated_at: string;
+            /** Avg */
+            avg: number;
+            /** Count */
+            count: number;
+        };
         /** PickIn */
         PickIn: {
             /** Product Code */
@@ -1653,6 +1740,20 @@ export interface components {
         };
         /** PlanEntry */
         PlanEntry: {
+            rating?: components["schemas"]["Rating"] | null;
+            my_rating?: components["schemas"]["Rating"] | null;
+            /**
+             * Ratings
+             * @default []
+             */
+            ratings: components["schemas"]["PersonRating"][];
+            /** Rating Avg */
+            rating_avg?: number | null;
+            /**
+             * Rating Count
+             * @default 0
+             */
+            rating_count: number;
             /** Id */
             id: number;
             /** Week */
@@ -1666,15 +1767,27 @@ export interface components {
              * @default 1
              */
             multiplier: number;
-            rating?: components["schemas"]["Rating"] | null;
             /** Title */
             title?: string | null;
         };
         /** RatedEntry */
         RatedEntry: {
+            rating: components["schemas"]["Rating"];
+            my_rating?: components["schemas"]["Rating"] | null;
+            /**
+             * Ratings
+             * @default []
+             */
+            ratings: components["schemas"]["PersonRating"][];
+            /** Rating Avg */
+            rating_avg?: number | null;
+            /**
+             * Rating Count
+             * @default 0
+             */
+            rating_count: number;
             /** Date */
             date: string;
-            rating: components["schemas"]["Rating"];
         };
         /** Rating */
         Rating: {
@@ -1695,6 +1808,8 @@ export interface components {
             company?: ("yes" | "maybe" | "no") | null;
             /** Note */
             note?: string | null;
+            /** Member Id */
+            member_id?: number | null;
         };
         /** RatingNote */
         RatingNote: {
@@ -1704,6 +1819,10 @@ export interface components {
             date: string | null;
             /** Rated At */
             rated_at: string;
+            /** Member Id */
+            member_id?: number | null;
+            /** Name */
+            name?: string | null;
         };
         /** RatingSummary */
         RatingSummary: {
@@ -1735,6 +1854,29 @@ export interface components {
              * @default 0
              */
             imported_ratings: number;
+            /**
+             * Rating Count
+             * @default 0
+             */
+            rating_count: number;
+            /**
+             * People
+             * @default []
+             */
+            people: components["schemas"]["PersonSummary"][];
+            /**
+             * @default {
+             *       "yes": 0,
+             *       "maybe": 0,
+             *       "no": 0
+             *     }
+             */
+            company_votes: components["schemas"]["CompanyVotes"];
+            /**
+             * Good For Company
+             * @default false
+             */
+            good_for_company: boolean;
         };
         /** RecipeDetail */
         RecipeDetail: {
@@ -1790,7 +1932,15 @@ export interface components {
              *       "times_cooked": 0,
              *       "times_rated": 0,
              *       "notes": [],
-             *       "imported_ratings": 0
+             *       "imported_ratings": 0,
+             *       "rating_count": 0,
+             *       "people": [],
+             *       "company_votes": {
+             *         "maybe": 0,
+             *         "no": 0,
+             *         "yes": 0
+             *       },
+             *       "good_for_company": false
              *     }
              */
             ratings: components["schemas"]["RatingSummary"];
@@ -1871,7 +2021,15 @@ export interface components {
              *       "times_cooked": 0,
              *       "times_rated": 0,
              *       "notes": [],
-             *       "imported_ratings": 0
+             *       "imported_ratings": 0,
+             *       "rating_count": 0,
+             *       "people": [],
+             *       "company_votes": {
+             *         "maybe": 0,
+             *         "no": 0,
+             *         "yes": 0
+             *       },
+             *       "good_for_company": false
              *     }
              */
             ratings: components["schemas"]["RatingSummary"];
@@ -1932,6 +2090,8 @@ export interface components {
             company?: ("yes" | "maybe" | "no") | null;
             /** Note */
             note?: string | null;
+            /** Member Id */
+            member_id?: number | null;
             /** Cooked On */
             cooked_on?: string | null;
         };
@@ -2496,6 +2656,7 @@ export interface operations {
         parameters: {
             query: {
                 cooked_on: string;
+                member_id?: number | null;
             };
             header?: never;
             path: {
@@ -2749,7 +2910,9 @@ export interface operations {
     };
     delete_rating_plan__entry_id__rating_delete: {
         parameters: {
-            query?: never;
+            query?: {
+                member_id?: number | null;
+            };
             header?: never;
             path: {
                 entry_id: number;
