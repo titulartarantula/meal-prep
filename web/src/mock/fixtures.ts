@@ -10,14 +10,14 @@ export interface MockRecipe {
   source_title?: string;
   source_ref?: string;
   source_author?: string;
-  company?: "yes" | "maybe" | "no"; // the household's Good for company verdict (set by an Owner)
+  company?: "yes" | "no"; // the household's Good for company verdict (set by an Owner); none = not decided
   notes?: string[];                 // earlier rating notes, newest first
   photo: string | null; // palette key for a generated SVG "photo"; "broken" = a link that 404s (shows the placeholder); null = no image
   avg: number | null;
   cooked: number;
   /** Invented per-person history (rater: "family" or a member id → latest score, average, count, an old company
    * answer (ignored: the verdict is `company`), note?); without it the history is the Family's: avg over `cooked`. */
-  raters?: Record<string, readonly [number, number, number, ("yes" | "maybe" | "no")?, string?]>;
+  raters?: Record<string, readonly [number, number, number, ("yes" | "no")?, string?]>;
   description?: string;
   ingredients: [number | null, string | null, string, string?][]; // qty, unit, name, prep
   steps: string[];
@@ -26,7 +26,7 @@ export interface MockRecipe {
 export const RECIPES: MockRecipe[] = [
   { id: 1, title: "Sheet-pan gnocchi with sausage & peppers", minutes: 35, servings: 4, source: "nyt", source_kind: "nyt",
     photo: "gnocchi", avg: 4.8, cooked: 6, company: "yes", notes: ["Double the peppers"],
-    raters: { 1: [5, 5, 2, "yes"], 2: [4, 4.5, 2, "maybe"], 4: [5, 5, 1], family: [5, 4.8, 4, "yes"] },
+    raters: { 1: [5, 5, 2, "yes"], 2: [4, 4.5, 2, "no"], 4: [5, 5, 1], family: [5, 4.8, 4, "yes"] },
     ingredients: [[500, "g", "potato gnocchi"], [500, "g", "mild Italian sausage"], [2, null, "bell peppers", "sliced"],
       [1, null, "red onion", "cut in wedges"], [2, "tbsp", "olive oil"], [null, null, "parmesan", "to serve"]],
     steps: ["Heat the oven to 425°F.", "Toss gnocchi, peppers and onion with oil on a sheet pan; nestle in the sausage.",
@@ -68,7 +68,7 @@ export const RECIPES: MockRecipe[] = [
     photo: "noodles", avg: 4.3, cooked: 3, ingredients: [[1, "block", "extra-firm tofu"], [250, "g", "rice noodles"], [0.33, "cup", "peanut butter"]],
     steps: ["Press and pan-fry the tofu.", "Toss noodles in peanut sauce."] },
   { id: 10, title: "Turkey chili with cornbread", minutes: 60, servings: 6, source: "book", source_kind: "book",
-    source_title: "Big Pot Suppers", source_ref: "41", photo: null, avg: 4.1, cooked: 4, company: "maybe",
+    source_title: "Big Pot Suppers", source_ref: "41", photo: null, avg: 4.1, cooked: 4,
     notes: ["Kids wanted more cornbread", "A bit too spicy"],
     ingredients: [[700, "g", "ground turkey"], [2, "can", "kidney beans"], [1, "box", "cornbread mix"]], steps: ["Brown, simmer, bake."] },
   { id: 11, title: "Shrimp fried rice", minutes: 20, servings: 4, source: "nyt", source_kind: "nyt",

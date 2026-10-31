@@ -1,30 +1,30 @@
 // Rating a dinner, as on the Android rating screen: a score 1–5, a note, the recipe's ratings "So far" and its earlier
 // notes. Since per-person ratings everyone rates for themselves (a parent can rate for a child profile: "Rating for"),
 // and the dinner, the recipe card and its drawer show the family average with each person's rating. "Good for
-// company?" is not part of a person's rating: it is one household verdict per recipe that an Owner sets (in the rating
-// dialog and the recipe drawer; others see it read-only). And the "How was …?" banner for the newest dinner you
+// company?" is not part of a person's rating: it is one household yes / no per recipe that an Owner sets (in the rating
+// dialog and the recipe drawer; others see it read-only), shown as a plain Yes / No, never next to or as a score. And the "How was …?" banner for the newest dinner you
 // haven't rated yet, with Later (hidden on this browser until tomorrow).
 import { useEffect, useState, type ReactNode } from "react";
 import { useCan, useMemberId, useMembers, usePendingRatings, useRate, useRateRecipe, useRecipe } from "../api/queries";
 import type { Company, PendingRating, PersonRating, PersonSummary, PlanEntry, RatingSummary, Recipe, RecipeDetail } from "../api/types";
 import { formatAvg } from "../lib/format";
 import { DAYS_LONG, parseISO, shortDate, toISO } from "../lib/weeks";
-import { Star } from "./Icon";
+import { Icon, Star } from "./Icon";
 import { Button, ErrorNote, Loading, Modal, StarsInput } from "./ui";
 
-export const COMPANY: readonly (readonly [Company, string])[] = [["yes", "Yes"], ["maybe", "Maybe"], ["no", "No"]];
+export const COMPANY: readonly (readonly [Company, string])[] = [["yes", "Yes"], ["no", "No"]];
 
 /** "How was Tuesday's Chili?" (or without the night when it has none). */
 export function ratingQuestion(title: string, day: number | null | undefined): string {
   return day != null ? `How was ${DAYS_LONG[day]}'s ${title}?` : `How was ${title}?`;
 }
 
-/** "Average 4.5/5 from 6 ratings · Company: yes · “less salt”", or null before the first rating. */
+/** "Average 4.5/5 from 6 ratings · “less salt”", or null before the first rating (Good for company isn't a score). */
 export function summaryText(r: RatingSummary | undefined): string | null {
   if (!r || r.times_rated === 0) return null;
   const n = r.rating_count ?? r.times_rated;
   return [r.avg_family != null ? `Average ${formatAvg(r.avg_family)}/5 from ${n} ${n === 1 ? "rating" : "ratings"}` : null,
-    r.company ? `Company: ${r.company}` : null, r.notes[0]?.note ? `“${r.notes[0].note}”` : null].filter(Boolean).join(" · ");
+    r.notes[0]?.note ? `“${r.notes[0].note}”` : null].filter(Boolean).join(" · ");
 }
 
 /** A person's name as shown to the signed-in member (their own row says "you"). */
@@ -78,23 +78,39 @@ export function MiniStars({ n, size = 12 }: { n: number; size?: number }) {
   );
 }
 
-/** "Good for company: Yes · set by Sam" (or "not decided yet"), for whoever can't change it. */
-export function companyText(r: RatingSummary | undefined): string {
-  if (!r?.company) return "Good for company: not decided yet";
-  const label = COMPANY.find(([v]) => v === r.company)?.[1] ?? r.company;
-  return `Good for company: ${label}${r.company_set_by_name ? ` · set by ${r.company_set_by_name}` : ""}`;
+/** The verdict as a word: "Yes" / "No", null when not decided (an unknown old value reads as not decided). */
+export function companyLabel(c: string | null | undefined): string | null {
+  return COMPANY.find(([v]) => v === c)?.[1] ?? null;
 }
 
-/** The household's "Good for company?" answer for a recipe (an Owner's choice; choosing it again clears it). */
+/** "Good for company: Yes" (or "Good for company: not decided yet"). */
+export function companyText(r: RatingSummary | undefined): string {
+  const label = companyLabel(r?.company);
+  return label ? `Good for company: ${label}` : "Good for company: not decided yet";
+}
+
+/** The read-only verdict for whoever can't change it: a "Good for company: Yes" badge (and who set it). */
+export function CompanyBadge({ ratings }: { ratings: RatingSummary | undefined }) {
+  const label = companyLabel(ratings?.company);
+  if (!label) return <p className="muted small company-ro">{companyText(ratings)}</p>;
+  return (
+    <p className="company-ro">
+      <span className={`company-badge ${ratings?.company}`}>{ratings?.company === "yes" && <Icon name="check" size={14} />}{companyText(ratings)}</span>
+      {ratings?.company_set_by_name && <small className="muted"> set by {ratings.company_set_by_name}</small>}
+    </p>
+  );
+}
+
+/** The household's "Good for company?" Yes / No for a recipe (an Owner's choice; choosing it again clears it). */
 export function CompanyChoice({ value, onChange, disabled, hint = true }: { value: Company | null; onChange: (c: Company | null) => void;
   disabled?: boolean; hint?: boolean }) {
   return (
-    <fieldset className="field-set">
-      <legend>Good for company? {hint && <small>The household's answer for this recipe, not part of a rating. Choose it again to clear it.</small>}</legend>
-      <div className="seg company" role="radiogroup" aria-label="Good for company?">
+    <fieldset className="field-set company-set">
+      <legend>Good for company? {hint && <small>One Yes / No for the household, not part of your rating. Choose it again to clear it.</small>}</legend>
+      <div className="company-toggle" role="group" aria-label="Good for company?">
         {COMPANY.map(([v, label]) => (
-          <button key={v} type="button" role="radio" aria-checked={value === v} className={value === v ? "on" : ""} disabled={disabled}
-            onClick={() => onChange(value === v ? null : v)}>{label}</button>
+          <button key={v} type="button" aria-pressed={value === v} className={value === v ? "on" : ""} disabled={disabled}
+            onClick={() => onChange(value === v ? null : v)}>{value === v && <Icon name="check" size={16} />}{label}</button>
         ))}
       </div>
     </fieldset>
@@ -178,13 +194,16 @@ function RatingFields({ f, set, company, before, whose, me }: { f: Fields; set: 
         <legend>{whose}: was it a hit? <small>1 = not again, 5 = a big hit</small></legend>
         <StarsInput value={f.stars} onChange={(stars) => set({ stars })} label="Rating" />
       </fieldset>
-      {company.can ? <CompanyChoice value={company.value} onChange={company.set} /> : ratings && <p className="muted small company-ro">{companyText(ratings)}</p>}
       <label className="field">
         <span>Note <small>(optional)</small></span>
         <textarea rows={3} value={f.note} maxLength={500} onChange={(e) => set({ note: e.target.value })}
           placeholder="Too salty, kids loved it, double the sauce next time…" />
         <small>Notes show on the recipe and here the next time it's rated.</small>
       </label>
+      {/* below the note, apart from the score: the recipe's household Yes / No, never a second scale */}
+      <div className="company-box">
+        {company.can ? <CompanyChoice value={company.value} onChange={company.set} /> : ratings && <CompanyBadge ratings={ratings} />}
+      </div>
       {notes.length > 0 && (
         <section aria-labelledby="earlier-notes">
           <h3 className="section-h" id="earlier-notes">Earlier notes</h3>

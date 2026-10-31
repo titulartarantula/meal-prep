@@ -59,13 +59,14 @@ describe("names, chips and the summary line", () => {
   });
   it("says the average and how many ratings", () => {
     expect(summaryText({ times_rated: 2, rating_count: 5, avg_family: 3.8, company: "yes", notes: [{ note: "spicy" }] } as never))
-      .toBe("Average 3.8/5 from 5 ratings · Company: yes · “spicy”");
+      .toBe("Average 3.8/5 from 5 ratings · “spicy”");   // Good for company is never part of the score line
     expect(summaryText({ times_rated: 1, rating_count: 1, avg_family: 4, company: null, notes: [] } as never)).toBe("Average 4.0/5 from 1 rating");
     expect(summaryText({ times_rated: 0 } as never)).toBeNull();
   });
-  it("says the household's Good for company verdict and who set it", () => {
-    expect(companyText({ company: "yes", company_set_by_name: "Sam" } as never)).toBe("Good for company: Yes · set by Sam");
-    expect(companyText({ company: "maybe", company_set_by_name: null } as never)).toBe("Good for company: Maybe");
+  it("says the household's Good for company verdict as a plain Yes / No", () => {
+    expect(companyText({ company: "yes", company_set_by_name: "Sam" } as never)).toBe("Good for company: Yes");
+    expect(companyText({ company: "no", company_set_by_name: null } as never)).toBe("Good for company: No");
+    expect(companyText({ company: "maybe" } as never)).toBe("Good for company: not decided yet");   // an old value
     expect(companyText({ company: null } as never)).toBe("Good for company: not decided yet");
     expect(companyText(undefined)).toBe("Good for company: not decided yet");
   });

@@ -4,7 +4,7 @@ import { useAddToWeek, useCan, useMemberId, useRecipe, useRecipes, useSetCompany
 import type { Company, Recipe } from "../api/types";
 import { Icon, Star } from "../components/Icon";
 import { ImportDialog } from "../components/ImportDialog";
-import { CompanyChoice, companyText, lastRatingText, MiniStars, PeopleChips, PeopleRatings, personName, RateRecipeDialog } from "../components/Rating";
+import { CompanyBadge, CompanyChoice, lastRatingText, MiniStars, PeopleChips, PeopleRatings, personName, RateRecipeDialog } from "../components/Rating";
 import { EditRecipeDialog, EditSourceDialog } from "../components/RecipeEdit";
 import { Button, ErrorNote, Loading, Modal, Photo, useToast } from "../components/ui";
 import { amount, formatAvg, formatMinutes } from "../lib/format";
@@ -98,8 +98,8 @@ function RecipeTile({ r, onOpen, onRate }: { r: Recipe; onOpen: () => void; onRa
             {formatMinutes(r.total_minutes) && <span><Icon name="clock" size={14} />{formatMinutes(r.total_minutes)}</span>}
             {r.ratings.avg_family ? <span><Star /><b>{formatAvg(r.ratings.avg_family)}</b><span className="visually-hidden"> family average</span></span> : <span className="muted">New</span>}
             {r.ratings.times_cooked > 0 && <span className="muted">cooked {r.ratings.times_cooked}×</span>}
-            {r.ratings.good_for_company && <span className="muted">good for company</span>}
           </span>
+          {r.ratings.good_for_company && <span className="company-badge yes small"><Icon name="check" size={13} />Good for company</span>}
           <PeopleChips people={r.ratings.people} />
           <span className="tile-src">{sourceText(r)}{planned && <span className="tag neutral">{planned}</span>}</span>
         </span>
@@ -148,7 +148,6 @@ function RecipeDrawer({ id, onClose, onRate }: { id: number | null; onClose: () 
             {formatMinutes(d.total_minutes) && <span><Icon name="clock" size={15} />{formatMinutes(d.total_minutes)}</span>}
             {d.servings && <span>Serves {d.servings}</span>}
             {d.ratings.avg_family ? <span><Star size={15} /><b>{formatAvg(d.ratings.avg_family)}</b> family average from {d.ratings.rating_count} {d.ratings.rating_count === 1 ? "rating" : "ratings"}</span> : <span className="muted">Not rated yet</span>}
-            {d.ratings.good_for_company && <span>Good for company</span>}
             {d.source_url && <a href={d.source_url} target="_blank" rel="noreferrer">{d.source_kind === "nyt" ? "Open on NYT Cooking" : "The recipe's page"} <Icon name="external" size={13} /></a>}
           </div>
           <div className="source-line">
@@ -180,7 +179,7 @@ function RecipeDrawer({ id, onClose, onRate }: { id: number | null; onClose: () 
             {can("recipe.company")
               ? <CompanyChoice value={(d.ratings.company as Company | null | undefined) ?? null} disabled={setCompany.isPending} hint={false}
                   onChange={(c) => setCompany.mutate({ id: d.id, company: c })} />
-              : <p className="muted small">{companyText(d.ratings)}</p>}
+              : <CompanyBadge ratings={d.ratings} />}
             {can("recipe.company") && <p className="muted small">{d.ratings.company_set_by_name ? `Set by ${d.ratings.company_set_by_name}. ` : d.ratings.company ? "" : "Not decided yet. "}One answer for the household; choose it again to clear it.</p>}
             <ErrorNote error={setCompany.error} />
           </section>

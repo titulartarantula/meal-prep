@@ -291,7 +291,7 @@ export interface paths {
         get?: never;
         /**
          * Put Company
-         * @description The household's Good for company verdict for the recipe (yes / maybe / no; null = not decided). Owners
+         * @description The household's Good for company verdict for the recipe (yes / no; null = not decided). Owners
          *     (recipe.company); changes go to the audit log.
          */
         put: operations["put_company_recipes__recipe_id__company_put"];
@@ -1330,7 +1330,7 @@ export interface components {
         /** CompanyIn */
         CompanyIn: {
             /** Company */
-            company: ("yes" | "maybe" | "no") | null;
+            company: ("yes" | "no") | null;
         };
         /** CompanyOut */
         CompanyOut: {

@@ -613,7 +613,20 @@ tr.removed .pth { opacity: .45; }
 .field-set { border: 0; padding: 0; margin: 0 0 14px; display: flex; flex-direction: column; gap: 8px; }
 .field-set legend { font-weight: 550; font-size: 13px; padding: 0; margin-bottom: 8px; }
 .field-set legend small { display: block; color: var(--text2); font-weight: 400; margin-top: 2px; }
-.seg.company button { min-width: 72px; justify-content: center; }
+.company-box { margin: 4px 0 14px; padding-top: 14px; border-top: 1px solid var(--hair); }
+.company-box .field-set { margin-bottom: 0; }
+/* Good for company: a plain Yes / No (toggle buttons, 48 px), never stars or a scale */
+.company-toggle { display: flex; gap: 8px; flex-wrap: wrap; }
+.company-toggle button { min-height: 48px; min-width: 96px; padding: 0 18px; border-radius: var(--r-sm); background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair); display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 14px; font-weight: 600; color: var(--text2); }
+.company-toggle button.on { background: var(--primarysoft); color: var(--onprimarysoft); box-shadow: inset 0 0 0 2px var(--primary); }
+.company-toggle button:disabled { opacity: .6; }
+.company-ro { margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.company-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 6px; font-size: 13px;
+  font-weight: 600; background: var(--sunken); color: var(--text2); }
+.company-badge.yes { background: var(--primarysoft); color: var(--onprimarysoft); }
+.company-badge.small { font-size: 11.5px; padding: 2px 7px; align-self: flex-start; }
 .earlier-notes { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; margin-top: -2px; }
 .modal-body > .field + section { margin-top: 14px; }
 .modal-body > p.small:first-child { margin-bottom: 12px; }

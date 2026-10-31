@@ -18,7 +18,8 @@ export type PersonRating = S["PersonRating"];
 export type PersonSummary = S["PersonSummary"];
 export type CompanyOut = S["CompanyOut"];
 /** The household's Good for company verdict for a recipe (null = not decided). */
-export type Company = "yes" | "maybe" | "no";
+/** Good for company: one household yes / no per recipe (null = not decided). Never a score. */
+export type Company = "yes" | "no";
 
 /** GET /household/members (a plain dict on the server). */
 export interface Member {

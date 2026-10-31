@@ -7,7 +7,7 @@ import { MEMBERS, type MockRecipe } from "./fixtures.ts";
 export interface PR { member_id: number | null; entered_by: number | null; family: number; note: string | null; rated_at: string }
 
 /** A recipe's Good for company verdict (no entry = not decided). */
-export interface Verdict { company: "yes" | "maybe" | "no"; set_by: number | null; set_at: string }
+export interface Verdict { company: "yes" | "no"; set_by: number | null; set_at: string }
 
 const order = (id: number | null) => (id == null ? 100 : MEMBERS.findIndex((m) => m.id === id));
 

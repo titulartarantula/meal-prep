@@ -648,7 +648,7 @@
   "/recipes/{recipe_id}/company": {
    "put": {
     "summary": "Put Company",
-    "description": "The household's Good for company verdict for the recipe (yes / maybe / no; null = not decided). Owners\n(recipe.company); changes go to the audit log.",
+    "description": "The household's Good for company verdict for the recipe (yes / no; null = not decided). Owners\n(recipe.company); changes go to the audit log.",
     "operationId": "put_company_recipes__recipe_id__company_put",
     "parameters": [
      {
@@ -3453,7 +3453,6 @@
         "type": "string",
         "enum": [
          "yes",
-         "maybe",
          "no"
         ]
        },

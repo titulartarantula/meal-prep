@@ -136,7 +136,9 @@ export function mockApi(): Plugin {
       else db.company.set(rid, { company: v as Verdict["company"], set_by: me, set_at: new Date().toISOString() });
     };
     const companyFrom = (rid: number, b: object | null) => {
-      if (b && "company" in b && perms.includes("recipe.company")) setVerdict(rid, (b as { company: string | null }).company);
+      // yes / no only: an older phone's "maybe" leaves the verdict as it is
+      if (b && "company" in b && perms.includes("recipe.company") && (b as { company: string | null }).company !== "maybe")
+        setVerdict(rid, (b as { company: string | null }).company);
     };
     if (path === "/auth/logout") {
       res.writeHead(204, { "Set-Cookie": `${COOKIE}=; Path=/; Max-Age=0` });
@@ -157,7 +159,7 @@ export function mockApi(): Plugin {
       if (!perms.includes("recipe.company")) return send(res, 403, { detail: "You need the recipe.company permission for this." });
       if (!db.recipes.some((x) => x.id === rid)) return send(res, 404, { detail: "recipe" });
       const v = (body as { company?: string | null } | null)?.company ?? null;
-      if (v != null && !["yes", "maybe", "no"].includes(v)) return send(res, 422, { detail: "company" });
+      if (v != null && !["yes", "no"].includes(v)) return send(res, 422, { detail: "company" });
       setVerdict(rid, v);
       const out = verdictOut(db.company.get(rid));
       return send(res, 200, { company: out.company, company_set_by: out.company_set_by, company_set_by_name: out.company_set_by_name,
