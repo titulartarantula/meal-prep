@@ -1,0 +1,37 @@
+# The web app's origin on the docker server (~/meal-prep/web/, compose project "mealprep-web"), next to the API's
+# ~/meal-prep/docker-compose.yml. The host's main "caddy" container serves mealprep.drwhom.ca: /api/* → :8790 (the
+# FastAPI user service), everything else → here.
+name: mealprep-web
+
+services:
+  web:
+    image: caddy:latest          # no pinning, per the host's image policy; watchtower updates it
+    container_name: mealprep-web
+    restart: unless-stopped
+    ports:
+      - "192.168.1.101:8793:8080"   # LAN only; the public side is the main caddy
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./dist:/srv:ro              # web/dist from the repo (deploy.sh, rsync --delete)
+    read_only: true
+    tmpfs:
+      - /data:uid=1000,gid=1000,mode=0700
+      - /config:uid=1000,gid=1000,mode=0700
+    user: "1000:1000"
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]   # the image's file capability on /usr/bin/caddy needs it in the bounding set
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      autoheal: "true"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -41,3 +41,15 @@ A web page can't write loblaws.ca's storage, so the handoff uses a bookmarklet (
 page): on a signed-out loblaws.ca tab it asks for the cart ID (copied from Meal Prep), stores it where loblaws.ca keeps
 its anonymous cart, and reloads; signing in with PC id then merges the cart into the account. Start signed out (a
 private window): merging into an already signed-in session doesn't work.
+
+## Deploy
+
+```sh
+web/deploy/deploy.sh   # build, rsync dist/ + Caddyfile + compose.yaml to ~/meal-prep/web/, docker compose up
+```
+
+On the docker server the `mealprep-web` container (caddy, read-only, LAN port 8793) serves `dist/` with the CSP and
+cache headers in `deploy/Caddyfile`. The host's main `caddy` container is the public front door for
+`mealprep.drwhom.ca`: `/api/*` → the FastAPI service on :8790 (prefix stripped; FastAPI's `/docs` and `openapi.json`
+answer 404 there), everything else → :8793. The server must not trust `X-Forwarded-For` from that proxy: the shared
+token is judged by the caller's address and is refused through the public site.
