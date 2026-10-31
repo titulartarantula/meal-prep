@@ -1,0 +1,92 @@
+/* Stone (picked 2026-10-30, docs/mockups/web-2026-10-30). Contrast pairs are checked in src/theme/contrast.test.ts.
+   One olive accent; terracotta only marks requests. Dark mode follows the system unless data-theme is set. */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F3F1ED;
+  --surface: #FCFBF9;
+  --sunken: #E6E2DB;
+  --hover: #E0DCD4;
+  --hair: #E2DED7;
+  --outline: #8A8479;
+  --text: #1C1B19;
+  --text2: #5A5650;
+  --text3: #6A665F;
+  --primary: #4D5636;
+  --onprimary: #FFFFFF;
+  --primarysoft: #E4E5D8;
+  --onprimarysoft: #2E3420;
+  --request: #9C4A30;
+  --onrequest: #FFFFFF;
+  --requestsoft: #F4E4DB;
+  --onrequestsoft: #7A3622;
+  --danger: #A3341F;
+  --dangersoft: #F6E0DA;
+  --ondangersoft: #6E2212;
+  --focus: #4D5636;
+  --scrim: rgba(28, 27, 25, 0.32);
+  --photo-filter: saturate(.9);
+  --pop-shadow: 0 12px 40px rgba(28, 27, 25, .16), 0 1px 3px rgba(28, 27, 25, .08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #171615;
+    --surface: #23211F;
+    --sunken: #201E1C;
+    --hover: #2A2826;
+    --hair: #2E2C29;
+    --outline: #77726B;
+    --text: #ECE9E3;
+    --text2: #B9B3AA;
+    --text3: #9D978E;
+    --primary: #C2C9A3;
+    --onprimary: #22271A;
+    --primarysoft: #30342A;
+    --onprimarysoft: #DDE3C6;
+    --request: #E3A68D;
+    --onrequest: #3B1608;
+    --requestsoft: #43302A;
+    --onrequestsoft: #F6DACD;
+    --danger: #F0A08C;
+    --dangersoft: #46271F;
+    --ondangersoft: #F8D6CC;
+    --focus: #C2C9A3;
+    --scrim: rgba(0, 0, 0, 0.55);
+    --photo-filter: saturate(.85) brightness(.9);
+    --pop-shadow: 0 12px 40px rgba(0, 0, 0, .5);
+  }
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #171615;
+  --surface: #23211F;
+  --sunken: #201E1C;
+  --hover: #2A2826;
+  --hair: #2E2C29;
+  --outline: #77726B;
+  --text: #ECE9E3;
+  --text2: #B9B3AA;
+  --text3: #9D978E;
+  --primary: #C2C9A3;
+  --onprimary: #22271A;
+  --primarysoft: #30342A;
+  --onprimarysoft: #DDE3C6;
+  --request: #E3A68D;
+  --onrequest: #3B1608;
+  --requestsoft: #43302A;
+  --onrequestsoft: #F6DACD;
+  --danger: #F0A08C;
+  --dangersoft: #46271F;
+  --ondangersoft: #F8D6CC;
+  --focus: #C2C9A3;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --photo-filter: saturate(.85) brightness(.9);
+  --pop-shadow: 0 12px 40px rgba(0, 0, 0, .5);
+}
+:root {
+  --r-lg: 10px;
+  --r-md: 8px;
+  --r-sm: 6px;
+  --font: "Inter Variable", "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+}

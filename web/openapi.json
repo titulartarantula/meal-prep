@@ -1,0 +1,5891 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "mealprep",
+  "version": "0.1.0"
+ },
+ "paths": {
+  "/health": {
+   "get": {
+    "summary": "Health",
+    "operationId": "health_health_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recipes/share": {
+   "post": {
+    "summary": "Share",
+    "operationId": "share_recipes_share_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ShareIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recipes/photo": {
+   "post": {
+    "summary": "Photo",
+    "operationId": "photo_recipes_photo_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_photo_recipes_photo_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recipes/{recipe_id}": {
+   "patch": {
+    "summary": "Patch Recipe",
+    "description": "Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it\ncomes from. An NYT recipe has no book title or page. A different book title sent without an author/ISBN clears\nthem (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else\nthe deterministic clean-up). The id, uid, plan entries and ratings stay; a cart or prep plan made from the old\nlines goes stale (db.plan_fingerprint, prepplan._stale).",
+    "operationId": "patch_recipe_recipes__recipe_id__patch",
+    "parameters": [
+     {
+      "name": "recipe_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Recipe Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecipePatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecipeOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "get": {
+    "summary": "Recipe Detail",
+    "operationId": "recipe_detail_recipes__recipe_id__get",
+    "parameters": [
+     {
+      "name": "recipe_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Recipe Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecipeDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recipes/sources": {
+   "get": {
+    "summary": "Recipe Sources",
+    "description": "NYT Cooking, each cookbook and named other source, \"Unknown book\", \"Other\", with counts; `key` is the\nGET /recipes?source= value.",
+    "operationId": "recipe_sources_recipes_sources_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/books/search": {
+   "get": {
+    "summary": "Search Books",
+    "description": "Book suggestions for \"Which book?\": Open Library, then Google Books when that finds too little. Upstream\ntrouble is never an error here: whatever was found, [] at worst (and for fewer than 2 characters).",
+    "operationId": "search_books_books_search_get",
+    "parameters": [
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "maxLength": 200,
+       "default": "",
+       "title": "Q"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 20,
+       "minimum": 1,
+       "default": 8,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recipes/{recipe_id}/pages": {
+   "post": {
+    "summary": "Attach Pages",
+    "description": "Read a cross-referenced sub-recipe page and add its ingredients. Sync like /recipes/photo (~25\u201330 s).",
+    "operationId": "attach_pages_recipes__recipe_id__pages_post",
+    "parameters": [
+     {
+      "name": "recipe_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Recipe Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_attach_pages_recipes__recipe_id__pages_post"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecipeOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recipes/export": {
+   "get": {
+    "summary": "Export Library",
+    "description": "The library (or the `source` filter, as GET /recipes, and/or `ids`=1,2,3; unknown ids are ignored) as one\nschema.org JSON-LD file with an @graph of recipes, ratings and notes included, newest first.",
+    "operationId": "export_library_recipes_export_get",
+    "parameters": [
+     {
+      "name": "source",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Source"
+      }
+     },
+     {
+      "name": "ids",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Ids"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recipes/import": {
+   "post": {
+    "summary": "Import Recipes",
+    "description": "Import schema.org JSON-LD (one recipe, a list, an @graph, our export), a saved web page's JSON-LD, or a\nrecipe document (PDF, Word .docx, plain text) with one or more recipes, told apart by content.\ndry_run (default) = preview: per-item new / duplicate / failed with default actions, nothing written. A\ndocument's FIRST preview is a read job instead (202, GET /imports/{id}: the AI finds its recipes; done = its\nreport is the preview); later previews of the same file answer at once from that read.\ndry_run=false + choices {item key: add/skip/update} \u2192 202 and a background job (GET /imports/{id}).\n`name`: the file's name on the phone (a document's recipes take it as their source when the document names\nnone). A file that can't be read \u2192 422, over the cap \u2192 413; anything wrong with one recipe is that item's\n`failed` status, never a 5xx. Links in the file are kept as text and never fetched.",
+    "operationId": "import_recipes_recipes_import_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_import_recipes_recipes_import_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/imports/{job_id}": {
+   "get": {
+    "summary": "Get Import",
+    "description": "An import job: status running / done / failed, progress, per-item results (see POST /recipes/import). A\ndocument's read job has dry_run true; when done its items are the preview (new / duplicate / failed).",
+    "operationId": "get_import_imports__job_id__get",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recipes/{recipe_id}/export": {
+   "get": {
+    "summary": "Export Recipe",
+    "description": "One recipe as a schema.org JSON-LD file (ratings and notes included).",
+    "operationId": "export_recipe_recipes__recipe_id__export_get",
+    "parameters": [
+     {
+      "name": "recipe_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Recipe Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/recipes": {
+   "get": {
+    "summary": "Recipes",
+    "description": "`source`: nyt, book (any book), other (any other source), book:<title> / other:<name> (any case), book: (book\nnot known yet), other: (no name) or a book title.",
+    "operationId": "recipes_recipes_get",
+    "parameters": [
+     {
+      "name": "sort",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "newest",
+        "favourites"
+       ],
+       "type": "string",
+       "default": "newest",
+       "title": "Sort"
+      }
+     },
+     {
+      "name": "source",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Source"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/RecipeOut"
+         },
+         "title": "Response Recipes Recipes Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/ratings/pending": {
+   "get": {
+    "summary": "Ratings Pending",
+    "description": "Placed nights before today (last 14 days) with no rating yet \u2014 the app's morning-after prompt.",
+    "operationId": "ratings_pending_ratings_pending_get",
+    "parameters": [
+     {
+      "name": "today",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Today"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/weeks": {
+   "get": {
+    "summary": "Weeks",
+    "operationId": "weeks_weeks_get",
+    "parameters": [
+     {
+      "name": "from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "From"
+      }
+     },
+     {
+      "name": "count",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 52,
+       "minimum": 1,
+       "default": 8,
+       "title": "Count"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/weeks/{week}": {
+   "get": {
+    "summary": "Get Week",
+    "operationId": "get_week_weeks__week__get",
+    "parameters": [
+     {
+      "name": "week",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "date",
+       "title": "Week"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/PlanEntry"
+         },
+         "title": "Response Get Week Weeks  Week  Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/weeks/{week}/entries": {
+   "post": {
+    "summary": "Add Entry",
+    "operationId": "add_entry_weeks__week__entries_post",
+    "parameters": [
+     {
+      "name": "week",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "date",
+       "title": "Week"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EntryIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PlanEntry"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/plan/{entry_id}": {
+   "patch": {
+    "summary": "Patch Entry",
+    "operationId": "patch_entry_plan__entry_id__patch",
+    "parameters": [
+     {
+      "name": "entry_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Entry Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EntryPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Entry",
+    "operationId": "delete_entry_plan__entry_id__delete",
+    "parameters": [
+     {
+      "name": "entry_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Entry Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/plan/{entry_id}/rating": {
+   "put": {
+    "summary": "Put Rating",
+    "operationId": "put_rating_plan__entry_id__rating_put",
+    "parameters": [
+     {
+      "name": "entry_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Entry Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RatingIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Rating",
+    "operationId": "delete_rating_plan__entry_id__rating_delete",
+    "parameters": [
+     {
+      "name": "entry_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Entry Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/list": {
+   "post": {
+    "summary": "Make List",
+    "operationId": "make_list_list_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ListIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ListItem"
+         },
+         "type": "array",
+         "title": "Response Make List List Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/staples": {
+   "get": {
+    "summary": "Get Staples",
+    "operationId": "get_staples_staples_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Staple"
+         },
+         "type": "array",
+         "title": "Response Get Staples Staples Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Add Staple",
+    "operationId": "add_staple_staples_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StapleIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Staple"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/staples/{staple_id}": {
+   "patch": {
+    "summary": "Patch Staple",
+    "operationId": "patch_staple_staples__staple_id__patch",
+    "parameters": [
+     {
+      "name": "staple_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Staple Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StaplePatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Staple"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Remove Staple",
+    "operationId": "remove_staple_staples__staple_id__delete",
+    "parameters": [
+     {
+      "name": "staple_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Staple Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge": {
+   "get": {
+    "summary": "Get Fridge",
+    "description": "The household's fridge list: soon first (use soon / use-by within 3 days), then name A\u2013Z.",
+    "operationId": "get_fridge_fridge_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/FridgeItem"
+         },
+         "type": "array",
+         "title": "Response Get Fridge Fridge Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Add Fridge",
+    "operationId": "add_fridge_fridge_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FridgeIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FridgeItem"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge/names": {
+   "get": {
+    "summary": "Fridge Names",
+    "description": "Typing suggestions: the shopping list's names containing q (\u2264 12; from 1 character).",
+    "operationId": "fridge_names_fridge_names_get",
+    "parameters": [
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "maxLength": 80,
+       "default": "",
+       "title": "Q"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         },
+         "title": "Response Fridge Names Fridge Names Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge/{item_id}": {
+   "patch": {
+    "summary": "Patch Fridge",
+    "operationId": "patch_fridge_fridge__item_id__patch",
+    "parameters": [
+     {
+      "name": "item_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Item Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FridgePatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FridgeItem"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Remove Fridge",
+    "operationId": "remove_fridge_fridge__item_id__delete",
+    "parameters": [
+     {
+      "name": "item_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Item Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge/suggest": {
+   "post": {
+    "summary": "Fridge Suggest",
+    "description": "Dinners from the library that use what's in the fridge (use soon first) with the fewest extra ingredients\n(fridge.select): {picks, fridge_left, stale, thin_library}. Read-only, no AI.",
+    "operationId": "fridge_suggest_fridge_suggest_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SuggestIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge/photos": {
+   "post": {
+    "summary": "Fridge Photos",
+    "description": "Read 1\u20136 fridge photos in the background (GET /fridge/reads/{id}): the read proposes changes to the list,\nnothing is saved until POST /fridge/reads/{id}/apply. The same photos again \u2192 the same read (existing).",
+    "operationId": "fridge_photos_fridge_photos_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_fridge_photos_fridge_photos_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge/reads": {
+   "get": {
+    "summary": "Fridge Open Read",
+    "description": "{read}: the newest read still reading or ready to review (for the Fridge screen and the other phone).",
+    "operationId": "fridge_open_read_fridge_reads_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge/reads/{read_id}": {
+   "get": {
+    "summary": "Fridge Read",
+    "operationId": "fridge_read_fridge_reads__read_id__get",
+    "parameters": [
+     {
+      "name": "read_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Read Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge/reads/{read_id}/apply": {
+   "post": {
+    "summary": "Fridge Apply",
+    "operationId": "fridge_apply_fridge_reads__read_id__apply_post",
+    "parameters": [
+     {
+      "name": "read_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Read Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ApplyIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge/reads/{read_id}/dismiss": {
+   "post": {
+    "summary": "Fridge Dismiss",
+    "operationId": "fridge_dismiss_fridge_reads__read_id__dismiss_post",
+    "parameters": [
+     {
+      "name": "read_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Read Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge/used": {
+   "get": {
+    "summary": "Fridge Used",
+    "description": "The morning-after nudge: nights of the last 2 days (before today) that used the fridge and nobody answered,\nnewest first, with what one tap would take off the list. Read-only.",
+    "operationId": "fridge_used_fridge_used_get",
+    "parameters": [
+     {
+      "name": "today",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Today"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fridge/used/{entry_id}": {
+   "post": {
+    "summary": "Fridge Used Answer",
+    "description": "Apply what that dinner used (once; floor 0, the items stay) or dismiss; a repeat returns the first answer.",
+    "operationId": "fridge_used_answer_fridge_used__entry_id__post",
+    "parameters": [
+     {
+      "name": "entry_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Entry Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UsedIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/cart/default-week": {
+   "get": {
+    "summary": "Cart Default Week",
+    "operationId": "cart_default_week_cart_default_week_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/cart": {
+   "post": {
+    "summary": "Cart",
+    "description": "Draft + build + send synchronously (smoke scripts). The app uses /drafts.",
+    "operationId": "cart_cart_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CartIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/drafts": {
+   "post": {
+    "summary": "Create Draft",
+    "operationId": "create_draft_drafts_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DraftIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/drafts/{draft_id}": {
+   "get": {
+    "summary": "Get Draft",
+    "operationId": "get_draft_drafts__draft_id__get",
+    "parameters": [
+     {
+      "name": "draft_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Draft Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/weeks/{week}/draft": {
+   "get": {
+    "summary": "Week Draft",
+    "operationId": "week_draft_weeks__week__draft_get",
+    "parameters": [
+     {
+      "name": "week",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "date",
+       "title": "Week"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/drafts/{draft_id}/lines/{line_id}": {
+   "patch": {
+    "summary": "Patch Line",
+    "operationId": "patch_line_drafts__draft_id__lines__line_id__patch",
+    "parameters": [
+     {
+      "name": "draft_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Draft Id"
+      }
+     },
+     {
+      "name": "line_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Line Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LinePatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/drafts/{draft_id}/lines/{line_id}/pack": {
+   "put": {
+    "summary": "Put Pack",
+    "description": "How many pieces one pack of the line's product holds, saved for the product (null pieces = forget);\nreturns the draft (every line with that product is re-planned).",
+    "operationId": "put_pack_drafts__draft_id__lines__line_id__pack_put",
+    "parameters": [
+     {
+      "name": "draft_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Draft Id"
+      }
+     },
+     {
+      "name": "line_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Line Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PackIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/drafts/{draft_id}/lines/{line_id}/search": {
+   "post": {
+    "summary": "Search Line",
+    "operationId": "search_line_drafts__draft_id__lines__line_id__search_post",
+    "parameters": [
+     {
+      "name": "draft_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Draft Id"
+      }
+     },
+     {
+      "name": "line_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Line Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SearchIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/drafts/{draft_id}/lines/{line_id}/choices": {
+   "get": {
+    "summary": "Line Choices",
+    "description": "Products to choose from for a line, one Loblaws page at a time (see drafts.choices).",
+    "operationId": "line_choices_drafts__draft_id__lines__line_id__choices_get",
+    "parameters": [
+     {
+      "name": "draft_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Draft Id"
+      }
+     },
+     {
+      "name": "line_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Line Id"
+      }
+     },
+     {
+      "name": "term",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 200
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Term"
+      }
+     },
+     {
+      "name": "page",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 50,
+       "minimum": 0,
+       "default": 0,
+       "title": "Page"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/drafts/{draft_id}/lines": {
+   "post": {
+    "summary": "Add Line",
+    "description": "Add an item found by search to a cart under review (and to its week's added items).",
+    "operationId": "add_line_drafts__draft_id__lines_post",
+    "parameters": [
+     {
+      "name": "draft_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Draft Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AddLineIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/products/choices": {
+   "get": {
+    "summary": "Product Choices",
+    "description": "The chooser for an item added by search: like a line's choices, without a line.",
+    "operationId": "product_choices_products_choices_get",
+    "parameters": [
+     {
+      "name": "term",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 200,
+       "title": "Term"
+      }
+     },
+     {
+      "name": "page",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 50,
+       "minimum": 0,
+       "default": 0,
+       "title": "Page"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/extras": {
+   "get": {
+    "summary": "Get Extras",
+    "description": "Items added by search for these weeks (oldest week first, then as added).",
+    "operationId": "get_extras_extras_get",
+    "parameters": [
+     {
+      "name": "week",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "format": "date"
+       },
+       "minItems": 1,
+       "title": "Week"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Add Extra",
+    "operationId": "add_extra_extras_post",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ExtraIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/extras/{extra_id}": {
+   "patch": {
+    "summary": "Patch Extra",
+    "operationId": "patch_extra_extras__extra_id__patch",
+    "parameters": [
+     {
+      "name": "extra_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Extra Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ExtraPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Extra",
+    "operationId": "delete_extra_extras__extra_id__delete",
+    "parameters": [
+     {
+      "name": "extra_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Extra Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/drafts/{draft_id}/send": {
+   "post": {
+    "summary": "Send Draft",
+    "operationId": "send_draft_drafts__draft_id__send_post",
+    "parameters": [
+     {
+      "name": "draft_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Draft Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/prep-plans": {
+   "post": {
+    "summary": "Create Prep Plan",
+    "operationId": "create_prep_plan_prep_plans_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PrepPlanIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/prep-plans/{plan_id}": {
+   "get": {
+    "summary": "Get Prep Plan",
+    "operationId": "get_prep_plan_prep_plans__plan_id__get",
+    "parameters": [
+     {
+      "name": "plan_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Plan Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/weeks/{week}/prep-plan": {
+   "get": {
+    "summary": "Week Prep Plan",
+    "operationId": "week_prep_plan_weeks__week__prep_plan_get",
+    "parameters": [
+     {
+      "name": "week",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "date",
+       "title": "Week"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/prep-plans/{plan_id}/tasks/{task_id}": {
+   "patch": {
+    "summary": "Patch Prep Task",
+    "operationId": "patch_prep_task_prep_plans__plan_id__tasks__task_id__patch",
+    "parameters": [
+     {
+      "name": "plan_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Plan Id"
+      }
+     },
+     {
+      "name": "task_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Task Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TaskPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/plan/{entry_id}/card": {
+   "get": {
+    "summary": "Cook Card",
+    "operationId": "cook_card_plan__entry_id__card_get",
+    "parameters": [
+     {
+      "name": "entry_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Entry Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/picks/{key}": {
+   "put": {
+    "summary": "Put Pick",
+    "operationId": "put_pick_picks__key__put",
+    "parameters": [
+     {
+      "name": "key",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PickIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/login": {
+   "get": {
+    "summary": "Login",
+    "description": "Start a browser sign-in: off to Google (authorization code + PKCE), back at /auth/callback.",
+    "operationId": "login_auth_login_get",
+    "parameters": [
+     {
+      "name": "next",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 500
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Next"
+      }
+     },
+     {
+      "name": "invite",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 200
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Invite"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/callback": {
+   "get": {
+    "summary": "Callback",
+    "operationId": "callback_auth_callback_get",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 2000
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Code"
+      }
+     },
+     {
+      "name": "state",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 200
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "State"
+      }
+     },
+     {
+      "name": "error",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 200
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Error"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/google": {
+   "post": {
+    "summary": "Google Sign In",
+    "description": "Android: a Google ID token (Credential Manager, audience = this server's web client id) \u2192 an app session\ntoken for `Authorization: Bearer`. 403 = not in a household and no invite.",
+    "operationId": "google_sign_in_auth_google_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GoogleIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/me": {
+   "get": {
+    "summary": "Me",
+    "description": "Who is signed in, their households, the current one (X-Household, else the session's) with their roles\nand permissions; csrf_token for a cookie session (send it as X-CSRF-Token on writes).",
+    "operationId": "me_auth_me_get",
+    "parameters": [
+     {
+      "name": "x-household",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 20
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Household"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/logout": {
+   "post": {
+    "summary": "Logout",
+    "operationId": "logout_auth_logout_post",
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     }
+    }
+   }
+  },
+  "/auth/household": {
+   "put": {
+    "summary": "Pick Household",
+    "description": "The household switcher: later requests without X-Household act for this one.",
+    "operationId": "pick_household_auth_household_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/HouseholdPick"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/invites/accept": {
+   "post": {
+    "summary": "Accept Invite",
+    "description": "A signed-in user joins another household with an invite (it becomes the session's household).",
+    "operationId": "accept_invite_invites_accept_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/InviteAccept"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/household": {
+   "get": {
+    "summary": "Get Household",
+    "operationId": "get_household_household_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "summary": "Patch Household",
+    "operationId": "patch_household_household_patch",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/HouseholdPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/household/ai-usage": {
+   "get": {
+    "summary": "Ai Usage",
+    "description": "AI calls per day and feature (metering for a later paid plan) and the daily budget.",
+    "operationId": "ai_usage_household_ai_usage_get",
+    "parameters": [
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 366,
+       "minimum": 1,
+       "default": 30,
+       "title": "Days"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/household/members": {
+   "get": {
+    "summary": "Get Members",
+    "operationId": "get_members_household_members_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Add Member",
+    "description": "A child profile, or an account member nobody signs in as yet (claimed by its email or an invite).",
+    "operationId": "add_member_household_members_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MemberIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/household/members/{member_id}": {
+   "patch": {
+    "summary": "Patch Member",
+    "operationId": "patch_member_household_members__member_id__patch",
+    "parameters": [
+     {
+      "name": "member_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Member Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MemberPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Member",
+    "operationId": "delete_member_household_members__member_id__delete",
+    "parameters": [
+     {
+      "name": "member_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Member Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/household/members/{member_id}/roles": {
+   "put": {
+    "summary": "Put Roles",
+    "description": "Replace a member's roles (Child only on child profiles, alone; the last Owner / Approver stays).",
+    "operationId": "put_roles_household_members__member_id__roles_put",
+    "parameters": [
+     {
+      "name": "member_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Member Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RolesIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/household/invites": {
+   "get": {
+    "summary": "Get Invites",
+    "operationId": "get_invites_household_invites_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Create Invite",
+    "description": "A one-use invite link (token shown once). email = only that Google account; member_id = claims that\nmember (a seeded account, or a child profile turning 13).",
+    "operationId": "create_invite_household_invites_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/InviteIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/household/invites/{invite_id}": {
+   "delete": {
+    "summary": "Delete Invite",
+    "operationId": "delete_invite_household_invites__invite_id__delete",
+    "parameters": [
+     {
+      "name": "invite_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Invite Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "AddLineIn": {
+    "properties": {
+     "term": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Term"
+     },
+     "product_code": {
+      "type": "string",
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Product Code"
+     },
+     "quantity": {
+      "type": "integer",
+      "maximum": 10000.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Quantity",
+      "default": 1
+     }
+    },
+    "type": "object",
+    "required": [
+     "term",
+     "product_code"
+    ],
+    "title": "AddLineIn"
+   },
+   "ApplyIn": {
+    "properties": {
+     "lines": {
+      "items": {
+       "$ref": "#/components/schemas/ApplyLine"
+      },
+      "type": "array",
+      "maxItems": 500,
+      "title": "Lines"
+     }
+    },
+    "type": "object",
+    "required": [
+     "lines"
+    ],
+    "title": "ApplyIn"
+   },
+   "ApplyLine": {
+    "properties": {
+     "pid": {
+      "type": "string",
+      "maxLength": 20,
+      "title": "Pid"
+     },
+     "accept": {
+      "type": "boolean",
+      "title": "Accept"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "qty": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 10000.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qty"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit"
+     },
+     "use_soon": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Use Soon"
+     }
+    },
+    "type": "object",
+    "required": [
+     "pid",
+     "accept"
+    ],
+    "title": "ApplyLine",
+    "description": "One reviewed line of a fridge read; name/qty/unit only when the reviewer edited them (an edited number is\ntyped, no longer an estimate)."
+   },
+   "Body_attach_pages_recipes__recipe_id__pages_post": {
+    "properties": {
+     "files": {
+      "items": {
+       "type": "string",
+       "contentMediaType": "application/octet-stream"
+      },
+      "type": "array",
+      "title": "Files"
+     },
+     "for_line": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "For Line"
+     }
+    },
+    "type": "object",
+    "required": [
+     "files"
+    ],
+    "title": "Body_attach_pages_recipes__recipe_id__pages_post"
+   },
+   "Body_fridge_photos_fridge_photos_post": {
+    "properties": {
+     "files": {
+      "items": {
+       "type": "string",
+       "contentMediaType": "application/octet-stream"
+      },
+      "type": "array",
+      "title": "Files"
+     }
+    },
+    "type": "object",
+    "required": [
+     "files"
+    ],
+    "title": "Body_fridge_photos_fridge_photos_post"
+   },
+   "Body_import_recipes_recipes_import_post": {
+    "properties": {
+     "file": {
+      "type": "string",
+      "contentMediaType": "application/octet-stream",
+      "title": "File"
+     },
+     "dry_run": {
+      "type": "boolean",
+      "title": "Dry Run",
+      "default": true
+     },
+     "choices": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Choices"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 500
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "file"
+    ],
+    "title": "Body_import_recipes_recipes_import_post"
+   },
+   "Body_photo_recipes_photo_post": {
+    "properties": {
+     "files": {
+      "items": {
+       "type": "string",
+       "contentMediaType": "application/octet-stream"
+      },
+      "type": "array",
+      "title": "Files"
+     },
+     "week": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Week"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "source_kind": {
+      "type": "string",
+      "enum": [
+       "nyt",
+       "book",
+       "other"
+      ],
+      "title": "Source Kind",
+      "default": "book"
+     },
+     "source_title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Title"
+     },
+     "source_ref": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Ref"
+     },
+     "source_author": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Author"
+     },
+     "source_isbn": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Isbn"
+     }
+    },
+    "type": "object",
+    "required": [
+     "files"
+    ],
+    "title": "Body_photo_recipes_photo_post"
+   },
+   "CartIn": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ListItem"
+      },
+      "type": "array",
+      "title": "Items"
+     },
+     "weeks": {
+      "items": {
+       "type": "string",
+       "format": "date"
+      },
+      "type": "array",
+      "title": "Weeks",
+      "default": []
+     }
+    },
+    "type": "object",
+    "required": [
+     "items"
+    ],
+    "title": "CartIn"
+   },
+   "CookedEntry": {
+    "properties": {
+     "entry_id": {
+      "type": "integer",
+      "title": "Entry Id"
+     },
+     "week": {
+      "type": "string",
+      "title": "Week"
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
+     "date": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date"
+     },
+     "multiplier": {
+      "type": "number",
+      "title": "Multiplier"
+     },
+     "rating": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Rating"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "entry_id",
+     "week",
+     "day",
+     "date",
+     "multiplier",
+     "rating"
+    ],
+    "title": "CookedEntry"
+   },
+   "DraftIn": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ListItem"
+      },
+      "type": "array",
+      "title": "Items"
+     },
+     "weeks": {
+      "items": {
+       "type": "string",
+       "format": "date"
+      },
+      "type": "array",
+      "title": "Weeks",
+      "default": []
+     }
+    },
+    "type": "object",
+    "required": [
+     "items"
+    ],
+    "title": "DraftIn"
+   },
+   "EntryIn": {
+    "properties": {
+     "recipe_id": {
+      "type": "integer",
+      "title": "Recipe Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "recipe_id"
+    ],
+    "title": "EntryIn"
+   },
+   "EntryPatch": {
+    "properties": {
+     "day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
+     "multiplier": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Multiplier"
+     }
+    },
+    "type": "object",
+    "title": "EntryPatch"
+   },
+   "ExtraIn": {
+    "properties": {
+     "week": {
+      "type": "string",
+      "format": "date",
+      "title": "Week"
+     },
+     "term": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Term"
+     },
+     "product_code": {
+      "type": "string",
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Product Code"
+     },
+     "quantity": {
+      "type": "integer",
+      "maximum": 10000.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Quantity",
+      "default": 1
+     }
+    },
+    "type": "object",
+    "required": [
+     "week",
+     "term",
+     "product_code"
+    ],
+    "title": "ExtraIn"
+   },
+   "ExtraPatch": {
+    "properties": {
+     "product_code": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 64,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Product Code"
+     },
+     "quantity": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 10000.0,
+        "exclusiveMinimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Quantity"
+     }
+    },
+    "type": "object",
+    "title": "ExtraPatch"
+   },
+   "FridgeIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "qty": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 10000.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qty"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit"
+     },
+     "use_soon": {
+      "type": "boolean",
+      "title": "Use Soon",
+      "default": false
+     },
+     "use_by": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Use By"
+     },
+     "from_list": {
+      "type": "boolean",
+      "title": "From List",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "FridgeIn"
+   },
+   "FridgeItem": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "key_source": {
+      "type": "string",
+      "enum": [
+       "ai",
+       "rule",
+       "list"
+      ],
+      "title": "Key Source"
+     },
+     "qty": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qty"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit"
+     },
+     "qty_estimated": {
+      "type": "boolean",
+      "title": "Qty Estimated",
+      "default": false
+     },
+     "amount_as_of": {
+      "type": "string",
+      "title": "Amount As Of"
+     },
+     "days_since_checked": {
+      "type": "integer",
+      "title": "Days Since Checked",
+      "default": 0
+     },
+     "use_soon": {
+      "type": "boolean",
+      "title": "Use Soon",
+      "default": false
+     },
+     "use_by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Use By"
+     },
+     "soon": {
+      "type": "boolean",
+      "title": "Soon",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "key",
+     "key_source",
+     "amount_as_of"
+    ],
+    "title": "FridgeItem",
+    "description": "An item in the household's fridge list (fridge.py)."
+   },
+   "FridgePatch": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "qty": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 10000.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qty"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit"
+     },
+     "use_soon": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Use Soon"
+     },
+     "use_by": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Use By"
+     },
+     "confirm": {
+      "type": "boolean",
+      "title": "Confirm",
+      "default": false
+     },
+     "from_list": {
+      "type": "boolean",
+      "title": "From List",
+      "default": false
+     }
+    },
+    "type": "object",
+    "title": "FridgePatch"
+   },
+   "GoogleIn": {
+    "properties": {
+     "id_token": {
+      "type": "string",
+      "maxLength": 8000,
+      "minLength": 20,
+      "title": "Id Token"
+     },
+     "invite": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Invite"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id_token"
+    ],
+    "title": "GoogleIn"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "HouseholdPatch": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "store_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 10
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Store Id"
+     }
+    },
+    "type": "object",
+    "title": "HouseholdPatch"
+   },
+   "HouseholdPick": {
+    "properties": {
+     "household_id": {
+      "type": "integer",
+      "title": "Household Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "household_id"
+    ],
+    "title": "HouseholdPick"
+   },
+   "ImportedEntry": {
+    "properties": {
+     "date": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date"
+     },
+     "multiplier": {
+      "type": "number",
+      "title": "Multiplier"
+     },
+     "rating": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Rating"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "rated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rated At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "date",
+     "multiplier",
+     "rating"
+    ],
+    "title": "ImportedEntry"
+   },
+   "Ingredient": {
+    "properties": {
+     "raw": {
+      "type": "string",
+      "title": "Raw"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "qty": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qty"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit"
+     },
+     "prep": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Prep"
+     },
+     "likely_on_hand": {
+      "type": "boolean",
+      "title": "Likely On Hand",
+      "default": false
+     },
+     "ref_page": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ref Page"
+     },
+     "sub_recipe": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sub Recipe"
+     },
+     "expanded": {
+      "type": "boolean",
+      "title": "Expanded",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "raw",
+     "name"
+    ],
+    "title": "Ingredient"
+   },
+   "InviteAccept": {
+    "properties": {
+     "token": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 10,
+      "title": "Token"
+     }
+    },
+    "type": "object",
+    "required": [
+     "token"
+    ],
+    "title": "InviteAccept"
+   },
+   "InviteIn": {
+    "properties": {
+     "email": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 320
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     },
+     "roles": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "maxItems": 10,
+      "minItems": 1,
+      "title": "Roles",
+      "default": [
+       "contributor"
+      ]
+     },
+     "member_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Member Id"
+     },
+     "days": {
+      "type": "integer",
+      "maximum": 60.0,
+      "minimum": 1.0,
+      "title": "Days",
+      "default": 14
+     }
+    },
+    "type": "object",
+    "title": "InviteIn"
+   },
+   "LinePatch": {
+    "properties": {
+     "product_code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Product Code"
+     },
+     "quantity": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Quantity"
+     },
+     "removed": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Removed"
+     },
+     "pinned": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pinned"
+     }
+    },
+    "type": "object",
+    "title": "LinePatch"
+   },
+   "ListIn": {
+    "properties": {
+     "weeks": {
+      "items": {
+       "type": "string",
+       "format": "date"
+      },
+      "type": "array",
+      "title": "Weeks"
+     },
+     "people": {
+      "type": "integer",
+      "title": "People",
+      "default": 4
+     },
+     "staples": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Staples",
+      "default": []
+     },
+     "fridge": {
+      "type": "boolean",
+      "title": "Fridge",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "weeks"
+    ],
+    "title": "ListIn"
+   },
+   "ListItem": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "qty": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qty"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit"
+     },
+     "prep": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Prep"
+     },
+     "likely_on_hand": {
+      "type": "boolean",
+      "title": "Likely On Hand",
+      "default": false
+     },
+     "needed": {
+      "type": "boolean",
+      "title": "Needed",
+      "default": true
+     },
+     "recipes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Recipes",
+      "default": []
+     },
+     "staple": {
+      "type": "boolean",
+      "title": "Staple",
+      "default": false
+     },
+     "staple_packs": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Staple Packs"
+     },
+     "extra_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Extra Id"
+     },
+     "product_code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Product Code"
+     },
+     "quantity": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Quantity"
+     },
+     "fridge": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "covered",
+         "partial",
+         "check"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fridge"
+     },
+     "fridge_qty": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fridge Qty"
+     },
+     "fridge_items": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Fridge Items",
+      "default": []
+     }
+    },
+    "type": "object",
+    "required": [
+     "key",
+     "name"
+    ],
+    "title": "ListItem"
+   },
+   "MemberIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "title": "Name"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "account",
+       "child"
+      ],
+      "title": "Kind"
+     },
+     "birth_year": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2200.0,
+        "minimum": 1900.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Birth Year"
+     },
+     "email": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 320
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     },
+     "roles": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Roles"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "kind"
+    ],
+    "title": "MemberIn"
+   },
+   "MemberPatch": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "birth_year": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2200.0,
+        "minimum": 1900.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Birth Year"
+     },
+     "email": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 320
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     }
+    },
+    "type": "object",
+    "title": "MemberPatch"
+   },
+   "PackIn": {
+    "properties": {
+     "pieces": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 100.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pieces"
+     },
+     "word": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Word"
+     }
+    },
+    "type": "object",
+    "title": "PackIn"
+   },
+   "PickIn": {
+    "properties": {
+     "product_code": {
+      "type": "string",
+      "title": "Product Code"
+     }
+    },
+    "type": "object",
+    "required": [
+     "product_code"
+    ],
+    "title": "PickIn"
+   },
+   "PlanEntry": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "week": {
+      "type": "string",
+      "title": "Week"
+     },
+     "recipe_id": {
+      "type": "integer",
+      "title": "Recipe Id"
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
+     "multiplier": {
+      "type": "number",
+      "title": "Multiplier",
+      "default": 1.0
+     },
+     "rating": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Rating"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "week",
+     "recipe_id"
+    ],
+    "title": "PlanEntry"
+   },
+   "PrepPlanIn": {
+    "properties": {
+     "weeks": {
+      "items": {
+       "type": "string",
+       "format": "date"
+      },
+      "type": "array",
+      "minItems": 1,
+      "title": "Weeks"
+     }
+    },
+    "type": "object",
+    "required": [
+     "weeks"
+    ],
+    "title": "PrepPlanIn"
+   },
+   "Rating": {
+    "properties": {
+     "family": {
+      "type": "integer",
+      "title": "Family"
+     },
+     "company": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "rated_at": {
+      "type": "string",
+      "title": "Rated At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "family",
+     "rated_at"
+    ],
+    "title": "Rating"
+   },
+   "RatingIn": {
+    "properties": {
+     "family": {
+      "type": "integer",
+      "maximum": 5.0,
+      "minimum": 1.0,
+      "title": "Family"
+     },
+     "company": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "yes",
+         "maybe",
+         "no"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 2000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "family"
+    ],
+    "title": "RatingIn"
+   },
+   "RatingNote": {
+    "properties": {
+     "note": {
+      "type": "string",
+      "title": "Note"
+     },
+     "date": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date"
+     },
+     "rated_at": {
+      "type": "string",
+      "title": "Rated At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "note",
+     "date",
+     "rated_at"
+    ],
+    "title": "RatingNote"
+   },
+   "RatingSummary": {
+    "properties": {
+     "times_cooked": {
+      "type": "integer",
+      "title": "Times Cooked",
+      "default": 0
+     },
+     "times_rated": {
+      "type": "integer",
+      "title": "Times Rated",
+      "default": 0
+     },
+     "avg_family": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avg Family"
+     },
+     "last_family": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Family"
+     },
+     "last_rated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Rated At"
+     },
+     "company": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company"
+     },
+     "notes": {
+      "items": {
+       "$ref": "#/components/schemas/RatingNote"
+      },
+      "type": "array",
+      "title": "Notes",
+      "default": []
+     },
+     "imported_ratings": {
+      "type": "integer",
+      "title": "Imported Ratings",
+      "default": 0
+     }
+    },
+    "type": "object",
+    "title": "RatingSummary"
+   },
+   "RecipeDetail": {
+    "properties": {
+     "id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Id"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "source_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Url"
+     },
+     "servings": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Servings"
+     },
+     "ingredients": {
+      "items": {
+       "$ref": "#/components/schemas/Ingredient"
+      },
+      "type": "array",
+      "title": "Ingredients"
+     },
+     "steps": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Steps"
+     },
+     "source_kind": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "nyt",
+         "book",
+         "other"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Kind"
+     },
+     "source_title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Title"
+     },
+     "source_ref": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Ref"
+     },
+     "source_author": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Author"
+     },
+     "source_isbn": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Isbn"
+     },
+     "uid": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Uid"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     },
+     "prep_minutes": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Prep Minutes"
+     },
+     "cook_minutes": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cook Minutes"
+     },
+     "total_minutes": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total Minutes"
+     },
+     "yield_text": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Yield Text"
+     },
+     "image": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Image"
+     },
+     "schema_extra": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Schema Extra",
+      "default": {}
+     },
+     "ratings": {
+      "$ref": "#/components/schemas/RatingSummary",
+      "default": {
+       "times_cooked": 0,
+       "times_rated": 0,
+       "notes": [],
+       "imported_ratings": 0
+      }
+     },
+     "planned_weeks": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Planned Weeks",
+      "default": []
+     },
+     "revision": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revision"
+     },
+     "history": {
+      "items": {
+       "$ref": "#/components/schemas/CookedEntry"
+      },
+      "type": "array",
+      "title": "History",
+      "default": []
+     },
+     "imported_history": {
+      "items": {
+       "$ref": "#/components/schemas/ImportedEntry"
+      },
+      "type": "array",
+      "title": "Imported History",
+      "default": []
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "source",
+     "ingredients",
+     "steps"
+    ],
+    "title": "RecipeDetail"
+   },
+   "RecipeOut": {
+    "properties": {
+     "id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Id"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "source_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Url"
+     },
+     "servings": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Servings"
+     },
+     "ingredients": {
+      "items": {
+       "$ref": "#/components/schemas/Ingredient"
+      },
+      "type": "array",
+      "title": "Ingredients"
+     },
+     "steps": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Steps"
+     },
+     "source_kind": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "nyt",
+         "book",
+         "other"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Kind"
+     },
+     "source_title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Title"
+     },
+     "source_ref": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Ref"
+     },
+     "source_author": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Author"
+     },
+     "source_isbn": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Isbn"
+     },
+     "uid": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Uid"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     },
+     "prep_minutes": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Prep Minutes"
+     },
+     "cook_minutes": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cook Minutes"
+     },
+     "total_minutes": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total Minutes"
+     },
+     "yield_text": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Yield Text"
+     },
+     "image": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Image"
+     },
+     "schema_extra": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Schema Extra",
+      "default": {}
+     },
+     "ratings": {
+      "$ref": "#/components/schemas/RatingSummary",
+      "default": {
+       "times_cooked": 0,
+       "times_rated": 0,
+       "notes": [],
+       "imported_ratings": 0
+      }
+     },
+     "planned_weeks": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Planned Weeks",
+      "default": []
+     },
+     "revision": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revision"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "source",
+     "ingredients",
+     "steps"
+    ],
+    "title": "RecipeOut"
+   },
+   "RecipePatch": {
+    "properties": {
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "source_kind": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "nyt",
+         "book",
+         "other"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Kind"
+     },
+     "source_title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Title"
+     },
+     "source_ref": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Ref"
+     },
+     "source_author": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Author"
+     },
+     "source_isbn": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Isbn"
+     },
+     "servings": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 1000.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Servings"
+     },
+     "ingredients": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ingredients"
+     },
+     "steps": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Steps"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "prep_minutes": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 10000.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Prep Minutes"
+     },
+     "cook_minutes": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 10000.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cook Minutes"
+     },
+     "total_minutes": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 10000.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total Minutes"
+     },
+     "yield_text": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Yield Text"
+     },
+     "expected_revision": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Revision"
+     }
+    },
+    "type": "object",
+    "title": "RecipePatch",
+    "description": "Partial update: omitted fields are left unchanged; null clears the source fields and the optional details\n(servings, notes, description, times, yield). `ingredients` are the lines as the recipe screen shows them (see\nrecipe_edit), `steps` one per item; blank ones are dropped. `expected_revision` (RecipeOut.revision when the edit\nbegan) refuses the edit with 409 if the recipe changed meanwhile."
+   },
+   "RolesIn": {
+    "properties": {
+     "roles": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "maxItems": 10,
+      "title": "Roles"
+     }
+    },
+    "type": "object",
+    "required": [
+     "roles"
+    ],
+    "title": "RolesIn"
+   },
+   "SearchIn": {
+    "properties": {
+     "term": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Term"
+     }
+    },
+    "type": "object",
+    "required": [
+     "term"
+    ],
+    "title": "SearchIn"
+   },
+   "ShareIn": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "week": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Week"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text"
+    ],
+    "title": "ShareIn"
+   },
+   "Staple": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "qty": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qty"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit"
+     },
+     "weekly": {
+      "type": "boolean",
+      "title": "Weekly",
+      "default": true
+     },
+     "position": {
+      "type": "integer",
+      "title": "Position",
+      "default": 0
+     },
+     "last_bought": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Bought"
+     },
+     "created_at": {
+      "type": "string",
+      "title": "Created At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "created_at"
+    ],
+    "title": "Staple"
+   },
+   "StapleIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 100,
+      "title": "Name"
+     },
+     "qty": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 1000.0,
+        "exclusiveMinimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qty"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit"
+     },
+     "weekly": {
+      "type": "boolean",
+      "title": "Weekly",
+      "default": true
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "StapleIn"
+   },
+   "StaplePatch": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "qty": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 1000.0,
+        "exclusiveMinimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qty"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit"
+     },
+     "weekly": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Weekly"
+     },
+     "last_bought": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Bought"
+     },
+     "position": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Position"
+     }
+    },
+    "type": "object",
+    "title": "StaplePatch"
+   },
+   "SuggestIn": {
+    "properties": {
+     "nights": {
+      "type": "integer",
+      "maximum": 7.0,
+      "minimum": 1.0,
+      "title": "Nights"
+     },
+     "people": {
+      "type": "integer",
+      "maximum": 20.0,
+      "minimum": 1.0,
+      "title": "People",
+      "default": 4
+     },
+     "week": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Week"
+     },
+     "exclude": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "maxItems": 1000,
+      "title": "Exclude",
+      "default": []
+     }
+    },
+    "type": "object",
+    "required": [
+     "nights"
+    ],
+    "title": "SuggestIn"
+   },
+   "TaskPatch": {
+    "properties": {
+     "done": {
+      "type": "boolean",
+      "title": "Done"
+     }
+    },
+    "type": "object",
+    "required": [
+     "done"
+    ],
+    "title": "TaskPatch"
+   },
+   "UsedIn": {
+    "properties": {
+     "apply": {
+      "type": "boolean",
+      "title": "Apply"
+     }
+    },
+    "type": "object",
+    "required": [
+     "apply"
+    ],
+    "title": "UsedIn"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "ctx": {
+      "type": "object",
+      "title": "Context"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   }
+  }
+ }
+}
