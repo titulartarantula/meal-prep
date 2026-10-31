@@ -645,6 +645,56 @@
     }
    }
   },
+  "/recipes/{recipe_id}/company": {
+   "put": {
+    "summary": "Put Company",
+    "description": "The household's Good for company verdict for the recipe (yes / maybe / no; null = not decided). Owners\n(recipe.company); changes go to the audit log.",
+    "operationId": "put_company_recipes__recipe_id__company_put",
+    "parameters": [
+     {
+      "name": "recipe_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Recipe Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CompanyIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CompanyOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/ratings/pending": {
    "get": {
     "summary": "Ratings Pending",
@@ -917,7 +967,7 @@
   "/plan/{entry_id}/rating": {
    "put": {
     "summary": "Put Rating",
-    "description": "Your rating of that dinner (member_id: a child profile's); the shared token rates as Family.",
+    "description": "Your rating of that dinner (member_id: a child profile's); the shared token rates as the\nhousehold's legacy member. `company` sets the recipe's Good for company verdict for an Owner.",
     "operationId": "put_rating_plan__entry_id__rating_put",
     "parameters": [
      {
@@ -3395,26 +3445,83 @@
     ],
     "title": "CartIn"
    },
-   "CompanyVotes": {
+   "CompanyIn": {
     "properties": {
-     "yes": {
-      "type": "integer",
-      "title": "Yes",
-      "default": 0
-     },
-     "maybe": {
-      "type": "integer",
-      "title": "Maybe",
-      "default": 0
-     },
-     "no": {
-      "type": "integer",
-      "title": "No",
-      "default": 0
+     "company": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "yes",
+         "maybe",
+         "no"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company"
      }
     },
     "type": "object",
-    "title": "CompanyVotes"
+    "required": [
+     "company"
+    ],
+    "title": "CompanyIn"
+   },
+   "CompanyOut": {
+    "properties": {
+     "company": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company"
+     },
+     "company_set_by": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Set By"
+     },
+     "company_set_by_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Set By Name"
+     },
+     "company_set_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Set At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "company"
+    ],
+    "title": "CompanyOut"
    },
    "CookedEntry": {
     "properties": {
@@ -4541,17 +4648,6 @@
       "type": "integer",
       "title": "Family"
      },
-     "company": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Company"
-     },
      "note": {
       "anyOf": [
        {
@@ -4626,17 +4722,6 @@
       "type": "integer",
       "title": "Family"
      },
-     "company": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Company"
-     },
      "note": {
       "anyOf": [
        {
@@ -4683,7 +4768,7 @@
      "count"
     ],
     "title": "PersonSummary",
-    "description": "One person's ratings of a recipe: their latest (score, company, note, day cooked) and their average."
+    "description": "One person's ratings of a recipe: their latest (score, note, day cooked) and their average."
    },
    "PickIn": {
     "properties": {
@@ -5071,18 +5156,43 @@
       "title": "People",
       "default": []
      },
-     "company_votes": {
-      "$ref": "#/components/schemas/CompanyVotes",
-      "default": {
-       "yes": 0,
-       "maybe": 0,
-       "no": 0
-      }
-     },
      "good_for_company": {
       "type": "boolean",
       "title": "Good For Company",
       "default": false
+     },
+     "company_set_by": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Set By"
+     },
+     "company_set_by_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Set By Name"
+     },
+     "company_set_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Set At"
      }
     },
     "type": "object",
@@ -5308,11 +5418,6 @@
        "imported_ratings": 0,
        "rating_count": 0,
        "people": [],
-       "company_votes": {
-        "maybe": 0,
-        "no": 0,
-        "yes": 0
-       },
        "good_for_company": false
       }
      },
@@ -5589,11 +5694,6 @@
        "imported_ratings": 0,
        "rating_count": 0,
        "people": [],
-       "company_votes": {
-        "maybe": 0,
-        "no": 0,
-        "yes": 0
-       },
        "good_for_company": false
       }
      },

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { PersonRating, RecipeDetail } from "../api/types";
-import { cookedOn, initials, lastRatingText, personName, ratingOf, summaryText } from "./Rating";
+import { companyText, cookedOn, initials, lastRatingText, personName, ratingOf, summaryText } from "./Rating";
 
 const pr = (member_id: number | null, family: number, note: string | null = null): PersonRating => ({
   member_id, name: member_id == null ? "Family" : `M${member_id}`, kind: member_id == null ? "family" : "account", family,
-  company: null, note, rated_at: "2026-10-20T23:00:00Z", entered_by: null, entered_by_name: null });
+  note, rated_at: "2026-10-20T23:00:00Z", entered_by: null, entered_by_name: null });
 const night = (entry_id: number, day: number | null, date: string | null, ratings: PersonRating[]) =>
   ({ entry_id, week: "2026-10-18", day, date, multiplier: 1, ratings, rating: null, my_rating: null, rating_avg: null, rating_count: ratings.length });
 
@@ -62,5 +62,11 @@ describe("names, chips and the summary line", () => {
       .toBe("Average 3.8/5 from 5 ratings · Company: yes · “spicy”");
     expect(summaryText({ times_rated: 1, rating_count: 1, avg_family: 4, company: null, notes: [] } as never)).toBe("Average 4.0/5 from 1 rating");
     expect(summaryText({ times_rated: 0 } as never)).toBeNull();
+  });
+  it("says the household's Good for company verdict and who set it", () => {
+    expect(companyText({ company: "yes", company_set_by_name: "Sam" } as never)).toBe("Good for company: Yes · set by Sam");
+    expect(companyText({ company: "maybe", company_set_by_name: null } as never)).toBe("Good for company: Maybe");
+    expect(companyText({ company: null } as never)).toBe("Good for company: not decided yet");
+    expect(companyText(undefined)).toBe("Good for company: not decided yet");
   });
 });

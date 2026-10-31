@@ -281,6 +281,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/recipes/{recipe_id}/company": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Company
+         * @description The household's Good for company verdict for the recipe (yes / maybe / no; null = not decided). Owners
+         *     (recipe.company); changes go to the audit log.
+         */
+        put: operations["put_company_recipes__recipe_id__company_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ratings/pending": {
         parameters: {
             query?: never;
@@ -381,7 +402,8 @@ export interface paths {
         get?: never;
         /**
          * Put Rating
-         * @description Your rating of that dinner (member_id: a child profile's); the shared token rates as Family.
+         * @description Your rating of that dinner (member_id: a child profile's); the shared token rates as the
+         *     household's legacy member. `company` sets the recipe's Good for company verdict for an Owner.
          */
         put: operations["put_rating_plan__entry_id__rating_put"];
         post?: never;
@@ -1305,23 +1327,21 @@ export interface components {
              */
             weeks: string[];
         };
-        /** CompanyVotes */
-        CompanyVotes: {
-            /**
-             * Yes
-             * @default 0
-             */
-            yes: number;
-            /**
-             * Maybe
-             * @default 0
-             */
-            maybe: number;
-            /**
-             * No
-             * @default 0
-             */
-            no: number;
+        /** CompanyIn */
+        CompanyIn: {
+            /** Company */
+            company: ("yes" | "maybe" | "no") | null;
+        };
+        /** CompanyOut */
+        CompanyOut: {
+            /** Company */
+            company: string | null;
+            /** Company Set By */
+            company_set_by?: number | null;
+            /** Company Set By Name */
+            company_set_by_name?: string | null;
+            /** Company Set At */
+            company_set_at?: string | null;
         };
         /** CookedEntry */
         CookedEntry: {
@@ -1696,8 +1716,6 @@ export interface components {
             kind: string;
             /** Family */
             family: number;
-            /** Company */
-            company?: string | null;
             /** Note */
             note?: string | null;
             /** Rated At */
@@ -1709,7 +1727,7 @@ export interface components {
         };
         /**
          * PersonSummary
-         * @description One person's ratings of a recipe: their latest (score, company, note, day cooked) and their average.
+         * @description One person's ratings of a recipe: their latest (score, note, day cooked) and their average.
          */
         PersonSummary: {
             /** Member Id */
@@ -1720,8 +1738,6 @@ export interface components {
             kind: string;
             /** Family */
             family: number;
-            /** Company */
-            company?: string | null;
             /** Note */
             note?: string | null;
             /** Date */
@@ -1865,18 +1881,16 @@ export interface components {
              */
             people: components["schemas"]["PersonSummary"][];
             /**
-             * @default {
-             *       "yes": 0,
-             *       "maybe": 0,
-             *       "no": 0
-             *     }
-             */
-            company_votes: components["schemas"]["CompanyVotes"];
-            /**
              * Good For Company
              * @default false
              */
             good_for_company: boolean;
+            /** Company Set By */
+            company_set_by?: number | null;
+            /** Company Set By Name */
+            company_set_by_name?: string | null;
+            /** Company Set At */
+            company_set_at?: string | null;
         };
         /** RecipeDetail */
         RecipeDetail: {
@@ -1935,11 +1949,6 @@ export interface components {
              *       "imported_ratings": 0,
              *       "rating_count": 0,
              *       "people": [],
-             *       "company_votes": {
-             *         "maybe": 0,
-             *         "no": 0,
-             *         "yes": 0
-             *       },
              *       "good_for_company": false
              *     }
              */
@@ -2024,11 +2033,6 @@ export interface components {
              *       "imported_ratings": 0,
              *       "rating_count": 0,
              *       "people": [],
-             *       "company_votes": {
-             *         "maybe": 0,
-             *         "no": 0,
-             *         "yes": 0
-             *       },
              *       "good_for_company": false
              *     }
              */
@@ -2672,6 +2676,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_company_recipes__recipe_id__company_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyOut"];
+                };
             };
             /** @description Validation Error */
             422: {

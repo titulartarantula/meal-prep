@@ -121,7 +121,7 @@ test.describe("signed in", () => {
     await expect(page.getByRole("heading", { name: "Shopping list" })).toBeVisible();
   });
 
-  test("rating: the How was banner with Later, company answer, So far and earlier notes, Good for company", async ({ page }) => {
+  test("rating: the How was banner with Later, the company verdict, So far and earlier notes, Good for company", async ({ page }) => {
     const banner = page.getByRole("region", { name: "Rate a dinner" });
     await expect(banner).toContainText(/How was \w+day's /);
     const first = (await banner.locator("b").textContent())!;
@@ -143,16 +143,15 @@ test.describe("signed in", () => {
     await expect(dlg).toBeHidden();
     await expect(banner.locator("b")).not.toHaveText(second);
 
-    // last week's chili: its ratings so far, earlier notes, and the company answer (choose it again to clear it)
+    // last week's chili: its ratings so far, earlier notes, and (an Owner) the household's company verdict
     await page.getByRole("button", { name: "Previous week" }).click();
     await page.getByRole("article", { name: /^Wednesday/ }).getByRole("button", { name: "How was it?" }).click();
     await expect(dlg.getByRole("heading", { level: 2 })).toHaveText("How was Wednesday's Turkey chili with cornbread?");
     await expect(dlg).toContainText("So far: Average 4.1/5 from 4 ratings · Company: maybe · “Kids wanted more cornbread”");
     await expect(dlg.getByRole("heading", { name: "Earlier notes" })).toBeVisible();
     await expect(dlg.getByRole("listitem").filter({ hasText: "A bit too spicy" })).toBeVisible();
-    const company = dlg.getByRole("radiogroup", { name: "Would you make it for company?" });
-    await company.getByRole("radio", { name: "Maybe" }).click();
-    await expect(company.getByRole("radio", { name: "Maybe" })).toHaveAttribute("aria-checked", "true");
+    const company = dlg.getByRole("radiogroup", { name: "Good for company?" });
+    await expect(company.getByRole("radio", { name: "Maybe" })).toHaveAttribute("aria-checked", "true");   // the verdict so far
     await company.getByRole("radio", { name: "Maybe" }).click();
     await expect(company.getByRole("radio", { name: "Maybe" })).toHaveAttribute("aria-checked", "false");
     await company.getByRole("radio", { name: "Yes" }).click();
@@ -197,7 +196,7 @@ test.describe("signed in", () => {
     await expect(dlg).toContainText("So far: Average 4.3/5 from 3 ratings");
     await expect(dlg.getByRole("button", { name: "Save rating" })).toBeDisabled();
     await dlg.getByRole("radio", { name: "5 stars" }).click();
-    await dlg.getByRole("radiogroup", { name: "Would you make it for company?" }).getByRole("radio", { name: "Yes" }).click();
+    await dlg.getByRole("radiogroup", { name: "Good for company?" }).getByRole("radio", { name: "Yes" }).click();
     await dlg.getByLabel(/^Note/).fill("Extra lime next time");
     await axe(page);
     await phoneChecks(page);
@@ -304,16 +303,17 @@ test.describe("signed in", () => {
     await shot(page, "19-drawer-people");
   });
 
-  test("a contributor rates for themselves (no Rating for), and the company filter goes by everyone's answers", async ({ page, context }) => {
+  test("a contributor rates for themselves (no Rating for) and only reads the Good for company verdict", async ({ page, context }) => {
     await context.addCookies([{ name: "mp_mock_member", value: "3", url: "http://localhost:5198" }]);
     await page.goto("/recipes");
-    // Robin can rate but can't plan: no add-to-week, no Rating for
+    // Robin can rate but can't plan: no add-to-week, no Rating for, no company question (an Owner's)
     const grid = page.getByRole("list", { name: "Recipes" });
     await page.getByRole("button", { name: "Rate Roast chicken with lemon potatoes" }).click();
     const dlg = page.getByRole("dialog", { name: "Rate Roast chicken with lemon potatoes" });
     await expect(dlg.getByRole("radiogroup", { name: "Rating for" })).toHaveCount(0);
+    await expect(dlg.getByRole("radiogroup", { name: "Good for company?" })).toHaveCount(0);
+    await expect(dlg).toContainText("Good for company: Yes · set by Sam");
     await dlg.getByRole("radio", { name: "2 stars" }).click();
-    await dlg.getByRole("radiogroup", { name: "Would you make it for company?" }).getByRole("radio", { name: "No" }).click();
     await axe(page);
     await phoneChecks(page);
     await shot(page, "20-contributor-rates");
@@ -321,13 +321,42 @@ test.describe("signed in", () => {
     await expect(dlg).toBeHidden();
     const chicken = grid.getByRole("listitem").filter({ hasText: "Roast chicken" });
     await expect(chicken.locator(".pchip").filter({ hasText: /^R/ })).toContainText("2");
-    // the Family said yes, Robin says no: a tie isn't "good for company"; the tacos (two yes) still are
-    await expect(chicken).not.toContainText("good for company");
+    await expect(chicken).toContainText("good for company");     // a low score doesn't change the household's verdict
     await page.getByRole("button", { name: "Good for company", exact: true }).click();
-    await expect(grid).not.toContainText("Roast chicken");
-    await expect(grid).toContainText("Chicken tinga tacos");
+    await expect(grid).toContainText("Roast chicken");
     await page.getByRole("button", { name: /^Chicken tinga tacos/ }).click();
-    await expect(page.getByRole("dialog", { name: /Chicken tinga tacos/ }).getByRole("button", { name: "Add to week" })).toHaveCount(0);
+    const drawer = page.getByRole("dialog", { name: /Chicken tinga tacos/ });
+    await expect(drawer.getByRole("button", { name: "Add to week" })).toHaveCount(0);
+    await expect(drawer.getByRole("radiogroup", { name: "Good for company?" })).toHaveCount(0);
+    await expect(drawer).toContainText("Good for company: Yes · set by Sam");
+  });
+
+  test("an Owner sets the household's Good for company verdict on the recipe", async ({ page }) => {
+    await page.getByRole("link", { name: "Recipes" }).click();
+    const grid = page.getByRole("list", { name: "Recipes" });
+    const salmon = grid.getByRole("listitem").filter({ hasText: "Miso-glazed salmon" });
+    await expect(salmon).not.toContainText("good for company");
+    await page.getByRole("button", { name: /^Miso-glazed salmon/ }).click();
+    const drawer = page.getByRole("dialog", { name: /^Miso-glazed salmon/ });
+    const company = drawer.getByRole("radiogroup", { name: "Good for company?" });
+    for (const v of ["Yes", "Maybe", "No"]) await expect(company.getByRole("radio", { name: v })).toHaveAttribute("aria-checked", "false");
+    await expect(drawer).toContainText("Not decided yet.");
+    await company.getByRole("radio", { name: "Yes" }).click();
+    await expect(company.getByRole("radio", { name: "Yes" })).toHaveAttribute("aria-checked", "true");
+    await expect(drawer).toContainText("Set by Sam.");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "21-company-verdict");
+    await drawer.getByRole("button", { name: "Close" }).click();
+    await expect(salmon).toContainText("good for company");
+    await page.getByRole("button", { name: "Good for company", exact: true }).click();
+    await expect(grid).toContainText("Miso-glazed salmon");
+    // choosing it again clears it: not decided, out of the filter
+    await page.getByRole("button", { name: /^Miso-glazed salmon/ }).click();
+    await company.getByRole("radio", { name: "Yes" }).click();
+    await expect(company.getByRole("radio", { name: "Yes" })).toHaveAttribute("aria-checked", "false");
+    await drawer.getByRole("button", { name: "Close" }).click();
+    await expect(grid).not.toContainText("Miso-glazed salmon");
   });
 
   test("recipes: edit a recipe (409 when it changed meanwhile, discard), edit the source with the book search", async ({ page }) => {

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 import { ApiError, del, get, patch, post, put, setSession } from "./client";
 import type {
   BookHit, Choices, Draft, ImportReport, ListItem, Me, Member, PendingRating, Permission, PlanEntry, Recipe, RecipeDetail, RecipePatch,
-  RecipeRatingOut, RecipeSource, RatingIn, ShareResult, Staple, WeekSummary,
+  RecipeRatingOut, RecipeSource, RatingIn, ShareResult, Staple, WeekSummary, Company, CompanyOut,
 } from "./types";
 
 export const keys = {
@@ -45,7 +45,7 @@ export function useMe() {
 
 const ALL: Permission[] = ["recipe.read", "plan.read", "rate.self", "rate.for_children", "request.create", "plan.edit",
   "recipe.edit", "fridge.edit", "request.approve", "cart.build", "cart.send", "members.manage", "roles.assign",
-  "household.settings"];
+  "household.settings", "recipe.company"];
 
 export function useCan() {
   const me = useMe().data;
@@ -182,6 +182,17 @@ export function useRateRecipe() {
         : del<void>(`/recipes/${id}/rating?${new URLSearchParams({ cooked_on: day, ...(member != null ? { member_id: String(member) } : {}) })}`),
     onSuccess: () => {
       for (const k of [["week"], keys.weeks, keys.recipes, ["recipe"], keys.pending]) qc.invalidateQueries({ queryKey: k });
+    },
+  });
+}
+
+/** The household's Good for company verdict for a recipe (Owners: recipe.company); null = not decided. */
+export function useSetCompany() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, company }: { id: number; company: Company | null }) => put<CompanyOut>(`/recipes/${id}/company`, { company }),
+    onSuccess: (_out, { id }) => {
+      for (const k of [keys.recipes, keys.recipe(id), ["week"]]) qc.invalidateQueries({ queryKey: k });
     },
   });
 }

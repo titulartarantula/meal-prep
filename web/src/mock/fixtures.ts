@@ -10,13 +10,13 @@ export interface MockRecipe {
   source_title?: string;
   source_ref?: string;
   source_author?: string;
-  company?: "yes" | "maybe" | "no"; // the latest "would you make it for company?" answer
+  company?: "yes" | "maybe" | "no"; // the household's Good for company verdict (set by an Owner)
   notes?: string[];                 // earlier rating notes, newest first
   photo: string | null; // palette key for a generated SVG "photo"; "broken" = a link that 404s (shows the placeholder); null = no image
   avg: number | null;
   cooked: number;
-  /** Invented per-person history (rater: "family" or a member id → latest score, average, count, company?, note?);
-   * without it the history is the Family's: avg over `cooked`, latest answer `company`. */
+  /** Invented per-person history (rater: "family" or a member id → latest score, average, count, an old company
+   * answer (ignored: the verdict is `company`), note?); without it the history is the Family's: avg over `cooked`. */
   raters?: Record<string, readonly [number, number, number, ("yes" | "maybe" | "no")?, string?]>;
   description?: string;
   ingredients: [number | null, string | null, string, string?][]; // qty, unit, name, prep

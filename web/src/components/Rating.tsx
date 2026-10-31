@@ -1,18 +1,18 @@
-// Rating a dinner, as on the Android rating screen: a score 1–5, "Would you make it for company?" (optional, choosing
-// the same answer again clears it), a note, the recipe's ratings "So far" and its earlier notes. Since per-person
-// ratings everyone rates for themselves (a parent can rate for a child profile: "Rating for"), and the dinner, the
-// recipe card and its drawer show the family average with each person's rating. And the "How was …?" banner for the
-// newest dinner you haven't rated yet, with Later (hidden on this browser until tomorrow).
+// Rating a dinner, as on the Android rating screen: a score 1–5, a note, the recipe's ratings "So far" and its earlier
+// notes. Since per-person ratings everyone rates for themselves (a parent can rate for a child profile: "Rating for"),
+// and the dinner, the recipe card and its drawer show the family average with each person's rating. "Good for
+// company?" is not part of a person's rating: it is one household verdict per recipe that an Owner sets (in the rating
+// dialog and the recipe drawer; others see it read-only). And the "How was …?" banner for the newest dinner you
+// haven't rated yet, with Later (hidden on this browser until tomorrow).
 import { useEffect, useState, type ReactNode } from "react";
 import { useCan, useMemberId, useMembers, usePendingRatings, useRate, useRateRecipe, useRecipe } from "../api/queries";
-import type { PendingRating, PersonRating, PersonSummary, PlanEntry, Rating, RatingSummary, Recipe, RecipeDetail } from "../api/types";
+import type { Company, PendingRating, PersonRating, PersonSummary, PlanEntry, RatingSummary, Recipe, RecipeDetail } from "../api/types";
 import { formatAvg } from "../lib/format";
 import { DAYS_LONG, parseISO, shortDate, toISO } from "../lib/weeks";
 import { Star } from "./Icon";
 import { Button, ErrorNote, Loading, Modal, StarsInput } from "./ui";
 
-export const COMPANY = [["yes", "Yes"], ["maybe", "Maybe"], ["no", "No"]] as const;
-type Company = (typeof COMPANY)[number][0];
+export const COMPANY: readonly (readonly [Company, string])[] = [["yes", "Yes"], ["maybe", "Maybe"], ["no", "No"]];
 
 /** "How was Tuesday's Chili?" (or without the night when it has none). */
 export function ratingQuestion(title: string, day: number | null | undefined): string {
@@ -78,9 +78,30 @@ export function MiniStars({ n, size = 12 }: { n: number; size?: number }) {
   );
 }
 
-const COMPANY_TEXT: Record<string, string> = { yes: "good for company", maybe: "maybe for company", no: "not for company" };
+/** "Good for company: Yes · set by Sam" (or "not decided yet"), for whoever can't change it. */
+export function companyText(r: RatingSummary | undefined): string {
+  if (!r?.company) return "Good for company: not decided yet";
+  const label = COMPANY.find(([v]) => v === r.company)?.[1] ?? r.company;
+  return `Good for company: ${label}${r.company_set_by_name ? ` · set by ${r.company_set_by_name}` : ""}`;
+}
 
-/** Each person's rating of one time cooked: name, stars, company answer, note (and who entered a child's). */
+/** The household's "Good for company?" answer for a recipe (an Owner's choice; choosing it again clears it). */
+export function CompanyChoice({ value, onChange, disabled, hint = true }: { value: Company | null; onChange: (c: Company | null) => void;
+  disabled?: boolean; hint?: boolean }) {
+  return (
+    <fieldset className="field-set">
+      <legend>Good for company? {hint && <small>The household's answer for this recipe, not part of a rating. Choose it again to clear it.</small>}</legend>
+      <div className="seg company" role="radiogroup" aria-label="Good for company?">
+        {COMPANY.map(([v, label]) => (
+          <button key={v} type="button" role="radio" aria-checked={value === v} className={value === v ? "on" : ""} disabled={disabled}
+            onClick={() => onChange(value === v ? null : v)}>{label}</button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** Each person's rating of one time cooked: name, stars, note (and who entered a child's). */
 export function PeopleRatings({ rows, me, label, skip }: { rows: PersonRating[]; me: number | null | undefined; label: string;
   skip?: PersonRating | null }) {
   const shown = rows.filter((r) => r !== skip);
@@ -91,7 +112,6 @@ export function PeopleRatings({ rows, me, label, skip }: { rows: PersonRating[];
         <li key={`${r.member_id ?? "family"}`} title={[`${r.name}: ${r.family}/5`, r.note && `“${r.note}”`, r.entered_by_name && `entered by ${r.entered_by_name}`].filter(Boolean).join(" · ")}>
           <span className="who">{personName(r, me)}</span>
           <MiniStars n={r.family} />
-          {r.company && <span className="muted">{COMPANY_TEXT[r.company]}</span>}
           {r.note && <span className="pr-note">“{r.note}”</span>}
           {r.entered_by_name && <small className="muted">entered by {r.entered_by_name}</small>}
         </li>
@@ -117,23 +137,37 @@ export function PeopleChips({ people, max = 4 }: { people: PersonSummary[] | und
   );
 }
 
-/** What the score, company answer and note dialogs share. */
-interface Fields { stars: number; company: Company | null; note: string }
+/** What the score and note dialogs share. */
+interface Fields { stars: number; note: string }
 
 function useFields(): [Fields, (f: Partial<Fields>) => void] {
-  const [f, setF] = useState<Fields>({ stars: 0, company: null, note: "" });
+  const [f, setF] = useState<Fields>({ stars: 0, note: "" });
   return [f, (p) => setF((x) => ({ ...x, ...p }))];
 }
 
-function fieldsOf(r: Rating | PersonRating | null | undefined): Fields {
-  return { stars: r?.family ?? 0, company: (r?.company as Company | null | undefined) ?? null, note: r?.note ?? "" };
+function fieldsOf(r: { family: number; note?: string | null } | null | undefined): Fields {
+  return { stars: r?.family ?? 0, note: r?.note ?? "" };
 }
 
-const toRatingIn = (f: Fields) => ({ family: f.stars, company: f.company, note: f.note.trim() || null });
+/** The rating body; `company` only when an Owner changed the recipe's verdict in the dialog (the server sets it). */
+const toRatingIn = (f: Fields, company?: Company | null) =>
+  ({ family: f.stars, note: f.note.trim() || null, ...(company !== undefined ? { company } : {}) });
 
-/** The score, company answer, note, and the recipe's "So far" + earlier notes. */
-function RatingFields({ f, set, ratings, before, whose, me }: { f: Fields; set: (f: Partial<Fields>) => void; ratings: RatingSummary | undefined;
+/** The recipe's Good for company verdict in a rating dialog: Owners choose it (undefined = untouched), others read it. */
+function useCompanyEdit(ratings: RatingSummary | undefined) {
+  const can = useCan()("recipe.company");
+  const [picked, setPicked] = useState<Company | null | undefined>(undefined);
+  const verdict = (ratings?.company as Company | null | undefined) ?? null;
+  const value = picked !== undefined ? picked : verdict;
+  return { can, value, set: setPicked, reset: () => setPicked(undefined), change: can && picked !== undefined && picked !== verdict ? picked : undefined,
+    ratings };
+}
+type CompanyEdit = ReturnType<typeof useCompanyEdit>;
+
+/** The score, note, the recipe's Good for company verdict, and its "So far" + earlier notes. */
+function RatingFields({ f, set, company, before, whose, me }: { f: Fields; set: (f: Partial<Fields>) => void; company: CompanyEdit;
   before?: ReactNode; whose: string; me: number | null }) {
+  const ratings = company.ratings;
   const soFar = summaryText(ratings);
   const notes = ratings?.notes ?? [];
   return (
@@ -144,15 +178,7 @@ function RatingFields({ f, set, ratings, before, whose, me }: { f: Fields; set: 
         <legend>{whose}: was it a hit? <small>1 = not again, 5 = a big hit</small></legend>
         <StarsInput value={f.stars} onChange={(stars) => set({ stars })} label="Rating" />
       </fieldset>
-      <fieldset className="field-set">
-        <legend>Would you make it for company? <small>Optional. Choose your answer again to clear it.</small></legend>
-        <div className="seg company" role="radiogroup" aria-label="Would you make it for company?">
-          {COMPANY.map(([v, label]) => (
-            <button key={v} type="button" role="radio" aria-checked={f.company === v} className={f.company === v ? "on" : ""}
-              onClick={() => set({ company: f.company === v ? null : v })}>{label}</button>
-          ))}
-        </div>
-      </fieldset>
+      {company.can ? <CompanyChoice value={company.value} onChange={company.set} /> : ratings && <p className="muted small company-ro">{companyText(ratings)}</p>}
       <label className="field">
         <span>Note <small>(optional)</small></span>
         <textarea rows={3} value={f.note} maxLength={500} onChange={(e) => set({ note: e.target.value })}
@@ -184,6 +210,7 @@ export function RateDialog({ entry, onClose }: { entry: PlanEntry | null; onClos
   const recipe = useRecipe(entry?.recipe_id ?? null).data;
   const { me, options } = useRaters(!!entry);
   const [f, set] = useFields();
+  const company = useCompanyEdit(recipe?.ratings);
   const [who, setWho] = useState<number | null>(null);
   const [shown, setShown] = useState<number | null>(null);
   const target = !entry ? null : who == null ? entry.my_rating ?? null : ratingOf(entry.ratings, who, me);
@@ -191,6 +218,7 @@ export function RateDialog({ entry, onClose }: { entry: PlanEntry | null; onClos
     setShown(entry.id);
     setWho(null);
     set(fieldsOf(entry.my_rating));
+    company.reset();
   }
   useEffect(() => { if (entry) rate.reset(); }, [entry?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   const close = () => { setShown(null); onClose(); };
@@ -198,7 +226,7 @@ export function RateDialog({ entry, onClose }: { entry: PlanEntry | null; onClos
     setWho(id);
     set(fieldsOf(id == null ? entry?.my_rating : ratingOf(entry?.ratings, id, me)));
   };
-  const save = () => entry && rate.mutate({ id: entry.id, rating: toRatingIn(f), member: who }, { onSuccess: close });
+  const save = () => entry && rate.mutate({ id: entry.id, rating: toRatingIn(f, company.change), member: who }, { onSuccess: close });
   const title = entry?.title ?? recipe?.title ?? "this recipe";
   const others = (entry?.ratings ?? []).filter((r) => (r.member_id ?? null) !== (who ?? me ?? null));
   return (
@@ -209,7 +237,7 @@ export function RateDialog({ entry, onClose }: { entry: PlanEntry | null; onClos
         <Button kind="outline" onClick={close}>Cancel</Button>
         <Button kind="primary" onClick={save} disabled={!f.stars || rate.isPending}>{target ? "Update rating" : "Save rating"}</Button>
       </>}>
-      <RatingFields f={f} set={set} ratings={recipe?.ratings} me={me} whose={whoseLabel(options, who)} before={<>
+      <RatingFields f={f} set={set} company={company} me={me} whose={whoseLabel(options, who)} before={<>
         <RatingFor options={options} who={who} onChange={pickWho} />
         {others.length > 0 && <>
           <h3 className="section-h" id="night-ratings">This dinner so far</h3>
@@ -252,6 +280,7 @@ export function RateRecipeDialog({ recipe, onClose }: { recipe: Recipe | null; o
   const { me, options } = useRaters(!!recipe);
   const today = toISO(new Date());
   const [f, set] = useFields();
+  const company = useCompanyEdit(d?.ratings);
   const [day, setDay] = useState(today);
   const [who, setWho] = useState<number | null>(null);
   const [shown, setShown] = useState<string | null>(null);
@@ -264,6 +293,7 @@ export function RateRecipeDialog({ recipe, onClose }: { recipe: Recipe | null; o
     setDay(start);
     setWho(null);
     set(fieldsOf(cookedOn(d, start, null, me).rating));
+    company.reset();
   }
   useEffect(() => { if (recipe) rate.reset(); }, [recipe?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   const at = cookedOn(d, day, who, me);
@@ -278,7 +308,7 @@ export function RateRecipeDialog({ recipe, onClose }: { recipe: Recipe | null; o
     set(fieldsOf(cookedOn(d, day, id, me).rating));
   };
   const close = () => { setShown(null); onClose(); };
-  const save = () => recipe && rate.mutate({ id: recipe.id, day, rating: toRatingIn(f), member: who }, { onSuccess: close });
+  const save = () => recipe && rate.mutate({ id: recipe.id, day, rating: toRatingIn(f, company.change), member: who }, { onSuccess: close });
   const whoName = options.find((o) => o.id === who)?.label;
   const last = lastRatingText(d?.ratings ?? recipe?.ratings, who, me, whoName);
   const others = at.ratings.filter((r) => r !== at.rating);
@@ -291,7 +321,7 @@ export function RateRecipeDialog({ recipe, onClose }: { recipe: Recipe | null; o
         <Button kind="primary" onClick={save} disabled={!ready || !f.stars || rate.isPending}>{at.rating ? "Update rating" : "Save rating"}</Button>
       </>}>
       {!ready ? (detail.error ? <ErrorNote error={detail.error} /> : <Loading />) : (
-        <RatingFields f={f} set={set} ratings={d?.ratings} me={me} whose={whoseLabel(options, who)} before={<>
+        <RatingFields f={f} set={set} company={company} me={me} whose={whoseLabel(options, who)} before={<>
           <RatingFor options={options} who={who} onChange={pickWho} />
           {last && <p className="muted small">{last}</p>}
           <label className="field cooked-on">

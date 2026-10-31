@@ -16,6 +16,9 @@ export type RatingIn = S["RatingIn"];
 export type RecipeRatingOut = S["RecipeRatingOut"];
 export type PersonRating = S["PersonRating"];
 export type PersonSummary = S["PersonSummary"];
+export type CompanyOut = S["CompanyOut"];
+/** The household's Good for company verdict for a recipe (null = not decided). */
+export type Company = "yes" | "maybe" | "no";
 
 /** GET /household/members (a plain dict on the server). */
 export interface Member {
@@ -32,7 +35,7 @@ export interface Member {
 export type Permission =
   | "recipe.read" | "plan.read" | "rate.self" | "rate.for_children" | "request.create" | "plan.edit" | "recipe.edit"
   | "fridge.edit" | "request.approve" | "cart.build" | "cart.send" | "members.manage" | "roles.assign"
-  | "household.settings";
+  | "household.settings" | "recipe.company";
 
 export interface Household {
   id: number;

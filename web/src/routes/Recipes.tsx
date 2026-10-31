@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useAddToWeek, useCan, useMemberId, useRecipe, useRecipes } from "../api/queries";
-import type { Recipe } from "../api/types";
+import { useAddToWeek, useCan, useMemberId, useRecipe, useRecipes, useSetCompany } from "../api/queries";
+import type { Company, Recipe } from "../api/types";
 import { Icon, Star } from "../components/Icon";
 import { ImportDialog } from "../components/ImportDialog";
-import { lastRatingText, MiniStars, PeopleChips, PeopleRatings, personName, RateRecipeDialog } from "../components/Rating";
+import { CompanyChoice, companyText, lastRatingText, MiniStars, PeopleChips, PeopleRatings, personName, RateRecipeDialog } from "../components/Rating";
 import { EditRecipeDialog, EditSourceDialog } from "../components/RecipeEdit";
 import { Button, ErrorNote, Loading, Modal, Photo, useToast } from "../components/ui";
 import { amount, formatAvg, formatMinutes } from "../lib/format";
@@ -84,7 +84,7 @@ export function Recipes() {
   );
 }
 
-const NO_COMPANY = "None rated good for company yet. After dinner, rate it and answer “Yes” to “Would you make it for company?”.";
+const NO_COMPANY = "None marked good for company yet. An Owner can answer “Good for company?” on a recipe.";
 
 function RecipeTile({ r, onOpen, onRate }: { r: Recipe; onOpen: () => void; onRate?: () => void }) {
   const planned = r.planned_weeks?.length ? weekName(r.planned_weeks[0]) : null;
@@ -123,6 +123,7 @@ function RecipeDrawer({ id, onClose, onRate }: { id: number | null; onClose: () 
   const r = useRecipe(id);
   const can = useCan();
   const add = useAddToWeek();
+  const setCompany = useSetCompany();
   const toast = useToast();
   const thisWeek = weekOf(new Date());
   const [week, setWeek] = useState(shiftWeek(thisWeek, 1));
@@ -172,9 +173,17 @@ function RecipeDrawer({ id, onClose, onRate }: { id: number | null; onClose: () 
                   </li>
                 ))}
               </ul>
-              {d.ratings.people.some((p) => p.kind === "family") && <p className="muted small">Family = ratings from before everyone rated for themselves, and from the shared phone app.</p>}
+              {d.ratings.people.some((p) => p.kind === "family") && <p className="muted small">Family = ratings from before everyone rated for themselves.</p>}
             </section>
           )}
+          <section className="company-verdict" aria-label="Good for company">
+            {can("recipe.company")
+              ? <CompanyChoice value={(d.ratings.company as Company | null | undefined) ?? null} disabled={setCompany.isPending} hint={false}
+                  onChange={(c) => setCompany.mutate({ id: d.id, company: c })} />
+              : <p className="muted small">{companyText(d.ratings)}</p>}
+            {can("recipe.company") && <p className="muted small">{d.ratings.company_set_by_name ? `Set by ${d.ratings.company_set_by_name}. ` : d.ratings.company ? "" : "Not decided yet. "}One answer for the household; choose it again to clear it.</p>}
+            <ErrorNote error={setCompany.error} />
+          </section>
           {d.description && <p>{d.description}</p>}
 
           {can("plan.edit") && (
