@@ -48,8 +48,9 @@ private window): merging into an already signed-in session doesn't work.
 web/deploy/deploy.sh   # build, rsync dist/ + Caddyfile + compose.yaml to ~/meal-prep/web/, docker compose up
 ```
 
-On the docker server the `mealprep-web` container (caddy, read-only, LAN port 8793) serves `dist/` with the CSP and
-cache headers in `deploy/Caddyfile`. The host's main `caddy` container is the public front door for
-`mealprep.drwhom.ca`: `/api/*` → the FastAPI service on :8790 (prefix stripped; FastAPI's `/docs` and `openapi.json`
-answer 404 there), everything else → :8793. The server must not trust `X-Forwarded-For` from that proxy: the shared
-token is judged by the caller's address and is refused through the public site.
+On the docker server the `mealprep-web` container (caddy, read-only, LAN port 8793) is the whole site's origin: the
+Cloudflare tunnel (cloudflared on the host; `mealprep.drwhom.ca` is a proxied CNAME to the tunnel) sends every request
+there. It serves `dist/` with the CSP and cache headers in `deploy/Caddyfile` and passes `/api/*` to the FastAPI
+service on :8790 with the prefix stripped (ufw allows that from its compose network, 172.24.0.0/16); FastAPI's `/docs`
+and `openapi.json` answer 404 there. The server must not trust `X-Forwarded-For`: the shared token is judged by the
+caller's address, so it is refused through the public site.

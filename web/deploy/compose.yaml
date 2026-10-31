@@ -1,6 +1,6 @@
-# The web app's origin on the docker server (~/meal-prep/web/, compose project "mealprep-web"), next to the API's
-# ~/meal-prep/docker-compose.yml. The host's main "caddy" container serves mealprep.drwhom.ca: /api/* → :8790 (the
-# FastAPI user service), everything else → here.
+# mealprep.drwhom.ca's origin on the docker server (~/meal-prep/web/, compose project "mealprep-web"), next to the
+# API's ~/meal-prep/docker-compose.yml. The Cloudflare tunnel sends the site here; this container serves the web app
+# and passes /api/* to the FastAPI user service on the host's :8790.
 name: mealprep-web
 
 services:
@@ -9,7 +9,7 @@ services:
     container_name: mealprep-web
     restart: unless-stopped
     ports:
-      - "192.168.1.101:8793:8080"   # LAN only; the public side is the main caddy
+      - "192.168.1.101:8793:8080"   # LAN only; the public side is the Cloudflare tunnel (cloudflared on the host)
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./dist:/srv:ro              # web/dist from the repo (deploy.sh, rsync --delete)
@@ -35,3 +35,9 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.24.0.0/16   # fixed: ufw lets this subnet reach the API on :8790

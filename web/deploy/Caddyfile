@@ -4,13 +4,26 @@
 	persist_config off
 }
 
-# Origin for mealprep.drwhom.ca's web app (static files from `npm run build`). The public front door (TLS, /api → the
-# FastAPI server) is the docker server's main "caddy" container; it reverse-proxies the rest to this one.
+# Origin for mealprep.drwhom.ca: the Cloudflare tunnel (cloudflared on the host, TLS at Cloudflare) sends every
+# request here. /api/* goes on to the FastAPI user service on the host's :8790 with the prefix stripped (ufw allows
+# it from this compose network, 172.24.0.0/16); the rest is the web app's static files.
 :8080 {
-	root * /srv
 	encode zstd gzip
 
+	# FastAPI's generated docs stay on the LAN (http://192.168.1.101:8790/docs).
+	@apidocs path /api/docs /api/docs/* /api/redoc /api/openapi.json
+	handle @apidocs {
+		respond 404
+	}
+	# The server judges the shared token by the caller's address: it sees this container's, never a client's, so the
+	# token is refused through the public site. Don't add X-Forwarded-For trust on the server side.
+	handle_path /api/* {
+		reverse_proxy 192.168.1.101:8790
+	}
+
+	# CSP etc. are set for the app's pages; JSON from /api doesn't need them but they do no harm there.
 	header {
+		Strict-Transport-Security "max-age=15552000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
@@ -30,6 +43,9 @@
 	header @pages Cache-Control "no-cache"
 
 	# A single-page app: any path that isn't a file is the app's route.
-	try_files {path} /index.html
-	file_server
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
 }
