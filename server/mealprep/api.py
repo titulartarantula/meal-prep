@@ -162,6 +162,16 @@ class RatingIn(BaseModel):
         return (v.strip() or None) if v is not None else None
 
 
+class RecipeRatingIn(RatingIn):
+    cooked_on: date | None = None    # the day it was cooked; omitted = the dinner waiting for a rating, else today
+
+
+class RecipeRatingOut(BaseModel):
+    cooked_on: str
+    entry_id: int | None = None          # the planned night that took the rating
+    recipe_rating_id: int | None = None  # else the recipe's own rating for that day
+
+
 class ListIn(BaseModel):
     weeks: list[date]
     people: int = 4
@@ -857,7 +867,26 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         return RecipeDetail(**r.model_dump(), ratings=db.rating_summaries(c, today(), [recipe_id])[recipe_id],
                             planned_weeks=db.planned_weeks(c, today(), [recipe_id]).get(recipe_id, []),
                             history=db.recipe_history(c, recipe_id),
-                            imported_history=db.imported_history(c, recipe_id))
+                            imported_history=db.imported_history(c, recipe_id),
+                            rated_history=db.recipe_rated_history(c, recipe_id))
+
+    @app.put("/recipes/{recipe_id}/rating", dependencies=A)
+    def put_recipe_rating(recipe_id: int, body: RecipeRatingIn, c=Depends(get_conn)) -> RecipeRatingOut:
+        """Rate the recipe from the recipe itself (not from a night on the plan). cooked_on (default: the newest dinner
+        of it still waiting for a rating, else today) can't be later than today. A night on the plan for it that day
+        takes the rating, so it's the same as rating that dinner; otherwise it's one rating per recipe and day."""
+        if body.cooked_on is not None and body.cooked_on > today():
+            raise HTTPException(422, "cooked_on can't be in the future")
+        out = db.rate_recipe(c, recipe_id, body.family, body.company, body.note, today(), body.cooked_on)
+        if out is None:
+            raise HTTPException(404, f"recipe {recipe_id}")
+        return RecipeRatingOut(**out)
+
+    @app.delete("/recipes/{recipe_id}/rating", status_code=204, dependencies=A)
+    def delete_recipe_rating(recipe_id: int, cooked_on: date = Query(...), c=Depends(get_conn)):
+        """Remove the rating of the time it was cooked that day (the planned night's or the recipe's own)."""
+        if not db.unrate_recipe(c, recipe_id, cooked_on):
+            raise HTTPException(404, f"recipe {recipe_id}")
 
     @app.get("/ratings/pending", dependencies=A)
     def ratings_pending(today_: date | None = Query(None, alias="today"), c=Depends(get_conn)):

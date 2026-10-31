@@ -416,13 +416,82 @@ def delete_rating(conn, entry_id: int) -> bool:
     return True
 
 
+# --- ratings from the recipe (not a planned night): one per recipe and day, in recipe_ratings ---
+
+def _night_entry(conn, recipe_id: int, day: date) -> int | None:
+    """The recipe's plan entry placed on that night (an unrated one first), or None."""
+    row = conn.execute("SELECT p.id FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id WHERE p.recipe_id=%s "
+                       "AND p.day IS NOT NULL AND p.week + p.day::int = %s ORDER BY r.plan_id IS NOT NULL, p.id LIMIT 1",
+                       (recipe_id, day)).fetchone()
+    return row[0] if row else None
+
+
+def rate_recipe(conn, recipe_id: int, family: int, company: str | None, note: str | None, today: date,
+                cooked_on: date | None = None) -> dict | None:
+    """Rate a time the recipe was cooked, from the recipe itself. Without cooked_on, the newest dinner of this recipe
+    still waiting for a rating (GET /ratings/pending) takes it, else today. A night on the plan for the recipe on that
+    day takes the rating (the same as PUT /plan/{id}/rating), else it's the recipe's rating for that day (made or
+    overwritten). Returns {cooked_on, entry_id, recipe_rating_id}; None if the recipe doesn't exist."""
+    if conn.execute("SELECT 1 FROM recipes WHERE id=%s", (recipe_id,)).fetchone() is None:
+        return None
+    if cooked_on is None:
+        waiting = next((p for p in pending_ratings(conn, today) if p["recipe_id"] == recipe_id), None)
+        if waiting:
+            set_rating(conn, waiting["entry_id"], family, company, note)
+            return {"cooked_on": waiting["date"], "entry_id": waiting["entry_id"], "recipe_rating_id": None}
+        cooked_on = today
+    eid = _night_entry(conn, recipe_id, cooked_on)
+    if eid is not None:
+        set_rating(conn, eid, family, company, note)
+        return {"cooked_on": cooked_on.isoformat(), "entry_id": eid, "recipe_rating_id": None}
+    with conn.transaction():
+        rrid = conn.execute(
+            "INSERT INTO recipe_ratings(recipe_id, cooked_on, family, company, note) VALUES(%s,%s,%s,%s,%s) "
+            "ON CONFLICT(household_id, recipe_id, cooked_on) DO UPDATE SET family=excluded.family, "
+            "company=excluded.company, note=excluded.note, rated_at=now() RETURNING id",
+            (recipe_id, cooked_on, family, company, note)).fetchone()[0]
+        conn.execute("INSERT INTO rating_history(plan_id, recipe_rating_id, recipe_id, week, day, action, family, "
+                     "company, note) VALUES(NULL,%s,%s,%s,%s,'set',%s,%s,%s)",
+                     (rrid, recipe_id, week_start(cooked_on), (cooked_on.weekday() + 1) % 7, family, company, note))
+    return {"cooked_on": cooked_on.isoformat(), "entry_id": None, "recipe_rating_id": rrid}
+
+
+def unrate_recipe(conn, recipe_id: int, cooked_on: date) -> bool:
+    """Remove the rating of the time the recipe was cooked on that day: the planned night's, else the recipe's own.
+    False if the recipe doesn't exist."""
+    if conn.execute("SELECT 1 FROM recipes WHERE id=%s", (recipe_id,)).fetchone() is None:
+        return False
+    row = conn.execute("SELECT p.id FROM plan p JOIN ratings r ON r.plan_id = p.id WHERE p.recipe_id=%s "
+                       "AND p.day IS NOT NULL AND p.week + p.day::int = %s ORDER BY p.id LIMIT 1",
+                       (recipe_id, cooked_on)).fetchone()
+    if row:
+        return delete_rating(conn, row[0])
+    with conn.transaction():
+        gone = conn.execute("DELETE FROM recipe_ratings WHERE recipe_id=%s AND cooked_on=%s RETURNING id",
+                            (recipe_id, cooked_on)).fetchone()
+        if gone:
+            conn.execute("INSERT INTO rating_history(plan_id, recipe_rating_id, recipe_id, week, day, action) "
+                         "VALUES(NULL,%s,%s,%s,%s,'delete')",
+                         (gone[0], recipe_id, week_start(cooked_on), (cooked_on.weekday() + 1) % 7))
+    return True
+
+
+def recipe_rated_history(conn, recipe_id: int) -> list[dict]:
+    """The recipe's ratings made from the recipe (not a planned night), newest day first."""
+    rows = conn.execute("SELECT cooked_on, family, company, note, rated_at FROM recipe_ratings WHERE recipe_id=%s "
+                        "ORDER BY cooked_on DESC, id DESC", (recipe_id,))
+    return [{"date": d.isoformat(), "rating": _rating(f, c, n, at).model_dump()} for d, f, c, n, at in rows]
+
+
 def pending_ratings(conn, today: date, days: int = 14) -> list[dict]:
     """Entries placed on a night before today (within `days`) that have no rating yet — most recent first."""
     rows = conn.execute(
         "SELECT p.id, p.week, p.day, p.week + p.day::int AS d, p.recipe_id, r.title, p.multiplier "
         "FROM plan p JOIN recipes r ON r.id = p.recipe_id "
         "WHERE p.day IS NOT NULL AND p.week + p.day::int < %(t)s AND p.week + p.day::int >= %(t)s - %(n)s::int "
-        "AND NOT EXISTS (SELECT 1 FROM ratings x WHERE x.plan_id = p.id) ORDER BY d DESC, p.id",
+        "AND NOT EXISTS (SELECT 1 FROM ratings x WHERE x.plan_id = p.id) "
+        "AND NOT EXISTS (SELECT 1 FROM recipe_ratings y WHERE y.recipe_id = p.recipe_id "
+        "AND y.cooked_on = p.week + p.day::int) ORDER BY d DESC, p.id",
         {"t": today, "n": days})
     return [{"entry_id": i, "week": w.isoformat(), "day": dy, "date": d.isoformat(), "recipe_id": rid, "title": t,
              "multiplier": m} for i, w, dy, d, rid, t, m in rows]
@@ -443,6 +512,8 @@ def rating_summaries(conn, today: date, recipe_ids: list[int] | None = None) -> 
         "SELECT * FROM (SELECT p.recipe_id, p.week + p.day::int, r.family, r.company, r.note, r.rated_at, false, "
         "p.id FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id" + ids.format("p.recipe_id")
         + " UNION ALL SELECT recipe_id, cooked_on, family, company, note, rated_at, true, -id FROM imported_ratings"
+        + ids.format("recipe_id")
+        + " UNION ALL SELECT recipe_id, cooked_on, family, company, note, rated_at, false, 0 FROM recipe_ratings"
         + ids.format("recipe_id") + ") x ORDER BY 6 DESC NULLS LAST, 8 DESC", {"ids": recipe_ids})
     totals: dict[int, int] = {}
     for rid, cooked_on, family, company, note, rated_at, imported, _ in rows:   # rated rows newest first
@@ -490,8 +561,8 @@ def recipe_history(conn, recipe_id: int) -> list[dict]:
 
 def rating_entries(conn, today: date, recipe_ids: list[int] | None = None) -> dict[int, list[dict]]:
     """{recipe_id: [entry, …]} — every time cooked, for the export's `mealprep:ratings.entries`: plan entries that are
-    rated or were placed on a night before today (so times_cooked survives a trip to another library), and the
-    imported ones. Each entry: date (the night, or null), multiplier, family, company, note, rated_at. Newest first
+    rated or were placed on a night before today (so times_cooked survives a trip to another library), the ratings
+    made from the recipe (recipe_ratings) and the imported ones. Each entry: date (the night, or null), multiplier, family, company, note, rated_at. Newest first
     (rated_at, else the night)."""
     ids = "" if recipe_ids is None else " AND {} = ANY(%(ids)s)"
     rows = conn.execute(
@@ -499,6 +570,8 @@ def rating_entries(conn, today: date, recipe_ids: list[int] | None = None) -> di
         "r.rated_at, p.id AS k FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id "
         "WHERE (r.plan_id IS NOT NULL OR (p.day IS NOT NULL AND p.week + p.day::int < %(t)s))" + ids.format("p.recipe_id")
         + " UNION ALL SELECT recipe_id, cooked_on, multiplier, family, company, note, rated_at, -id FROM imported_ratings"
+        " WHERE true" + ids.format("recipe_id")
+        + " UNION ALL SELECT recipe_id, cooked_on, 1::real, family, company, note, rated_at, 0 FROM recipe_ratings"
         " WHERE true" + ids.format("recipe_id")
         + ") x ORDER BY COALESCE(rated_at, d::timestamptz) DESC NULLS LAST, k DESC", {"t": today, "ids": recipe_ids})
     out: dict[int, list[dict]] = {}

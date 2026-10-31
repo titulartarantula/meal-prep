@@ -269,6 +269,23 @@ CREATE TABLE IF NOT EXISTS imported_ratings(
   UNIQUE(recipe_id, fingerprint)
 );
 
+-- Ratings from the recipe itself (2026-10-31, web "Rate" on a recipe card): a time cooked that wasn't a planned night
+-- (or whose night was never placed). One per recipe and day; rating it again that day overwrites. A night on the plan
+-- for the recipe on that day takes the rating instead (PUT /recipes/{id}/rating), so the two never double up. They
+-- count in the summary like plan ratings; rating_history logs them with plan_id NULL + recipe_rating_id.
+CREATE TABLE IF NOT EXISTS recipe_ratings(
+  id bigserial PRIMARY KEY,
+  recipe_id int NOT NULL REFERENCES recipes ON DELETE CASCADE,
+  cooked_on date NOT NULL,
+  family smallint NOT NULL CHECK (family BETWEEN 1 AND 5),
+  company text CHECK (company IN ('yes','maybe','no')),
+  note text,
+  rated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS recipe_ratings_recipe_idx ON recipe_ratings(recipe_id);
+ALTER TABLE rating_history ALTER COLUMN plan_id DROP NOT NULL;
+ALTER TABLE rating_history ADD COLUMN IF NOT EXISTS recipe_rating_id bigint;
+
 -- Import jobs (2026-10-06): POST /recipes/import with dry_run=false saves in the background (the AI tidies foreign
 -- ingredient lines). report = the per-item results so far (the GET /imports/{id} body); file_sha + choices_sha make a
 -- retried apply of the same file and choices return the same job instead of starting another.
@@ -550,7 +567,8 @@ DECLARE
   first_id int := (SELECT min(id) FROM households);
   owned text[] := ARRAY['recipes','plan','picks','pick_history','carts','cart_weeks','cart_lines','ratings',
                         'rating_history','prep_plans','prep_tasks','prep_task_events','cook_cards','staples',
-                        'imported_ratings','import_jobs','extras','fridge_items','fridge_reads','fridge_nudges'];
+                        'imported_ratings','import_jobs','extras','fridge_items','fridge_reads','fridge_nudges',
+                        'recipe_ratings'];
 BEGIN
   FOREACH t IN ARRAY owned LOOP
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
@@ -580,6 +598,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS recipes_household_source_url_idx ON recipes(ho
 DROP INDEX IF EXISTS recipes_uid_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS recipes_household_uid_idx ON recipes(household_id, uid);
 DROP INDEX IF EXISTS fridge_items_key_unit_idx;
+CREATE UNIQUE INDEX IF NOT EXISTS recipe_ratings_household_recipe_day_idx ON recipe_ratings(household_id, recipe_id, cooked_on);
 CREATE UNIQUE INDEX IF NOT EXISTS fridge_items_household_key_unit_idx ON fridge_items(household_id, key, coalesce(unit, ''));
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'picks_pkey'

@@ -182,7 +182,7 @@ class RatingNote(BaseModel):
 
 
 class RatingSummary(BaseModel):
-    times_cooked: int = 0        # entries on a past night, or rated
+    times_cooked: int = 0        # entries on a past night, or rated; ratings made from the recipe; imported
     times_rated: int = 0
     avg_family: float | None = None
     last_family: int | None = None
@@ -230,7 +230,13 @@ class ImportedEntry(BaseModel):
     rated_at: str | None = None
 
 
+class RatedEntry(BaseModel):
+    date: str                    # the day it was cooked
+    rating: Rating
+
+
 class RecipeDetail(RecipeOut):
     history: list[CookedEntry] = []
     imported_history: list[ImportedEntry] = []   # times cooked brought in by an import, newest first
+    rated_history: list[RatedEntry] = []         # rated from the recipe, not a planned night (PUT /recipes/{id}/rating)
 

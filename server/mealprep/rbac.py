@@ -44,6 +44,8 @@ ROUTES: dict[tuple[str, str], str] = {
     # one household rating per dinner until per-person ratings (task 5)
     ("PUT", "/plan/{entry_id}/rating"): "rate.self",
     ("DELETE", "/plan/{entry_id}/rating"): "rate.self",
+    ("PUT", "/recipes/{recipe_id}/rating"): "rate.self",
+    ("DELETE", "/recipes/{recipe_id}/rating"): "rate.self",
     # Sunday prep + cook cards: retired 2026-10-31, these answer 410 (kept so an older app gets a clear answer)
     ("POST", "/prep-plans"): "plan.edit",
     ("GET", "/prep-plans/{plan_id}"): "plan.read",

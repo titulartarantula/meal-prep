@@ -422,7 +422,8 @@ def select(cands: list[Candidate], items: list[FridgeItem], nights: int, planned
 def _last_cooked(conn, today: date) -> dict[int, date]:
     rows = conn.execute("SELECT recipe_id, max(d) FROM (SELECT recipe_id, week + day::int AS d FROM plan "
                         "WHERE day IS NOT NULL AND week + day::int < %(t)s UNION ALL SELECT recipe_id, cooked_on FROM "
-                        "imported_ratings WHERE cooked_on IS NOT NULL) x GROUP BY recipe_id", {"t": today})
+                        "imported_ratings WHERE cooked_on IS NOT NULL UNION ALL SELECT recipe_id, cooked_on FROM "
+                        "recipe_ratings WHERE cooked_on < %(t)s) x GROUP BY recipe_id", {"t": today})
     return dict(rows.fetchall())
 
 
