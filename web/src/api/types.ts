@@ -13,6 +13,7 @@ export type Rating = S["Rating"];
 export type ListItem = S["ListItem"];
 export type Staple = S["Staple"];
 export type RatingIn = S["RatingIn"];
+export type RecipeRatingOut = S["RecipeRatingOut"];
 
 export type Permission =
   | "recipe.read" | "plan.read" | "rate.self" | "rate.for_children" | "request.create" | "plan.edit" | "recipe.edit"

@@ -59,6 +59,7 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 | "Would you make it for company?" Yes / Maybe / No | Yes | Choose the same answer again to clear it. |
 | "So far" + earlier notes in the rating screen | Yes | |
 | "How was …?" banner (newest unrated dinner, Later) | Yes | Later hides it on that browser until tomorrow. Past nights also show "How was it?" on their card. |
+| Rate a recipe from the recipe itself (not from a night on the plan) | Yes (web only) | Web: a star button on each recipe card and Rate in the recipe drawer; "Cooked on" (the dinner of it still waiting for a rating, else today), your last rating. A dinner of it on the plan that day takes the rating, so nothing is counted twice. Server: `PUT` / `DELETE /recipes/{id}/rating`. **Android doesn't have it yet**; it could use the same endpoints later (it already shows these ratings in the recipe's summary). |
 
 ## Shopping and cart
 

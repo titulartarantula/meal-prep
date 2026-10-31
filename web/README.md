@@ -2,7 +2,7 @@
 
 The web version of Meal Prep: sign in with Google, plan the week, keep the recipe library (edit a recipe or its
 source, with the book search), rate dinners (family score, good for company, a note; the "How was …?" banner for the
-newest unrated one), make the shopping list, review the cart and send it to Loblaws. Laptop first, and responsive for phones and tablets (same URLs). React + Vite + TypeScript, TanStack Query; the "Stone" design
+newest unrated one) or a recipe straight from its card (the day it was cooked), make the shopping list, review the cart and send it to Loblaws. Laptop first, and responsive for phones and tablets (same URLs). React + Vite + TypeScript, TanStack Query; the "Stone" design
 (warm greige, one olive accent, Inter bundled with the build — no CDN).
 
 It talks to the FastAPI server under `/api` (Caddy strips the prefix and proxies to the server; same origin, so no
@@ -37,7 +37,7 @@ app. There is no service worker: it needs the network, like the laptop version.
 npm test             # unit tests (weeks, formatting, cart maths, Edit recipe's PATCH body, books and sources) + WCAG AA
                      # contrast of every theme token pair
 npm run e2e          # Playwright against the mock API: sign-in, week (move/drag/rate/add), recipes + import,
-                     # rating (banner + Later, company, earlier notes, Good for company), edit recipe (409) + edit source (book search),
+                     # rating (banner + Later, company, earlier notes, Good for company, Rate from a recipe card / drawer), edit recipe (409) + edit source (book search),
                      # list → build → review/swap/add → send → handoff; /privacy + /terms (no JS); axe WCAG 2.1 AA
                      # scan on every screen. Three projects: desktop (1440×900), pixel-7 and iphone-14 (phone layout:
                      # no horizontal scrolling, every control ≥ 48 px, tab bar, full-screen sheets; both in Chromium)

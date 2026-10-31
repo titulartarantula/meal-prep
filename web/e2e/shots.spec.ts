@@ -39,7 +39,7 @@ for (const scheme of ["light", "dark"] as const) {
     await page.getByRole("link", { name: "Recipes" }).click();
     await expect(page.getByRole("heading", { name: "Recipes" })).toBeVisible();
     await snap("07-recipes");
-    await page.getByRole("button", { name: /Roast chicken with lemon potatoes/ }).click();
+    await page.getByRole("button", { name: /^Roast chicken with lemon potatoes/ }).click();
     await snap("08-recipe");
     await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
     await page.getByRole("button", { name: "Add recipe" }).click();

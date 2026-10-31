@@ -16,6 +16,8 @@ function sunday(d = new Date(), weeks = 0) {
 
 interface Entry { id: number; week: string; recipe_id: number; day: number | null; multiplier: number;
   rating: { family: number; company: string | null; note: string | null; rated_at: string } | null }
+/** A rating made from the recipe (PUT /recipes/{id}/rating) for a day with no dinner of it on the plan. */
+interface Rated { recipe_id: number; cooked_on: string; rating: NonNullable<Entry["rating"]> }
 interface Line { id: number; item_key: string; name: string; qty: number | null; unit: string | null; recipes: string[];
   product: ReturnType<typeof product> | null; quantity: number | null; source: string; alternatives: unknown[];
   removed: boolean; status: string; staple: boolean; pinned: boolean; note: string | null; why: string | null;
@@ -43,7 +45,7 @@ function fresh() {
   const sent: Draft = { id: 1, status: "sent", weeks: [sunday()], lines: [], pcx_cart_id: "8f3c2d1e-0000-4000-8000-000000000001",
     created_at: new Date(Date.now() - 6 * 864e5).toISOString(), sent_at: new Date(Date.now() - 6 * 864e5).toISOString(), built: 0, total: 0 };
   const recipes: (MockRecipe & { revision: number; notesText?: string | null })[] = structuredClone(RECIPES).map((r) => ({ ...r, revision: 1 }));
-  return { nextId: 500, entries, drafts: [sent] as Draft[], imports: new Map<number, number>(), recipes };
+  return { nextId: 500, entries, rated: [] as Rated[], drafts: [sent] as Draft[], imports: new Map<number, number>(), recipes };
 }
 
 export function mockApi(): Plugin {
@@ -92,13 +94,47 @@ export function mockApi(): Plugin {
       res.writeHead(204, { "Set-Cookie": `${COOKIE}=; Path=/; Max-Age=0` });
       return res.end();
     }
-    if (path === "/recipes" && m === "GET") return send(res, 200, db.recipes.map((r) => recipeOut(r, db.entries)));
+    if (path === "/recipes" && m === "GET") return send(res, 200, db.recipes.map((r) => recipeOut(r, db.entries, db.rated)));
     if ((g = path.match(/^\/recipes\/(\d+)$/)) && m === "GET") {
       const r = db.recipes.find((x) => x.id === Number(g![1]));
       if (!r) return send(res, 404, { detail: "recipe" });
       const history = db.entries.filter((e) => e.recipe_id === r.id && e.day != null).map((e) => ({
         entry_id: e.id, week: e.week, day: e.day, date: iso(addDays(e.week, e.day!)), multiplier: 1, rating: e.rating }));
-      return send(res, 200, { ...recipeOut(r, db.entries), history, imported_history: [] });
+      const rated_history = db.rated.filter((x) => x.recipe_id === r.id).sort((a, b) => b.cooked_on.localeCompare(a.cooked_on))
+        .map((x) => ({ date: x.cooked_on, rating: x.rating }));
+      return send(res, 200, { ...recipeOut(r, db.entries, db.rated), history, imported_history: [], rated_history });
+    }
+    if ((g = path.match(/^\/recipes\/(\d+)\/rating$/))) {
+      // as the server: the dinner waiting for a rating (no day sent), a dinner of it on the plan that day, else the
+      // recipe's own rating for that day
+      const rid = Number(g[1]);
+      if (!db.recipes.some((x) => x.id === rid)) return send(res, 404, { detail: "recipe" });
+      const today = iso(new Date());
+      const b = (body ?? {}) as { family: number; company?: string | null; note?: string | null; cooked_on?: string | null };
+      let day = m === "DELETE" ? url.searchParams.get("cooked_on") : b.cooked_on ?? null;
+      if (m === "DELETE" && !day) return send(res, 422, { detail: "cooked_on" });
+      if (day && day > today) return send(res, 422, { detail: "cooked_on can't be in the future" });
+      const nightOf = (e: Entry) => (e.day == null ? null : iso(addDays(e.week, e.day)));
+      if (!day) {
+        const from = iso(new Date(Date.now() - 14 * 864e5));
+        const waiting = db.entries.filter((e) => e.recipe_id === rid && !e.rating && nightOf(e) && nightOf(e)! < today && nightOf(e)! >= from)
+          .sort((a, c) => nightOf(c)!.localeCompare(nightOf(a)!))[0];
+        day = waiting ? nightOf(waiting)! : today;
+      }
+      const nights = db.entries.filter((e) => e.recipe_id === rid && nightOf(e) === day);
+      const night = m === "DELETE" ? nights.find((e) => e.rating) : nights.find((e) => !e.rating) ?? nights[0];
+      if (m === "DELETE") {
+        if (night) night.rating = null;
+        else db.rated = db.rated.filter((x) => !(x.recipe_id === rid && x.cooked_on === day));
+        return send(res, 204);
+      }
+      const rating = { family: b.family, company: b.company ?? null, note: b.note?.trim() || null, rated_at: new Date().toISOString() };
+      if (night) {
+        night.rating = rating;
+        return send(res, 200, { cooked_on: day, entry_id: night.id, recipe_rating_id: null });
+      }
+      db.rated = [...db.rated.filter((x) => !(x.recipe_id === rid && x.cooked_on === day)), { recipe_id: rid, cooked_on: day, rating }];
+      return send(res, 200, { cooked_on: day, entry_id: null, recipe_rating_id: db.rated.length });
     }
     if ((g = path.match(/^\/recipes\/(\d+)$/)) && m === "PATCH") {
       const r = db.recipes.find((x) => x.id === Number(g![1]));
@@ -122,7 +158,7 @@ export function mockApi(): Plugin {
         r.source_author = (b.source_author as string | null) ?? undefined;
       }
       r.revision++;
-      return send(res, 200, recipeOut(r, db.entries));
+      return send(res, 200, recipeOut(r, db.entries, db.rated));
     }
     if (path === "/recipes/sources") {
       const groups = new Map<string, { key: string; kind: string; title: string | null; label: string; count: number; author: string | null; isbn: null }>();
@@ -144,7 +180,8 @@ export function mockApi(): Plugin {
     }
     if (path === "/ratings/pending") {
       const today = iso(new Date()), from = iso(new Date(Date.now() - 14 * 864e5));
-      return send(res, 200, db.entries.filter((e) => e.day != null && !e.rating)
+      return send(res, 200, db.entries.filter((e) => e.day != null && !e.rating &&
+          !db.rated.some((x) => x.recipe_id === e.recipe_id && x.cooked_on === iso(addDays(e.week, e.day!))))
         .map((e) => ({ e, date: iso(addDays(e.week, e.day!)) })).filter(({ date }) => date < today && date >= from)
         .sort((a, b) => b.date.localeCompare(a.date) || a.e.id - b.e.id)
         .map(({ e, date }) => ({ entry_id: e.id, week: e.week, day: e.day, date, recipe_id: e.recipe_id,
@@ -154,7 +191,7 @@ export function mockApi(): Plugin {
       const text = String((body as { text?: string })?.text ?? "");
       if (!/cooking\.nytimes\.com\/recipes\//.test(text)) return send(res, 422, { detail: "no NYT Cooking link found" });
       const r = db.recipes[8];
-      return send(res, 200, { recipe: recipeOut(r, db.entries), entry: null, existing: true });
+      return send(res, 200, { recipe: recipeOut(r, db.entries, db.rated), entry: null, existing: true });
     }
     if (path === "/recipes/import") {
       const dry = !/name="dry_run"\r\n\r\nfalse/.test(String(body));
@@ -325,9 +362,16 @@ function recipesFor(recipes: MockRecipe[], key: string): string[] {
   return recipes.filter((r) => r.ingredients.some(([, , n]) => n.includes(key.split(" ")[0]))).map((r) => r.title).slice(0, 2);
 }
 
-function recipeOut(r: MockRecipe & { revision?: number; notesText?: string | null }, entries: Entry[]) {
+function recipeOut(r: MockRecipe & { revision?: number; notesText?: string | null }, entries: Entry[], own: Rated[] = []) {
   // the household's own ratings on top of the invented history: newest first
-  const rated = entries.filter((e) => e.recipe_id === r.id && e.rating).sort((a, b) => b.rating!.rated_at.localeCompare(a.rating!.rated_at));
+  const rated = [...entries.filter((e) => e.recipe_id === r.id && e.rating),
+    ...own.filter((x) => x.recipe_id === r.id).map((x) => ({ day: 0, week: x.cooked_on, rating: x.rating }))]
+    .sort((a, b) => b.rating!.rated_at.localeCompare(a.rating!.rated_at));
+  // ratings made from the recipe count on top of the invented average (plan ratings don't, as before)
+  const mine = own.filter((x) => x.recipe_id === r.id);
+  const base = r.avg ? r.cooked : 0;
+  const times = base + mine.length;
+  const avg = times ? Math.round(((r.avg ?? 0) * base + mine.reduce((t, x) => t + x.rating.family, 0)) / times * 10) / 10 : null;
   const notes = [...rated.filter((e) => e.rating!.note).map((e) => ({ note: e.rating!.note!, date: e.day == null ? null : iso(addDays(e.week, e.day)),
     rated_at: e.rating!.rated_at })), ...(r.notes ?? []).map((note, i) => ({ note, date: iso(new Date(Date.now() - (30 + 14 * i) * 864e5)), rated_at: "2026-09-01T18:00:00Z" }))].slice(0, 5);
   const company = rated.find((e) => e.rating!.company)?.rating!.company ?? r.company ?? null;
@@ -337,8 +381,8 @@ function recipeOut(r: MockRecipe & { revision?: number; notesText?: string | nul
     total_minutes: r.minutes, image: r.photo ? `/api/_mock/photo/${r.photo}.svg` : null, description: r.description ?? null,
     ingredients: r.ingredients.map(([qty, unit, name, prep]) => ({ raw: [qty, unit, name].filter(Boolean).join(" "), name, qty, unit, prep: prep ?? null,
       likely_on_hand: false, expanded: false })),
-    steps: r.steps, ratings: { times_cooked: r.cooked, times_rated: r.avg ? r.cooked : 0, avg_family: r.avg, last_family: null,
-      last_rated_at: null, company, notes, imported_ratings: 0 }, planned_weeks: [], schema_extra: {}, revision: `r${r.revision ?? 1}` };
+    steps: r.steps, ratings: { times_cooked: r.cooked + mine.length, times_rated: times, avg_family: avg,
+      last_family: rated[0]?.rating!.family ?? null, last_rated_at: rated[0]?.rating!.rated_at ?? null, company, notes, imported_ratings: 0 }, planned_weeks: [], schema_extra: {}, revision: `r${r.revision ?? 1}` };
 }
 
 function addDays(week: string, n: number) {

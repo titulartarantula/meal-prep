@@ -179,9 +179,71 @@ test.describe("signed in", () => {
     await expect(grid).toContainText("No recipes match.");
   });
 
+  test("rate from the recipe: a card's Rate (today, then update and remove from the drawer), a waiting dinner takes it", async ({ page }) => {
+    await page.getByRole("link", { name: "Recipes" }).click();
+    const grid = page.getByRole("list", { name: "Recipes" });
+    const tofu = grid.getByRole("listitem").filter({ hasText: "Crispy tofu with peanut noodles" });
+    await expect(tofu).toContainText("4.3");
+    await axe(page);
+    await phoneChecks(page);
+    // not cooked lately: the day is today
+    await page.getByRole("button", { name: "Rate Crispy tofu with peanut noodles" }).click();
+    const dlg = page.getByRole("dialog", { name: "Rate Crispy tofu with peanut noodles" });
+    await expect(dlg.getByLabel("Cooked on")).toHaveValue(await page.evaluate(() => {
+      const d = new Date(), p = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    }));
+    await expect(dlg).toContainText("Today.");
+    await expect(dlg).toContainText("So far: Family 4.3/5");
+    await expect(dlg.getByRole("button", { name: "Save rating" })).toBeDisabled();
+    await dlg.getByRole("radio", { name: "5 stars" }).click();
+    await dlg.getByRole("radiogroup", { name: "Would you make it for company?" }).getByRole("radio", { name: "Yes" }).click();
+    await dlg.getByLabel(/^Note/).fill("Extra lime next time");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "16a-rate-recipe");
+    await dlg.getByRole("button", { name: "Save rating" }).click();
+    await expect(dlg).toBeHidden();
+    await expect(tofu).toContainText("4.5");
+    await expect(tofu).toContainText("good for company");
+
+    // the drawer: Rate, the last rating, the history; rating the same day again updates it, Remove rating takes it away
+    await page.getByRole("button", { name: /^Crispy tofu/ }).click();
+    const drawer = page.getByRole("dialog", { name: "Crispy tofu with peanut noodles" });
+    await expect(drawer).toContainText(/Your last rating: 5\/5 on \w{3} \d+/);
+    await expect(drawer.getByRole("list").filter({ hasText: "Extra lime next time" })).toBeVisible();
+    await shot(page, "16b-recipe-drawer-rate");
+    await drawer.getByRole("button", { name: "Rate", exact: true }).click();
+    await expect(dlg.getByRole("radio", { name: "5 stars" })).toHaveAttribute("aria-checked", "true");
+    await expect(dlg.getByLabel(/^Note/)).toHaveValue("Extra lime next time");
+    await expect(dlg).toContainText("Already rated for this day");
+    await dlg.getByRole("radio", { name: "3 stars" }).click();
+    await dlg.getByRole("button", { name: "Update rating" }).click();
+    await expect(dlg).toBeHidden();
+    await expect(drawer).toContainText("Your last rating: 3/5");
+    await drawer.getByRole("button", { name: "Rate", exact: true }).click();
+    await dlg.getByRole("button", { name: "Remove rating" }).click();
+    await expect(dlg).toBeHidden();
+    await expect(drawer.getByText("Extra lime next time")).toHaveCount(0);
+    await drawer.getByRole("button", { name: "Close" }).click();
+    await expect(tofu).toContainText("4.3");
+
+    // last Wednesday's chili is still waiting for a rating: Rate on its card rates that dinner (no second time cooked)
+    await page.getByRole("button", { name: "Rate Turkey chili with cornbread" }).click();
+    const chili = page.getByRole("dialog", { name: "Rate Turkey chili with cornbread" });
+    await expect(chili).toContainText("This rates Wednesday's dinner on the plan.");
+    await chili.getByRole("radio", { name: "4 stars" }).click();
+    await shot(page, "16c-rate-waiting-dinner");
+    await chili.getByRole("button", { name: "Save rating" }).click();
+    await expect(chili).toBeHidden();
+    await page.getByRole("link", { name: "This week" }).click();
+    await page.getByRole("button", { name: "Previous week" }).click();
+    await expect(page.getByRole("article", { name: /^Wednesday/ }).getByRole("button", { name: /Rated 4 of 5/ })).toBeVisible();
+  });
+
   test("recipes: edit a recipe (409 when it changed meanwhile, discard), edit the source with the book search", async ({ page }) => {
     await page.getByRole("link", { name: "Recipes" }).click();
-    await page.getByRole("button", { name: /Red lentil dal/ }).click();
+    await page.getByRole("button", { name: /^Red lentil dal/ }).click();
     const drawer = page.getByRole("dialog", { name: "Red lentil dal with spinach & garlic naan" });
     await expect(drawer).toContainText("From: NYT Cooking");
     await expect(drawer.getByRole("button", { name: "Edit source" })).toHaveCount(0);   // an NYT recipe has no book
@@ -218,7 +280,7 @@ test.describe("signed in", () => {
     await renamed.getByRole("button", { name: "Close" }).click();
 
     // a book recipe: Edit source → book search → pick a book, a page
-    await page.getByRole("button", { name: /Chicken tinga tacos/ }).click();
+    await page.getByRole("button", { name: /^Chicken tinga tacos/ }).click();
     const tacos = page.getByRole("dialog", { name: "Chicken tinga tacos with pickled onions" });
     await expect(tacos).toContainText("From: Weeknight Mexican · Ada Example, p. 88");
     await tacos.getByRole("button", { name: "Edit source" }).click();
@@ -239,7 +301,7 @@ test.describe("signed in", () => {
     await tacos.getByRole("button", { name: "Close" }).click();
 
     // to another source: a name is needed; "Used before" names fill it
-    await page.getByRole("button", { name: /Turkey chili/ }).click();
+    await page.getByRole("button", { name: /^Turkey chili/ }).click();
     const chili = page.getByRole("dialog", { name: "Turkey chili with cornbread" });
     await chili.getByRole("button", { name: "Edit source" }).click();
     await src.getByRole("radio", { name: "Other" }).click();
@@ -312,12 +374,12 @@ test.describe("signed in", () => {
     await axe(page);
     await phoneChecks(page);
     await shot(page, "05-recipes");
-    await page.getByRole("button", { name: /Miso-glazed salmon/ }).click();
+    await page.getByRole("button", { name: /^Miso-glazed salmon/ }).click();
     await expect(page.getByRole("dialog", { name: "Miso-glazed salmon with sesame greens" })
       .getByRole("img", { name: "Miso-glazed salmon with sesame greens" })).toBeVisible();
     await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
     await page.getByRole("searchbox", { name: "Search recipes" }).fill("roast chicken");
-    await page.getByRole("button", { name: /Roast chicken with lemon potatoes/ }).click();
+    await page.getByRole("button", { name: /^Roast chicken with lemon potatoes/ }).click();
     const drawer = page.getByRole("dialog", { name: "Roast chicken with lemon potatoes" });
     await expect(drawer.getByRole("heading", { name: "Ingredients" })).toBeVisible();
     await axe(page);

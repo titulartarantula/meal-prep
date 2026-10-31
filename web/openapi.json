@@ -538,6 +538,97 @@
     }
    }
   },
+  "/recipes/{recipe_id}/rating": {
+   "put": {
+    "summary": "Put Recipe Rating",
+    "description": "Rate the recipe from the recipe itself (not from a night on the plan). cooked_on (default: the newest dinner\nof it still waiting for a rating, else today) can't be later than today. A night on the plan for it that day\ntakes the rating, so it's the same as rating that dinner; otherwise it's one rating per recipe and day.",
+    "operationId": "put_recipe_rating_recipes__recipe_id__rating_put",
+    "parameters": [
+     {
+      "name": "recipe_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Recipe Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecipeRatingIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecipeRatingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Recipe Rating",
+    "description": "Remove the rating of the time it was cooked that day (the planned night's or the recipe's own).",
+    "operationId": "delete_recipe_rating_recipes__recipe_id__rating_delete",
+    "parameters": [
+     {
+      "name": "recipe_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Recipe Id"
+      }
+     },
+     {
+      "name": "cooked_on",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "date",
+       "title": "Cooked On"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/ratings/pending": {
    "get": {
     "summary": "Ratings Pending",
@@ -4411,6 +4502,23 @@
     ],
     "title": "PlanEntry"
    },
+   "RatedEntry": {
+    "properties": {
+     "date": {
+      "type": "string",
+      "title": "Date"
+     },
+     "rating": {
+      "$ref": "#/components/schemas/Rating"
+     }
+    },
+    "type": "object",
+    "required": [
+     "date",
+     "rating"
+    ],
+    "title": "RatedEntry"
+   },
    "Rating": {
     "properties": {
      "family": {
@@ -4850,6 +4958,14 @@
       },
       "type": "array",
       "title": "Imported History",
+      "default": []
+     },
+     "rated_history": {
+      "items": {
+       "$ref": "#/components/schemas/RatedEntry"
+      },
+      "type": "array",
+      "title": "Rated History",
       "default": []
      }
     },
@@ -5312,6 +5428,96 @@
     "type": "object",
     "title": "RecipePatch",
     "description": "Partial update: omitted fields are left unchanged; null clears the source fields and the optional details\n(servings, notes, description, times, yield). `ingredients` are the lines as the recipe screen shows them (see\nrecipe_edit), `steps` one per item; blank ones are dropped. `expected_revision` (RecipeOut.revision when the edit\nbegan) refuses the edit with 409 if the recipe changed meanwhile."
+   },
+   "RecipeRatingIn": {
+    "properties": {
+     "family": {
+      "type": "integer",
+      "maximum": 5.0,
+      "minimum": 1.0,
+      "title": "Family"
+     },
+     "company": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "yes",
+         "maybe",
+         "no"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 2000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "cooked_on": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cooked On"
+     }
+    },
+    "type": "object",
+    "required": [
+     "family"
+    ],
+    "title": "RecipeRatingIn"
+   },
+   "RecipeRatingOut": {
+    "properties": {
+     "cooked_on": {
+      "type": "string",
+      "title": "Cooked On"
+     },
+     "entry_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Entry Id"
+     },
+     "recipe_rating_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recipe Rating Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "cooked_on"
+    ],
+    "title": "RecipeRatingOut"
    },
    "RolesIn": {
     "properties": {

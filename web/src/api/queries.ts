@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 import { ApiError, del, get, patch, post, put, setSession } from "./client";
 import type {
   BookHit, Choices, Draft, ImportReport, ListItem, Me, PendingRating, Permission, PlanEntry, Recipe, RecipeDetail, RecipePatch,
-  RecipeSource, RatingIn, ShareResult, Staple, WeekSummary,
+  RecipeRatingOut, RecipeSource, RatingIn, ShareResult, Staple, WeekSummary,
 } from "./types";
 
 export const keys = {
@@ -151,6 +151,21 @@ export function useRate(week: string) {
     onSuccess: () => {
       invalidateWeek(qc, week);
       qc.invalidateQueries({ queryKey: ["recipe"] });
+    },
+  });
+}
+
+/** Rate a recipe from the recipe (PUT /recipes/{id}/rating with the day it was cooked); rating null = remove that
+ * day's rating. A dinner of it on the plan that day takes the rating, so every week, the waiting ratings and the
+ * library are refreshed. */
+export function useRateRecipe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, day, rating }: { id: number; day: string; rating: RatingIn | null }): Promise<RecipeRatingOut | void> =>
+      rating ? put<RecipeRatingOut>(`/recipes/${id}/rating`, { ...rating, cooked_on: day })
+        : del<void>(`/recipes/${id}/rating?${new URLSearchParams({ cooked_on: day })}`),
+    onSuccess: () => {
+      for (const k of [["week"], keys.weeks, keys.recipes, ["recipe"], keys.pending]) qc.invalidateQueries({ queryKey: k });
     },
   });
 }

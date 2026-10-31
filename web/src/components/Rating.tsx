@@ -1,12 +1,12 @@
 // Rating a dinner, as on the Android rating screen: family 1–5, "Would you make it for company?" (optional, choosing
 // the same answer again clears it), a note, the recipe's ratings "So far" and its earlier notes. And the "How was …?"
 // banner for the newest dinner not rated yet, with Later (hidden on this browser until tomorrow).
-import { useEffect, useState } from "react";
-import { usePendingRatings, useRate, useRecipe } from "../api/queries";
-import type { PendingRating, PlanEntry, RatingSummary } from "../api/types";
+import { useEffect, useState, type ReactNode } from "react";
+import { usePendingRatings, useRate, useRateRecipe, useRecipe } from "../api/queries";
+import type { PendingRating, PlanEntry, Rating, RatingSummary, Recipe, RecipeDetail } from "../api/types";
 import { formatAvg } from "../lib/format";
 import { DAYS_LONG, parseISO, shortDate, toISO } from "../lib/weeks";
-import { Button, ErrorNote, Modal, StarsInput } from "./ui";
+import { Button, ErrorNote, Loading, Modal, StarsInput } from "./ui";
 
 export const COMPANY = [["yes", "Yes"], ["maybe", "Maybe"], ["no", "No"]] as const;
 type Company = (typeof COMPANY)[number][0];
@@ -23,50 +23,45 @@ export function summaryText(r: RatingSummary | undefined): string | null {
     r.notes[0]?.note ? `“${r.notes[0].note}”` : null].filter(Boolean).join(" · ");
 }
 
-export function RateDialog({ entry, onClose }: { entry: PlanEntry | null; onClose: () => void }) {
-  const rate = useRate(entry?.week ?? "");
-  const recipe = useRecipe(entry?.recipe_id ?? null).data;
-  const [stars, setStars] = useState(0);
-  const [company, setCompany] = useState<Company | null>(null);
-  const [note, setNote] = useState("");
-  const [shown, setShown] = useState<number | null>(null);
-  if (entry && shown !== entry.id) {
-    setShown(entry.id);
-    setStars(entry.rating?.family ?? 0);
-    setCompany((entry.rating?.company as Company | null | undefined) ?? null);
-    setNote(entry.rating?.note ?? "");
-  }
-  useEffect(() => { if (entry) rate.reset(); }, [entry?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const close = () => { setShown(null); onClose(); };
-  const save = () => entry && rate.mutate({ id: entry.id, rating: { family: stars, company, note: note.trim() || null } }, { onSuccess: close });
-  const soFar = summaryText(recipe?.ratings);
-  const notes = recipe?.ratings.notes ?? [];
-  const title = entry?.title ?? recipe?.title ?? "this recipe";
+/** What the family score, company answer and note dialogs share. */
+interface Fields { stars: number; company: Company | null; note: string }
+
+function useFields(): [Fields, (f: Partial<Fields>) => void] {
+  const [f, setF] = useState<Fields>({ stars: 0, company: null, note: "" });
+  return [f, (p) => setF((x) => ({ ...x, ...p }))];
+}
+
+function fieldsOf(r: Rating | null | undefined): Fields {
+  return { stars: r?.family ?? 0, company: (r?.company as Company | null | undefined) ?? null, note: r?.note ?? "" };
+}
+
+const toRatingIn = (f: Fields) => ({ family: f.stars, company: f.company, note: f.note.trim() || null });
+
+/** The family score, company answer, note, and the recipe's "So far" + earlier notes. */
+function RatingFields({ f, set, ratings, before }: { f: Fields; set: (f: Partial<Fields>) => void; ratings: RatingSummary | undefined;
+  before?: ReactNode }) {
+  const soFar = summaryText(ratings);
+  const notes = ratings?.notes ?? [];
   return (
-    <Modal open={!!entry} onClose={close} title={entry ? ratingQuestion(title, entry.day) : ""}
-      footer={<>
-        {entry?.rating && <Button kind="ghost" onClick={() => rate.mutate({ id: entry.id, rating: null }, { onSuccess: close })}>Remove rating</Button>}
-        <span className="spacer" />
-        <Button kind="outline" onClick={close}>Cancel</Button>
-        <Button kind="primary" onClick={save} disabled={!stars || rate.isPending}>{entry?.rating ? "Update rating" : "Save rating"}</Button>
-      </>}>
+    <>
       {soFar && <p className="muted small">So far: {soFar}</p>}
+      {before}
       <fieldset className="field-set">
         <legend>Family: was it a hit? <small>1 = not again, 5 = a big hit</small></legend>
-        <StarsInput value={stars} onChange={setStars} label="Rating" />
+        <StarsInput value={f.stars} onChange={(stars) => set({ stars })} label="Rating" />
       </fieldset>
       <fieldset className="field-set">
         <legend>Would you make it for company? <small>Optional. Choose your answer again to clear it.</small></legend>
         <div className="seg company" role="radiogroup" aria-label="Would you make it for company?">
           {COMPANY.map(([v, label]) => (
-            <button key={v} type="button" role="radio" aria-checked={company === v} className={company === v ? "on" : ""}
-              onClick={() => setCompany(company === v ? null : v)}>{label}</button>
+            <button key={v} type="button" role="radio" aria-checked={f.company === v} className={f.company === v ? "on" : ""}
+              onClick={() => set({ company: f.company === v ? null : v })}>{label}</button>
           ))}
         </div>
       </fieldset>
       <label className="field">
         <span>Note <small>(optional)</small></span>
-        <textarea rows={3} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)}
+        <textarea rows={3} value={f.note} maxLength={500} onChange={(e) => set({ note: e.target.value })}
           placeholder="Too salty, kids loved it, double the sauce next time…" />
         <small>Notes show on the recipe and here the next time it's rated.</small>
       </label>
@@ -79,6 +74,103 @@ export function RateDialog({ entry, onClose }: { entry: PlanEntry | null; onClos
             ))}
           </ul>
         </section>
+      )}
+    </>
+  );
+}
+
+export function RateDialog({ entry, onClose }: { entry: PlanEntry | null; onClose: () => void }) {
+  const rate = useRate(entry?.week ?? "");
+  const recipe = useRecipe(entry?.recipe_id ?? null).data;
+  const [f, set] = useFields();
+  const [shown, setShown] = useState<number | null>(null);
+  if (entry && shown !== entry.id) {
+    setShown(entry.id);
+    set(fieldsOf(entry.rating));
+  }
+  useEffect(() => { if (entry) rate.reset(); }, [entry?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const close = () => { setShown(null); onClose(); };
+  const save = () => entry && rate.mutate({ id: entry.id, rating: toRatingIn(f) }, { onSuccess: close });
+  const title = entry?.title ?? recipe?.title ?? "this recipe";
+  return (
+    <Modal open={!!entry} onClose={close} title={entry ? ratingQuestion(title, entry.day) : ""}
+      footer={<>
+        {entry?.rating && <Button kind="ghost" onClick={() => rate.mutate({ id: entry.id, rating: null }, { onSuccess: close })}>Remove rating</Button>}
+        <span className="spacer" />
+        <Button kind="outline" onClick={close}>Cancel</Button>
+        <Button kind="primary" onClick={save} disabled={!f.stars || rate.isPending}>{entry?.rating ? "Update rating" : "Save rating"}</Button>
+      </>}>
+      <RatingFields f={f} set={set} ratings={recipe?.ratings} />
+      <ErrorNote error={rate.error} />
+    </Modal>
+  );
+}
+
+/** The time cooked a day stands for in a recipe's detail: the planned night that day (rated first), else the
+ * recipe's own rating that day, else nothing yet. */
+export function cookedOn(d: RecipeDetail | undefined, day: string): { night: number | null; rating: Rating | null } {
+  const nights = (d?.history ?? []).filter((h) => h.date === day);
+  const night = nights.find((h) => h.rating) ?? nights[0];
+  if (night) return { night: night.day ?? null, rating: night.rating ?? null };
+  return { night: null, rating: (d?.rated_history ?? []).find((h) => h.date === day)?.rating ?? null };
+}
+
+/** "Your last rating: 4/5 on Oct 12", or null before the first. */
+export function lastRatingText(r: RatingSummary | undefined): string | null {
+  if (!r?.last_family) return null;
+  return `Your last rating: ${r.last_family}/5${r.last_rated_at ? ` on ${shortDate(new Date(r.last_rated_at))}` : ""}`;
+}
+
+/** Rate a recipe from the recipe itself (a card in Recipes, its drawer): the day it was cooked (the dinner of it still
+ * waiting for a rating, else today), then the same questions as rating a dinner. A dinner of it on the plan that day
+ * takes the rating (the server decides; the dialog says so). */
+export function RateRecipeDialog({ recipe, onClose }: { recipe: Recipe | null; onClose: () => void }) {
+  const rate = useRateRecipe();
+  const detail = useRecipe(recipe?.id ?? null);
+  const d = detail.data;
+  const pending = usePendingRatings(!!recipe).data;
+  const today = toISO(new Date());
+  const [f, set] = useFields();
+  const [day, setDay] = useState(today);
+  const [shown, setShown] = useState<string | null>(null);
+  // once the detail and the waiting dinners are in: start on the waiting dinner's day (or today), filled in if rated
+  const ready = !!recipe && !!d && pending !== undefined;
+  const key = recipe ? `${recipe.id}` : null;
+  if (ready && shown !== key) {
+    const start = pending!.find((p) => p.recipe_id === recipe!.id)?.date ?? today;
+    setShown(key);
+    setDay(start);
+    set(fieldsOf(cookedOn(d, start).rating));
+  }
+  useEffect(() => { if (recipe) rate.reset(); }, [recipe?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const at = cookedOn(d, day);
+  const pick = (v: string) => {
+    if (!v || v > today) return;
+    setDay(v);
+    const was = cookedOn(d, v).rating;
+    if (was) set(fieldsOf(was));
+  };
+  const close = () => { setShown(null); onClose(); };
+  const save = () => recipe && rate.mutate({ id: recipe.id, day, rating: toRatingIn(f) }, { onSuccess: close });
+  const last = lastRatingText(d?.ratings ?? recipe?.ratings);
+  return (
+    <Modal open={!!recipe} onClose={close} title={recipe ? `Rate ${recipe.title}` : ""}
+      footer={<>
+        {at.rating && <Button kind="ghost" onClick={() => recipe && rate.mutate({ id: recipe.id, day, rating: null }, { onSuccess: close })}>Remove rating</Button>}
+        <span className="spacer" />
+        <Button kind="outline" onClick={close}>Cancel</Button>
+        <Button kind="primary" onClick={save} disabled={!ready || !f.stars || rate.isPending}>{at.rating ? "Update rating" : "Save rating"}</Button>
+      </>}>
+      {!ready ? (detail.error ? <ErrorNote error={detail.error} /> : <Loading />) : (
+        <RatingFields f={f} set={set} ratings={d?.ratings} before={<>
+          {last && <p className="muted small">{last}</p>}
+          <label className="field cooked-on">
+            <span>Cooked on</span>
+            <input type="date" value={day} max={today} required onChange={(e) => pick(e.target.value)} />
+            <small>{at.night != null ? `This rates ${DAYS_LONG[at.night]}'s dinner on the plan.`
+              : at.rating ? "Already rated for this day: saving changes that rating." : day === today ? "Today." : shortDate(parseISO(day)) + "."}</small>
+          </label>
+        </>} />
       )}
       <ErrorNote error={rate.error} />
     </Modal>

@@ -253,6 +253,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/recipes/{recipe_id}/rating": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Recipe Rating
+         * @description Rate the recipe from the recipe itself (not from a night on the plan). cooked_on (default: the newest dinner
+         *     of it still waiting for a rating, else today) can't be later than today. A night on the plan for it that day
+         *     takes the rating, so it's the same as rating that dinner; otherwise it's one rating per recipe and day.
+         */
+        put: operations["put_recipe_rating_recipes__recipe_id__rating_put"];
+        post?: never;
+        /**
+         * Delete Recipe Rating
+         * @description Remove the rating of the time it was cooked that day (the planned night's or the recipe's own).
+         */
+        delete: operations["delete_recipe_rating_recipes__recipe_id__rating_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ratings/pending": {
         parameters: {
             query?: never;
@@ -1644,6 +1670,12 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** RatedEntry */
+        RatedEntry: {
+            /** Date */
+            date: string;
+            rating: components["schemas"]["Rating"];
+        };
         /** Rating */
         Rating: {
             /** Family */
@@ -1779,6 +1811,11 @@ export interface components {
              * @default []
              */
             imported_history: components["schemas"]["ImportedEntry"][];
+            /**
+             * Rated History
+             * @default []
+             */
+            rated_history: components["schemas"]["RatedEntry"][];
         };
         /** RecipeOut */
         RecipeOut: {
@@ -1886,6 +1923,26 @@ export interface components {
             yield_text?: string | null;
             /** Expected Revision */
             expected_revision?: string | null;
+        };
+        /** RecipeRatingIn */
+        RecipeRatingIn: {
+            /** Family */
+            family: number;
+            /** Company */
+            company?: ("yes" | "maybe" | "no") | null;
+            /** Note */
+            note?: string | null;
+            /** Cooked On */
+            cooked_on?: string | null;
+        };
+        /** RecipeRatingOut */
+        RecipeRatingOut: {
+            /** Cooked On */
+            cooked_on: string;
+            /** Entry Id */
+            entry_id?: number | null;
+            /** Recipe Rating Id */
+            recipe_rating_id?: number | null;
         };
         /** RolesIn */
         RolesIn: {
@@ -2388,6 +2445,72 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RecipeOut"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_recipe_rating_recipes__recipe_id__rating_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipeRatingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipeRatingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_recipe_rating_recipes__recipe_id__rating_delete: {
+        parameters: {
+            query: {
+                cooked_on: string;
+            };
+            header?: never;
+            path: {
+                recipe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
