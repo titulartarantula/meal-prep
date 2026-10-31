@@ -27,7 +27,8 @@ function emphasis(s: string): string {
   return s
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[\s(])_(.+?)_(?=$|[\s).,;:])/g, "$1<em>$2</em>")
-    .replace(/(^|[\s(])([\w.+-]+@[\w-]+(?:\.[\w-]+)+\w)/g, '$1<a href="mailto:$2">$2</a>');
+    // email_off: Cloudflare would otherwise swap the address for a script-decoded placeholder (unreadable without JS).
+    .replace(/(^|[\s(])([\w.+-]+@[\w-]+(?:\.[\w-]+)+\w)/g, '$1<!--email_off--><a href="mailto:$2">$2</a><!--/email_off-->');
 }
 
 export interface LegalDoc {

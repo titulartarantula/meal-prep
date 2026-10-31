@@ -12,7 +12,7 @@ describe("legal pages' markdown", () => {
     expect(inline("see [the policy](https://mealprep.drwhom.ca/privacy).")).toBe('see <a href="/privacy">the policy</a>.');
     expect(inline("at https://example.com/a_b, ok")).toBe('at <a href="https://example.com/a_b">https://example.com/a_b</a>, ok');
     expect(inline("Questions: someone@example.com.")).toBe(
-      'Questions: <a href="mailto:someone@example.com">someone@example.com</a>.');
+      'Questions: <!--email_off--><a href="mailto:someone@example.com">someone@example.com</a><!--/email_off-->.');
     expect(inline("[x](javascript:alert(1))")).toBe("[x](javascript:alert(1))");
   });
 
