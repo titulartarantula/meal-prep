@@ -160,7 +160,8 @@ class CartResult(BaseModel):
 
 class Rating(BaseModel):
     family: int                  # 1–5 "was it a hit?"
-    company: str | None = None   # "yes" | "maybe" | "no" — would I make it for guests?
+    company: str | None = None   # "yes" | "maybe" | "no": the recipe's household Good for company verdict (read);
+                                 # in a write (PUT …/rating) it sets that verdict when the caller is an Owner
     note: str | None = None
     rated_at: str                # ISO timestamp
 
@@ -171,7 +172,6 @@ class PersonRating(BaseModel):
     name: str                    # the member's name, "Family", or "Former member" (removed from the household)
     kind: str                    # "account" | "child" | "family" | "former"
     family: int
-    company: str | None = None
     note: str | None = None
     rated_at: str
     entered_by: int | None = None       # a parent who entered it for a child profile (None = the person themselves)
@@ -180,8 +180,8 @@ class PersonRating(BaseModel):
 
 class CookedRatings(BaseModel):
     """The ratings of one time cooked. `rating` stays for older clients: the caller's own, else the newest one."""
-    rating: Rating | None = None
-    my_rating: Rating | None = None      # the caller's own (shared token: the Family rating)
+    rating: Rating | None = None         # = my_rating (kept for the phones, whose shared token rates as the legacy member)
+    my_rating: Rating | None = None      # the caller's own
     ratings: list[PersonRating] = []     # everyone's, household order, Family after the members
     rating_avg: float | None = None      # mean of these (1 decimal, half up)
     rating_count: int = 0
@@ -205,23 +205,16 @@ class RatingNote(BaseModel):
 
 
 class PersonSummary(BaseModel):
-    """One person's ratings of a recipe: their latest (score, company, note, day cooked) and their average."""
+    """One person's ratings of a recipe: their latest (score, note, day cooked) and their average."""
     member_id: int | None        # None = Family
     name: str
     kind: str                    # "account" | "child" | "family" | "former"
     family: int                  # their latest score
-    company: str | None = None   # their latest company answer (of that rating)
     note: str | None = None      # their latest rating's note
     date: str | None = None      # the day it was cooked
     rated_at: str
     avg: float
     count: int
-
-
-class CompanyVotes(BaseModel):
-    yes: int = 0
-    maybe: int = 0
-    no: int = 0
 
 
 class RatingSummary(BaseModel):
@@ -230,14 +223,16 @@ class RatingSummary(BaseModel):
     avg_family: float | None = None
     last_family: int | None = None
     last_rated_at: str | None = None
-    company: str | None = None   # the family's verdict: each rater's latest answer, more yes than no = "yes", more no
-                                 # = "no", else "maybe" (one rater: their latest answer, as before)
+    company: str | None = None   # the household's Good for company verdict ("yes" | "maybe" | "no"; None = not
+                                 # decided), one per recipe, set by an Owner (PUT /recipes/{id}/company)
     notes: list[RatingNote] = [] # most recent first, max 5
     imported_ratings: int = 0    # of times_rated, how many came from another library's export ("incl. N from …")
     rating_count: int = 0        # individual ratings averaged in avg_family (a time cooked can have several)
     people: list[PersonSummary] = []     # per person (and Family), household order
-    company_votes: CompanyVotes = CompanyVotes()   # each rater's latest company answer
     good_for_company: bool = False       # company == "yes"
+    company_set_by: int | None = None    # the member who set the verdict (None = carried over / imported / unset)
+    company_set_by_name: str | None = None
+    company_set_at: str | None = None
 
 
 # What the app's Edit recipe changes (PATCH /recipes/{id}); `revision` is a hash of these, so an edit made on an older

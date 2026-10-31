@@ -38,13 +38,17 @@ def test_put_rating_then_rerate_overwrites(conn):
     assert conn.execute("SELECT count(*) FROM rating_history WHERE action='set'").fetchone()[0] == 2
 
 
-def test_blank_note_and_omitted_company_stored_as_null(conn):
+def test_blank_note_is_null_and_omitted_company_keeps_the_verdict(conn):
     c = client(conn, today=TODAY)
     eid = placed(conn, setup(conn))
     c.put(f"/plan/{eid}/rating", headers=H, json={"family": 4, "company": "maybe", "note": "x"})
-    c.put(f"/plan/{eid}/rating", headers=H, json={"family": 4, "note": "   "})
+    c.put(f"/plan/{eid}/rating", headers=H, json={"family": 4, "note": "   "})   # Android omits a null company
     [e] = c.get("/weeks/2026-10-11", headers=H).json()
-    assert e["rating"]["company"] is None and e["rating"]["note"] is None
+    assert e["rating"]["company"] == "maybe" and e["rating"]["note"] is None
+    c.put(f"/plan/{eid}/rating", headers=H, json={"family": 4, "company": None})   # an explicit null clears it
+    [e] = c.get("/weeks/2026-10-11", headers=H).json()
+    assert e["rating"]["company"] is None
+    assert conn.execute("SELECT company FROM ratings").fetchall() == [(None,)]     # never stored on the rating
 
 
 def test_week_entry_without_rating_is_null(conn):
@@ -112,8 +116,8 @@ def test_recipes_include_rating_summary(conn):
     assert [(n["note"], n["date"]) for n in s["notes"]] == [("bland", "2026-10-12")] and n_has_rated_at(s)
     assert rs[soup]["ratings"] == {"times_cooked": 0, "times_rated": 0, "avg_family": None, "last_family": None,
                                    "last_rated_at": None, "company": None, "notes": [],
-                                   "imported_ratings": 0, "rating_count": 0, "people": [],
-                        "company_votes": {"yes": 0, "maybe": 0, "no": 0}, "good_for_company": False}
+                                   "imported_ratings": 0, "rating_count": 0, "people": [], "good_for_company": False,
+                                   "company_set_by": None, "company_set_by_name": None, "company_set_at": None}
     assert [r["id"] for r in c.get("/recipes", headers=H).json()] == [soup, chili]   # default sort unchanged
 
 

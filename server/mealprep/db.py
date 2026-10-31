@@ -272,8 +272,9 @@ def get_week(conn, week: date, viewer: int | None = None) -> list[PlanEntry]:
                         "WHERE p.week=%s ORDER BY COALESCE(p.day, 99), p.id", (week_start(week),)).fetchall()
     people = _people(conn)
     rated = _plan_ratings(conn, [r[0] for r in rows], people)
+    verdicts = company_verdicts(conn, list({r[2] for r in rows}))
     return [PlanEntry(id=i, week=w.isoformat(), recipe_id=r, day=d, multiplier=m, title=t,
-                      **_cooked(rated.get(i, []), viewer, people))
+                      **_cooked(rated.get(i, []), viewer, people, verdicts.get(r, {}).get("company")))
             for i, w, r, d, m, t in rows]
 
 
@@ -390,7 +391,9 @@ def default_cart_week(conn, today: date) -> date | None:
 
 
 # --- ratings: one per time cooked and person (plan entry, or the recipe on a day); rating_history is the append-only
-# log for reports. member_id NULL = "Family": ratings from before profiles and what the shared token writes. ---
+# log for reports. The shared token (the phones) rates as the household's legacy member; member_id NULL =
+# "Family" is only left for a household without members (and any old row not reattributed). Good for company is not
+# part of a person's rating: it is one household verdict per recipe (recipe_company, set by an Owner). ---
 
 FAMILY, FORMER = "Family", "Former member"
 
@@ -425,8 +428,8 @@ def _avg(scores) -> float | None:
 
 
 def verdict(answers) -> str | None:
-    """The family's company verdict from each rater's latest answer: more yes than no = yes, more no than yes = no,
-    otherwise (a tie, or only maybes) maybe; None without answers."""
+    """Several company answers folded into one (the export of a time cooked with several old answers): more yes than
+    no = yes, more no than yes = no, otherwise (a tie, or only maybes) maybe; None without answers."""
     answers = [a for a in answers if a]
     if not answers:
         return None
@@ -434,10 +437,47 @@ def verdict(answers) -> str | None:
     return "yes" if yes > no else "no" if no > yes else "maybe"
 
 
+def company_verdicts(conn, recipe_ids: list[int] | None = None) -> dict[int, dict]:
+    """{recipe_id: {company, company_set_by, company_set_by_name, company_set_at, company_source}} for recipes that
+    have a Good for company verdict (no entry = not decided)."""
+    people = _people(conn)
+    rows = conn.execute("SELECT recipe_id, verdict, set_by, set_at, source FROM recipe_company"
+                        + ("" if recipe_ids is None else " WHERE recipe_id = ANY(%s)"),
+                        () if recipe_ids is None else (recipe_ids,))
+    return {rid: {"company": v, "company_set_by": by,
+                  "company_set_by_name": _who(people, by)[0] if by is not None else None,
+                  "company_set_at": at.isoformat(), "company_source": src} for rid, v, by, at, src in rows}
+
+
+def set_company(conn, recipe_id: int, company: str | None, by: int | None, source: str = "member") -> dict | None:
+    """Set (or with None clear) the recipe's Good for company verdict. Returns {before, after}; None if the recipe
+    doesn't exist."""
+    with conn.transaction():
+        if conn.execute("SELECT 1 FROM recipes WHERE id=%s FOR UPDATE", (recipe_id,)).fetchone() is None:
+            return None
+        old = conn.execute("SELECT verdict FROM recipe_company WHERE recipe_id=%s", (recipe_id,)).fetchone()
+        if company is None:
+            conn.execute("DELETE FROM recipe_company WHERE recipe_id=%s", (recipe_id,))
+        else:
+            conn.execute("INSERT INTO recipe_company(recipe_id, verdict, set_by, source) VALUES(%s,%s,%s,%s) "
+                         "ON CONFLICT(recipe_id) DO UPDATE SET verdict=excluded.verdict, set_by=excluded.set_by, "
+                         "set_at=now(), source=excluded.source", (recipe_id, company, by, source))
+    return {"before": old[0] if old else None, "after": company}
+
+
+def adopt_company(conn, recipe_id: int, company: str | None, source: str = "import") -> bool:
+    """Take a verdict brought in (an import) only when the recipe has none yet. True if it was set."""
+    if company not in ("yes", "maybe", "no"):
+        return False
+    return conn.execute("INSERT INTO recipe_company(recipe_id, verdict, set_by, source) VALUES(%s,%s,NULL,%s) "
+                        "ON CONFLICT(recipe_id) DO NOTHING", (recipe_id, company, source)).rowcount == 1
+
+
 def _person_rating(people: dict, member_id, by, family, company, note, rated_at) -> dict:
+    """One person's rating; `company` (an old per-person answer) is not part of it any more (see recipe_company)."""
     name, kind = _who(people, member_id)
     other = by is not None and by != member_id
-    return {"member_id": member_id, "name": name, "kind": kind, "family": family, "company": company, "note": note,
+    return {"member_id": member_id, "name": name, "kind": kind, "family": family, "note": note,
             "rated_at": rated_at.isoformat(), "entered_by": by if other else None,
             "entered_by_name": _who(people, by)[0] if other else None}
 
@@ -453,13 +493,15 @@ def _plan_ratings(conn, plan_ids: list[int], people: dict) -> dict[int, list[dic
     return out
 
 
-def _cooked(rows: list[dict], viewer: int | None, people: dict) -> dict:
-    """CookedRatings fields for one time cooked from its person ratings (newest first). `rating` (older clients) =
-    the viewer's own, else the newest; `my_rating` = the viewer's own (viewer None = the Family rating)."""
+def _cooked(rows: list[dict], viewer: int | None, people: dict, company: str | None = None) -> dict:
+    """CookedRatings fields for one time cooked from its person ratings (newest first). `rating` (older clients: the
+    phones, which act as the legacy member) = `my_rating` = the viewer's own (viewer None = the Family rating) — someone else's
+    rating doesn't count as the viewer's; their `company` is the recipe's household verdict, so the phone's rating
+    screen shows and edits that."""
     def plain(x):
-        return {k: x[k] for k in ("family", "company", "note", "rated_at")} if x else None
+        return {"family": x["family"], "company": company, "note": x["note"], "rated_at": x["rated_at"]} if x else None
     mine = next((x for x in rows if x["member_id"] == viewer), None)
-    return {"rating": plain(mine or (rows[0] if rows else None)), "my_rating": plain(mine),
+    return {"rating": plain(mine), "my_rating": plain(mine),
             "ratings": sorted(rows, key=lambda x: _order(people, x["member_id"])),
             "rating_avg": _avg(x["family"] for x in rows), "rating_count": len(rows)}
 
@@ -575,7 +617,8 @@ def recipe_rated_history(conn, recipe_id: int, viewer: int | None = None) -> lis
                               "FROM recipe_ratings WHERE recipe_id=%s ORDER BY cooked_on DESC, rated_at DESC, id DESC",
                               (recipe_id,)):
         days.setdefault(d, []).append(_person_rating(people, *r))
-    return [{"date": d.isoformat(), **_cooked(rows, viewer, people)} for d, rows in days.items()]
+    company = company_verdicts(conn, [recipe_id]).get(recipe_id, {}).get("company")
+    return [{"date": d.isoformat(), **_cooked(rows, viewer, people, company)} for d, rows in days.items()]
 
 
 def pending_ratings(conn, today: date, days: int = 14, rater: int | None = None) -> list[dict]:
@@ -597,7 +640,8 @@ def pending_ratings(conn, today: date, days: int = 14, rater: int | None = None)
 def _empty_summary() -> dict:
     return {"times_cooked": 0, "times_rated": 0, "avg_family": None, "last_family": None,
             "last_rated_at": None, "company": None, "notes": [], "imported_ratings": 0, "rating_count": 0,
-            "people": [], "company_votes": {"yes": 0, "maybe": 0, "no": 0}, "good_for_company": False}
+            "people": [], "good_for_company": False, "company_set_by": None, "company_set_by_name": None,
+            "company_set_at": None}
 
 
 def _cooking_rows(recipe_ids: list[int] | None, extra: str = "") -> str:
@@ -617,7 +661,8 @@ def rating_summaries(conn, today: date, recipe_ids: list[int] | None = None) -> 
     """Per-recipe rating summary (all recipes, or just recipe_ids). A time cooked can have one rating per person:
     avg_family = the mean of every rating (each person's rating of each time cooked counts once; a Family rating —
     from before profiles or the shared token — counts as one rater; imported ones count one each, as before);
-    times_rated = times cooked with at least one rating; people = per person: their latest rating and average."""
+    times_rated = times cooked with at least one rating; people = per person: their latest rating and average;
+    company = the recipe's household verdict (recipe_company), not the ratings' answers."""
     where = "" if recipe_ids is None else " WHERE id = ANY(%(ids)s)"
     out = {rid: _empty_summary() for (rid,) in conn.execute("SELECT id FROM recipes" + where, {"ids": recipe_ids})}
     people = _people(conn)
@@ -627,8 +672,7 @@ def rating_summaries(conn, today: date, recipe_ids: list[int] | None = None) -> 
     rated: dict[int, set] = {}
     scores: dict[int, list[int]] = {}
     per: dict[int, dict] = {}       # recipe → member key → {latest, scores}
-    votes: dict[int, dict] = {}     # recipe → rater key → their latest company answer
-    for rid, key, cooked_on, _m, family, company, note, rated_at, imported, member, _by, _t in rows:  # newest first
+    for rid, key, cooked_on, _m, family, _company, note, rated_at, imported, member, _by, _t in rows:  # newest first
         s = out.get(rid)
         if s is None:
             continue
@@ -642,9 +686,6 @@ def rating_summaries(conn, today: date, recipe_ids: list[int] | None = None) -> 
         s["imported_ratings"] += imported
         if s["last_family"] is None:
             s["last_family"], s["last_rated_at"] = family, rated_at.isoformat()
-        rater = "imported" if imported else member
-        if company is not None:
-            votes.setdefault(rid, {}).setdefault(rater, company)
         name = None if imported else _who(people, member)[0]
         if note and len(s["notes"]) < 5:
             s["notes"].append({"note": note, "date": cooked_on.isoformat() if cooked_on else None,
@@ -654,16 +695,18 @@ def rating_summaries(conn, today: date, recipe_ids: list[int] | None = None) -> 
             if p is None:
                 n, kind = _who(people, member)
                 per[rid][member] = p = {"member_id": member, "name": n, "kind": kind, "family": family,
-                                        "company": company, "note": note,
+                                        "note": note,
                                         "date": cooked_on.isoformat() if cooked_on else None,
                                         "rated_at": rated_at.isoformat(), "scores": []}
             p["scores"].append(family)
+    verdicts = company_verdicts(conn, recipe_ids)
     for rid, s in out.items():
         s["times_cooked"], s["times_rated"] = len(cooked.get(rid, ())), len(rated.get(rid, ()))
         s["rating_count"], s["avg_family"] = len(scores.get(rid, ())), _avg(scores.get(rid, ()))
-        answers = list(votes.get(rid, {}).values())
-        s["company_votes"] = {a: answers.count(a) for a in ("yes", "maybe", "no")}
-        s["company"] = verdict(answers)
+        v = verdicts.get(rid, {})
+        s["company"] = v.get("company")
+        s["company_set_by"], s["company_set_by_name"] = v.get("company_set_by"), v.get("company_set_by_name")
+        s["company_set_at"] = v.get("company_set_at")
         s["good_for_company"] = s["company"] == "yes"
         s["people"] = [{**{k: v for k, v in p.items() if k != "scores"}, "avg": _avg(p["scores"]),
                         "count": len(p["scores"])}
@@ -686,8 +729,9 @@ def recipe_history(conn, recipe_id: int, viewer: int | None = None) -> list[dict
         "ORDER BY p.week DESC, COALESCE(p.day, -1) DESC, p.id DESC", (recipe_id,)).fetchall()
     people = _people(conn)
     rated = _plan_ratings(conn, [r[0] for r in rows], people)
+    company = company_verdicts(conn, [recipe_id]).get(recipe_id, {}).get("company")
     return [{"entry_id": i, "week": w.isoformat(), "day": dy, "date": d.isoformat() if d else None, "multiplier": m,
-             **_cooked(rated.get(i, []), viewer, people)} for i, w, dy, d, m in rows]
+             **_cooked(rated.get(i, []), viewer, people, company)} for i, w, dy, d, m in rows]
 
 
 def rating_entries(conn, today: date, recipe_ids: list[int] | None = None) -> dict[int, list[dict]]:

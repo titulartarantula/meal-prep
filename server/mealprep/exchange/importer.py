@@ -356,6 +356,15 @@ def tidy(ai, inc: jsonld.Incoming) -> tuple[Recipe, bool, str | None]:
     return r.model_copy(update={"ingredients": lines}), True, None
 
 
+def incoming_company(inc) -> str | None:
+    """The Good for company verdict a file brings: its summary's, else the newest entry's answer (older files). The
+    recipe keeps its own verdict if it has one (db.adopt_company)."""
+    if inc.company:
+        return inc.company
+    answered = [e for e in inc.ratings if e.company]
+    return max(answered, key=lambda e: e.rated_at or e.date or "").company if answered else None
+
+
 def save_one(conn, w: Work, r: Recipe, provider: str | None) -> dict:
     """Save one recipe in its own transaction under the import lock; returns the item fields to update."""
     inc = w.incoming
@@ -366,6 +375,7 @@ def save_one(conn, w: Work, r: Recipe, provider: str | None) -> dict:
             if w.action == "update" and same:
                 db.replace_recipe(conn, same[0], r, with_source=_has_source(r))
                 db.insert_imported_ratings(conn, same[0], inc.ratings)
+                db.adopt_company(conn, same[0], incoming_company(inc))
                 return {"status": "updated", "recipe_id": same[0]}
             if same is None and inc.link:
                 same = conn.execute("SELECT id, title FROM recipes WHERE source_url=%s", (inc.link,)).fetchone()
@@ -377,6 +387,7 @@ def save_one(conn, w: Work, r: Recipe, provider: str | None) -> dict:
                         "match": {"recipe_id": same[0], "title": same[1], "by": by}}
             rid = db.save_recipe(conn, r, ai_provider=provider)
             db.insert_imported_ratings(conn, rid, inc.ratings)
+            db.adopt_company(conn, rid, incoming_company(inc))
             return {"status": "added", "recipe_id": rid}
     except psycopg.errors.UniqueViolation:   # another import won the race
         return {"status": "duplicate"}

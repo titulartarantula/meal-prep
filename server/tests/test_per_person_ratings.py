@@ -1,11 +1,11 @@
 """Per-person ratings: each member rates a time cooked for themselves (a planner can rate for a child profile), the
-shared token keeps rating as "Family" (as before profiles), and the summaries average everyone's ratings with a row
-per person. Invented household: Ada (owner/planner, the shared token's member), Ben (owner/planner), Cleo
-(contributor), Dot (child profile)."""
+shared token (the phones) rates as the household's legacy member, the summaries average everyone's ratings with a row
+per person, and Good for company is one household verdict per recipe that Owners set. Invented household: Ada
+(owner/planner, the shared token's member), Ben (owner/planner), Cleo (contributor), Dot (child profile)."""
 import pytest
 from fastapi.testclient import TestClient
 
-from mealprep import db, households
+from mealprep import db, households, legacy_ratings
 from mealprep.api import create_app
 from mealprep.config import Settings
 from test_api_ratings import TODAY, placed, setup
@@ -41,38 +41,43 @@ def rate(f, eid, h, **body):
     return f["c"].put(f"/plan/{eid}/rating", headers=h, json={"family": 4, **body})
 
 
-def test_each_member_rates_for_themselves_and_the_shared_token_rates_as_family(conn, fam):
+def test_each_member_rates_for_themselves_and_the_shared_token_rates_as_the_legacy_member(conn, fam):
     f, rid = fam, setup(conn)
     eid = placed(conn, rid, day=2)
     assert rate(f, eid, H, family=3, note="phone").status_code == 204          # Android, unchanged
-    assert rate(f, eid, f["ben_h"], family=5, company="yes", note="more heat").status_code == 204
-    assert rate(f, eid, f["cleo_h"], family=4, company="no").status_code == 204
-    assert rate(f, eid, f["ben_h"], family=4, company="yes", note="more heat").status_code == 204   # overwrite own
+    assert rate(f, eid, f["ben_h"], family=5, note="more heat").status_code == 204
+    assert rate(f, eid, f["cleo_h"], family=4).status_code == 204
+    assert rate(f, eid, f["ben_h"], family=4, note="more heat").status_code == 204   # overwrite own
     rows = conn.execute("SELECT member_id, entered_by, family FROM ratings ORDER BY id").fetchall()
-    assert rows == [(None, None, 3), (f["ben"], f["ben"], 4), (f["cleo"], f["cleo"], 4)]
+    assert rows == [(f["ada"], f["ada"], 3), (f["ben"], f["ben"], 4), (f["cleo"], f["cleo"], 4)]
     [e] = week(f, f["ben_h"])
     assert [(r["name"], r["kind"], r["family"]) for r in e["ratings"]] == \
-        [("Ben", "account", 4), ("Cleo", "account", 4), ("Family", "family", 3)]   # household order, Family last
+        [("Ada", "account", 3), ("Ben", "account", 4), ("Cleo", "account", 4)]   # household order, no Family
     assert e["rating_avg"] == 3.7 and e["rating_count"] == 3
     assert e["my_rating"]["family"] == 4 and e["rating"]["family"] == 4 and e["my_rating"]["note"] == "more heat"
-    # the shared token reads its own (Family) rating, in the shape Android knows
+    # the shared token reads Ada's rating, in the shape Android knows
     [e] = week(f, H)
     assert PLAN_KEYS <= set(e) and e["rating"]["family"] == 3 and e["rating"]["note"] == "phone"
-    assert e["my_rating"]["family"] == 3
-    # Ada hasn't rated: no own rating; `rating` (older clients) falls back to the newest
-    [e] = week(f, f["ada_h"])
-    assert e["my_rating"] is None and e["rating"]["family"] == 4 and e["rating_count"] == 3
+    assert e["my_rating"] == e["rating"]
+    # Ada on the web edits the same rating the phone made: no duplicate
+    assert rate(f, eid, f["ada_h"], family=5, note="phone").status_code == 204
+    assert week(f, H)[0]["rating"]["family"] == 5
+    assert conn.execute("SELECT count(*) FROM ratings WHERE member_id=%s", (f["ada"],)).fetchone()[0] == 1
     hist = conn.execute("SELECT member_id, action FROM rating_history ORDER BY id").fetchall()
-    assert hist == [(None, "set"), (f["ben"], "set"), (f["cleo"], "set"), (f["ben"], "set")]
+    assert hist == [(f["ada"], "set"), (f["ben"], "set"), (f["cleo"], "set"), (f["ben"], "set"), (f["ada"], "set")]
 
 
-def test_the_shared_token_sees_a_night_rated_on_the_web_as_rated(conn, fam):
+def test_the_phone_only_counts_the_legacy_members_rating(conn, fam):
     f, rid = fam, setup(conn)
     eid = placed(conn, rid, day=2)
     rate(f, eid, f["ben_h"], family=5)
     [e] = week(f, H)
-    assert e["rating"]["family"] == 5 and e["my_rating"] is None   # no reminder on the phone; editing adds Family
-    assert f["c"].get("/ratings/pending", headers=H).json() == []  # nobody-rated question: answered
+    assert e["rating"] is None and e["my_rating"] is None and e["rating_count"] == 1   # Ben's isn't Ada's answer
+    assert [p["entry_id"] for p in f["c"].get("/ratings/pending", headers=H).json()] == [eid]
+    rate(f, eid, H, family=3)                          # the phone's rating is Ada's, beside Ben's
+    assert f["c"].get("/ratings/pending", headers=H).json() == []
+    assert week(f, H)[0]["rating"]["family"] == 3
+    assert [p["entry_id"] for p in f["c"].get("/ratings/pending", headers=f["cleo_h"]).json()] == [eid]
 
 
 def test_removing_takes_only_your_own(conn, fam):
@@ -82,8 +87,8 @@ def test_removing_takes_only_your_own(conn, fam):
     rate(f, eid, f["ben_h"])
     rate(f, eid, f["cleo_h"])
     assert f["c"].delete(f"/plan/{eid}/rating", headers=f["cleo_h"]).status_code == 204
-    assert {r for (r,) in conn.execute("SELECT member_id FROM ratings")} == {None, f["ben"]}
-    assert f["c"].delete(f"/plan/{eid}/rating", headers=H).status_code == 204       # the phone removes Family's
+    assert {r for (r,) in conn.execute("SELECT member_id FROM ratings")} == {f["ada"], f["ben"]}
+    assert f["c"].delete(f"/plan/{eid}/rating", headers=H).status_code == 204       # the phone removes Ada's
     assert [r for (r,) in conn.execute("SELECT member_id FROM ratings")] == [f["ben"]]
     assert f["c"].delete(f"/plan/{eid}/rating", headers=H).status_code == 204       # idempotent
 
@@ -95,9 +100,10 @@ def test_a_planner_rates_for_a_child_profile(conn, fam):
     [e] = week(f, f["ben_h"])
     [dot] = e["ratings"]
     assert (dot["name"], dot["kind"], dot["entered_by"], dot["entered_by_name"]) == ("Dot", "child", f["ben"], "Ben")
+    assert "company" not in dot
     assert e["my_rating"] is None                     # Ben's own is still to do
     assert rate(f, eid, H, family=3, member_id=f["dot"]).status_code == 204      # the phone too (Ada is a planner)
-    assert conn.execute("SELECT member_id, entered_by, family FROM ratings").fetchall() == [(f["dot"], None, 3)]
+    assert conn.execute("SELECT member_id, entered_by, family FROM ratings").fetchall() == [(f["dot"], f["ada"], 3)]
     # a contributor can't, nobody rates for another account, unknown or other-household members are 404
     assert rate(f, eid, f["cleo_h"], member_id=f["dot"]).status_code == 403
     assert rate(f, eid, f["ben_h"], member_id=f["cleo"]).status_code == 403
@@ -119,9 +125,9 @@ def test_pending_is_per_member(conn, fam):
     pend = lambda h: [p["entry_id"] for p in f["c"].get("/ratings/pending", headers=h).json()]   # noqa: E731
     assert pend(f["ben_h"]) == [tue, mon]             # Cleo's rating isn't Ben's
     assert pend(f["cleo_h"]) == [mon]
-    assert pend(H) == [mon]                           # the phones: nights nobody rated
-    rate(f, mon, H)                                   # a Family rating doesn't answer for Ben either
-    assert pend(f["ben_h"]) == [tue, mon] and pend(H) == []
+    assert pend(H) == pend(f["ada_h"]) == [tue, mon]  # the phones ask for Ada's ratings
+    rate(f, mon, H)
+    assert pend(f["ada_h"]) == [tue] and pend(f["ben_h"]) == [tue, mon]
 
 
 def test_rating_from_the_recipe_is_per_person_too(conn, fam):
@@ -129,9 +135,9 @@ def test_rating_from_the_recipe_is_per_person_too(conn, fam):
     c = f["c"]
     put = lambda h, **b: c.put(f"/recipes/{rid}/rating", headers=h, json={"family": 4, **b})   # noqa: E731
     a = put(f["ben_h"], family=5, note="great").json()
-    b = put(f["cleo_h"], family=2, company="no").json()
+    b = put(f["cleo_h"], family=2).json()
     assert a["cooked_on"] == b["cooked_on"] == "2026-10-14" and a["recipe_rating_id"] != b["recipe_rating_id"]
-    put(f["ben_h"], family=5, company="yes")          # Ben again, same day: overwrites his
+    put(f["ben_h"], family=5)                         # Ben again, same day: overwrites his
     put(f["ben_h"], family=3, member_id=f["dot"], cooked_on="2026-10-14")
     assert conn.execute("SELECT count(*) FROM recipe_ratings").fetchone()[0] == 3
     d = c.get(f"/recipes/{rid}", headers=f["ben_h"]).json()
@@ -154,34 +160,73 @@ def test_rating_from_the_recipe_is_per_person_too(conn, fam):
     assert [m for (m,) in conn.execute("SELECT member_id FROM recipe_ratings")] == [f["ben"]]
 
 
-def test_summary_people_average_and_company(conn, fam):
+def test_summary_people_and_average(conn, fam):
     f, rid = fam, setup(conn)
     mon, tue = placed(conn, rid, day=1), placed(conn, rid, day=2)
-    rate(f, mon, H, family=4, company="yes", note="old phone rating")
+    rate(f, mon, H, family=4, note="old phone rating")
     rate(f, tue, H, family=2)
-    rate(f, tue, f["ben_h"], family=5, company="no", note="too spicy for me")
-    rate(f, mon, f["cleo_h"], family=3, company="yes")
+    rate(f, tue, f["ben_h"], family=5, note="too spicy for me")
+    rate(f, mon, f["cleo_h"], family=3)
     rate(f, tue, f["ben_h"], family=5, member_id=f["dot"], note="loved the rice")
     s = f["c"].get(f"/recipes/{rid}", headers=f["cleo_h"]).json()["ratings"]
     assert SUMMARY_KEYS <= set(s)
-    # every person's rating of every time cooked counts once; Family counts as one rater
+    # every person's rating of every time cooked counts once
     assert (s["times_cooked"], s["times_rated"], s["rating_count"], s["avg_family"]) == (2, 2, 5, 3.8)
     people = {p["name"]: p for p in s["people"]}
-    assert list(people) == ["Ben", "Cleo", "Dot", "Family"]
+    assert list(people) == ["Ada", "Ben", "Cleo", "Dot"]
     assert (people["Ben"]["family"], people["Ben"]["note"], people["Ben"]["date"]) == (5, "too spicy for me", "2026-10-13")
-    assert (people["Family"]["avg"], people["Family"]["count"], people["Family"]["family"]) == (3.0, 2, 2)
-    # latest answer per rater: Family yes (its Tuesday rating has none), Ben no, Cleo yes → yes
-    assert s["company_votes"] == {"yes": 2, "maybe": 0, "no": 1}
-    assert s["company"] == "yes" and s["good_for_company"] is True
+    assert (people["Ada"]["avg"], people["Ada"]["count"], people["Ada"]["family"]) == (3.0, 2, 2)
     assert {(n["name"], n["note"]) for n in s["notes"]} == {("Dot", "loved the rice"), ("Ben", "too spicy for me"),
-                                                            ("Family", "old phone rating")}
-    # a tie is maybe, not good for company
-    rate(f, mon, f["cleo_h"], family=3, company="no")
+                                                            ("Ada", "old phone rating")}
+    assert s["company"] is None and s["good_for_company"] is False and "company_votes" not in s
+
+
+def test_good_for_company_is_one_household_verdict_set_by_owners(conn, fam):
+    f, rid = fam, setup(conn)
+    c = f["c"]
+    company = lambda h, v: c.put(f"/recipes/{rid}/company", headers=h, json={"company": v})   # noqa: E731
+    summary = lambda: c.get(f"/recipes/{rid}", headers=f["cleo_h"]).json()["ratings"]          # noqa: E731
+    out = company(f["ben_h"], "yes")
+    assert out.status_code == 200 and out.json()["company"] == "yes" and out.json()["company_set_by_name"] == "Ben"
+    s = summary()
+    assert (s["company"], s["good_for_company"], s["company_set_by"]) == ("yes", True, f["ben"])
+    assert company(f["cleo_h"], "no").status_code == 403           # a contributor can't
+    assert company(f["ben_h"], "sometimes").status_code == 422
+    assert c.put("/recipes/9999/company", headers=f["ben_h"], json={"company": "yes"}).status_code == 404
+    assert [r["id"] for r in c.get("/recipes", headers=f["cleo_h"]).json() if r["ratings"]["good_for_company"]] == [rid]
+    # a rating's company answer: a non-owner's is ignored; an owner's (and the phone's: Ada) sets the verdict
+    eid = placed(conn, rid, day=2)
+    rate(f, eid, f["cleo_h"], family=2, company="no")
+    assert summary()["company"] == "yes"
+    rate(f, eid, H, family=4, company="maybe")
+    s = summary()
+    assert (s["company"], s["company_set_by_name"]) == ("maybe", "Ada")
+    # everyone's `rating` carries the verdict (the phone shows and edits it); the person rows don't have it
+    [e] = week(f, H)
+    assert e["rating"]["company"] == "maybe" and all("company" not in r for r in e["ratings"])
+    assert week(f, f["cleo_h"])[0]["my_rating"]["company"] == "maybe"
+    rate(f, eid, H, family=4)                                       # Android omits a null company: unchanged
+    assert summary()["company"] == "maybe"
+    assert company(f["ada_h"], None).json()["company"] is None      # null clears
+    assert summary()["company"] is None and summary()["company_set_by"] is None
+    assert conn.execute("SELECT count(*) FROM ratings WHERE company IS NOT NULL").fetchone()[0] == 0
+    db.unscope(conn)
+    log = conn.execute("SELECT member_id, detail FROM audit_log WHERE action='recipe.company' ORDER BY id").fetchall()
+    db.scope(conn, f["hid"])
+    assert log == [(f["ben"], {"from": None, "to": "yes"}), (f["ada"], {"from": "yes", "to": "maybe"}),
+                   (f["ada"], {"from": "maybe", "to": None})]
+
+
+def test_old_family_rows_still_show_as_family(conn, fam):
+    f, rid = fam, setup(conn)
+    eid = placed(conn, rid, day=2)
+    conn.execute("INSERT INTO ratings(plan_id, member_id, family) VALUES(%s, NULL, 4)", (eid,))
+    rate(f, eid, f["ben_h"], family=2)
+    [e] = week(f, f["ben_h"])
+    assert [(r["name"], r["kind"]) for r in e["ratings"]] == [("Ben", "account"), ("Family", "family")]
+    assert week(f, H)[0]["rating"] is None            # not Ada's
     s = f["c"].get(f"/recipes/{rid}", headers=H).json()["ratings"]
-    assert s["company"] == "no" and s["good_for_company"] is False
-    rate(f, mon, f["cleo_h"], family=3, company="maybe")
-    s = f["c"].get(f"/recipes/{rid}", headers=H).json()["ratings"]
-    assert s["company_votes"] == {"yes": 1, "maybe": 1, "no": 1} and s["company"] == "maybe"
+    assert [p["name"] for p in s["people"]] == ["Ben", "Family"] and s["avg_family"] == 3.0
 
 
 def test_a_removed_members_ratings_stay(conn, fam):
@@ -202,13 +247,14 @@ def test_export_has_one_entry_per_time_cooked(conn, fam):
     f, rid = fam, setup(conn)
     eid = placed(conn, rid, day=2)
     rate(f, eid, f["ben_h"], family=5, company="yes", note="more heat")
-    rate(f, eid, f["cleo_h"], family=4, company="yes", note="mild is fine")
-    rate(f, eid, H, family=2, company="no")
+    rate(f, eid, f["cleo_h"], family=4, note="mild is fine")
+    rate(f, eid, H, family=2)
     [e] = db.rating_entries(conn, TODAY, [rid])[rid]
-    assert (e["date"], e["family"], e["company"]) == ("2026-10-13", 4, "yes")     # 11/3 = 3.67 → 4
+    assert (e["date"], e["family"]) == ("2026-10-13", 4)     # 11/3 = 3.67 → 4
     assert e["note"] == "Ben: more heat · Cleo: mild is fine"
     out = f["c"].get(f"/recipes/{rid}/export", headers=H).json()
     assert len(out["mealprep:ratings"]["entries"]) == 1
+    assert out["mealprep:ratings"]["summary"]["company"] == "yes" and out["mealprep:ratings"]["good_for_company"]
 
 
 def test_rerunning_the_schema_keeps_per_person_ratings(conn, fam):
@@ -216,8 +262,60 @@ def test_rerunning_the_schema_keeps_per_person_ratings(conn, fam):
     eid = placed(conn, rid, day=2)
     rate(f, eid, H)
     rate(f, eid, f["ben_h"])
+    f["c"].put(f"/recipes/{rid}/company", headers=f["ben_h"], json={"company": "no"})
     db.unscope(conn)
     db.migrate(conn)
     db.scope(conn, f["hid"])
     assert conn.execute("SELECT count(*) FROM ratings").fetchone()[0] == 2
-    assert [r["name"] for r in week(f, H)[0]["ratings"]] == ["Ben", "Family"]
+    assert [r["name"] for r in week(f, H)[0]["ratings"]] == ["Ada", "Ben"]
+    assert f["c"].get(f"/recipes/{rid}", headers=H).json()["ratings"]["company"] == "no"
+
+
+def test_legacy_ratings_migration_moves_family_to_the_legacy_member_and_makes_verdicts(conn, fam):
+    f, rid = fam, setup(conn)
+    other = setup(conn, "Soup")
+    mon, tue, wed = placed(conn, rid, day=1), placed(conn, rid, day=2), placed(conn, other, day=3)
+    ins = "INSERT INTO ratings(plan_id, member_id, family, company, note, rated_at) VALUES(%s,%s,%s,%s,%s,%s) RETURNING id"
+    fam_mon = conn.execute(ins, (mon, None, 4, "yes", "old", "2026-10-12 20:00+00")).fetchone()[0]
+    fam_tue = conn.execute(ins, (tue, None, 3, "no", None, "2026-10-13 20:00+00")).fetchone()[0]   # newer: wins
+    conn.execute(ins, (tue, f["ada"], 5, None, None, "2026-10-13 21:00+00"))     # Ada rated Tuesday already
+    fam_wed = conn.execute(ins, (wed, None, 2, None, "no answer", "2026-10-14 08:00+00")).fetchone()[0]
+    rr = conn.execute("INSERT INTO recipe_ratings(recipe_id, cooked_on, member_id, family, company) "
+                      "VALUES(%s, '2026-10-01', NULL, 5, 'maybe') RETURNING id", (other,)).fetchone()[0]
+    third = setup(conn, "Stew")
+    conn.execute("INSERT INTO recipe_ratings(recipe_id, cooked_on, member_id, family, company) "
+                 "VALUES(%s, '2026-10-02', %s, 4, 'yes'), (%s, '2026-10-03', %s, 3, 'no')",
+                 (third, f["ben"], other, f["cleo"]))   # Ben (an owner) on Stew; Cleo's older answer on Soup
+    conn.execute("INSERT INTO rating_history(plan_id, recipe_id, week, day, action, family, member_id) "
+                 "VALUES(%s,%s,'2026-10-11',1,'set',4,NULL), (%s,%s,'2026-10-11',2,'set',3,NULL)",
+                 (mon, rid, tue, rid))
+    db.unscope(conn)
+    before = legacy_ratings.snapshot(conn)
+    log = legacy_ratings.plan(conn)
+    [h] = [x for x in log["households"] if x["household_id"] == f["hid"]]
+    assert h["legacy_member_id"] == f["ada"]
+    assert h["reattributed"] == {"ratings": [fam_mon, fam_wed], "recipe_ratings": [rr]}
+    assert h["conflicts"] == [{"table": "ratings", "id": fam_tue}]
+    assert len(h["history"]) == 1                     # Tuesday's history stays with the Family row left behind
+    assert {(v["recipe_id"], v["verdict"], v["set_by"]) for v in h["verdicts"]} == \
+        {(rid, "no", None), (other, "no", None), (third, "yes", f["ben"])}   # Cleo answered last on Soup; not an owner
+    assert {(c["recipe_id"], c["taken"]) for c in h["verdict_conflicts"]} == {(rid, "no"), (other, "no")}
+    legacy_ratings.apply(conn, log)
+    assert legacy_ratings.snapshot(conn) == before    # scores, notes, dates, answers untouched
+    assert conn.execute("SELECT member_id FROM ratings WHERE id = ANY(%s)", ([fam_mon, fam_wed],)).fetchall() == \
+        [(f["ada"],), (f["ada"],)]
+    assert conn.execute("SELECT member_id FROM ratings WHERE id=%s", (fam_tue,)).fetchone() == (None,)
+    assert conn.execute("SELECT recipe_id, verdict, set_by, source FROM recipe_company ORDER BY recipe_id").fetchall() \
+        == [(rid, "no", None, "migrated"), (other, "no", None, "migrated"), (third, "yes", f["ben"], "migrated")]
+    assert legacy_ratings.plan(conn)["households"][0]["verdicts"] == []          # a second run changes nothing more
+    db.scope(conn, f["hid"])
+    assert week(f, H)[0]["rating"]["family"] == 4 and week(f, H)[0]["rating"]["company"] == "no"
+    db.unscope(conn)
+    legacy_ratings.revert(conn, log)
+    assert legacy_ratings.snapshot(conn) == before
+    assert conn.execute("SELECT count(*) FROM ratings WHERE member_id IS NULL").fetchone()[0] == 3
+    assert conn.execute("SELECT count(*) FROM recipe_ratings WHERE member_id IS NULL").fetchone()[0] == 1
+    assert conn.execute("SELECT count(*) FROM recipe_ratings").fetchone()[0] == 3
+    assert conn.execute("SELECT count(*) FROM rating_history WHERE member_id IS NULL").fetchone()[0] == 2
+    assert conn.execute("SELECT count(*) FROM recipe_company").fetchone()[0] == 0
+    db.scope(conn, f["hid"])

@@ -286,6 +286,18 @@ CREATE INDEX IF NOT EXISTS recipe_ratings_recipe_idx ON recipe_ratings(recipe_id
 ALTER TABLE rating_history ALTER COLUMN plan_id DROP NOT NULL;
 ALTER TABLE rating_history ADD COLUMN IF NOT EXISTS recipe_rating_id bigint;
 
+-- Good for company (2026-10-31): one household verdict per recipe ("would we make it for guests?"), set by an Owner
+-- (permission recipe.company), not a per-person rating answer. No row = not decided yet. set_by = the member (NULL =
+-- carried over from the old rating answers or an import: source 'migrated' / 'import'). The company columns of
+-- ratings / recipe_ratings / imported_ratings stay as history but are no longer read for the verdict.
+CREATE TABLE IF NOT EXISTS recipe_company(
+  recipe_id int PRIMARY KEY REFERENCES recipes ON DELETE CASCADE,
+  verdict text NOT NULL CHECK (verdict IN ('yes','maybe','no')),
+  set_by int,
+  set_at timestamptz NOT NULL DEFAULT now(),
+  source text NOT NULL DEFAULT 'member' CHECK (source IN ('member','migrated','import'))
+);
+
 -- Import jobs (2026-10-06): POST /recipes/import with dry_run=false saves in the background (the AI tidies foreign
 -- ingredient lines). report = the per-item results so far (the GET /imports/{id} body); file_sha + choices_sha make a
 -- retried apply of the same file and choices return the same job instead of starting another.
@@ -471,6 +483,14 @@ DO $$ BEGIN
     INSERT INTO seeds(name) VALUES ('role_permissions-1');
   END IF;
 END $$;
+-- role_permissions-2 (2026-10-31): Owners decide "Good for company" for the household (recipe.company).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM seeds WHERE name = 'role_permissions-2') THEN
+    INSERT INTO role_permissions(role_id, permission)
+      SELECT id, 'recipe.company' FROM roles WHERE key = 'owner' ON CONFLICT DO NOTHING;
+    INSERT INTO seeds(name) VALUES ('role_permissions-2');
+  END IF;
+END $$;
 -- Child is a child profile's only role and only a child profile's (owner/approver minimums are checked in code).
 CREATE OR REPLACE FUNCTION member_roles_kind_check() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE mkind text; rkind text;
@@ -568,7 +588,7 @@ DECLARE
   owned text[] := ARRAY['recipes','plan','picks','pick_history','carts','cart_weeks','cart_lines','ratings',
                         'rating_history','prep_plans','prep_tasks','prep_task_events','cook_cards','staples',
                         'imported_ratings','import_jobs','extras','fridge_items','fridge_reads','fridge_nudges',
-                        'recipe_ratings'];
+                        'recipe_ratings','recipe_company'];
 BEGIN
   FOREACH t IN ARRAY owned LOOP
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()

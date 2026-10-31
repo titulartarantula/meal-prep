@@ -40,7 +40,8 @@ def test_export_ratings_entries(conn):
     c = client(conn, today=date(2026, 10, 14))
     rated = db.add_to_week(conn, date(2026, 10, 4), rid)
     db.update_entry(conn, rated, day=2, multiplier=2.0)
-    db.set_rating(conn, rated, 4, "yes", "less salt")
+    db.set_rating(conn, rated, 4, "yes", "less salt")       # an old rating's own answer (before the verdict)
+    db.set_company(conn, rid, "yes", None)
     cooked = db.add_to_week(conn, date(2026, 9, 27), rid)
     db.update_entry(conn, cooked, day=1)                     # cooked, never rated
     db.add_to_week(conn, date(2026, 10, 18), rid)            # planned ahead: not exported
@@ -389,3 +390,14 @@ def test_interrupted_job_marked_failed(conn):
     job = c.get(f"/imports/{jid}", headers=H).json()
     assert job["status"] == "failed" and [i["status"] for i in job["items"]] == ["failed", "failed"]
     assert importer.INTERRUPTED in job["items"][0]["reasons"]
+
+
+def test_import_brings_the_good_for_company_verdict_but_never_overwrites_one(conn):
+    c = client(conn, today=date(2026, 10, 14))
+    rid = apply(c, "mealprep_v1.json")["items"][0]["recipe_id"]
+    assert conn.execute("SELECT verdict, set_by, source FROM recipe_company WHERE recipe_id=%s",
+                        (rid,)).fetchone() == ("yes", None, "import")
+    db.set_company(conn, rid, "no", None)
+    choices = {i["key"]: "update" for i in post(c, "mealprep_v1.json").json()["items"]}
+    apply(c, "mealprep_v1.json", choices)                    # replace with the file's version: the verdict stays
+    assert c.get(f"/recipes/{rid}", headers=H).json()["ratings"]["company"] == "no"

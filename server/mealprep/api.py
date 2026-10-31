@@ -153,6 +153,8 @@ class EntryPatch(BaseModel):   # partial update: omitted fields are left unchang
 
 class RatingIn(BaseModel):
     family: Annotated[int, Field(strict=True, ge=1, le=5)]
+    # the recipe's household Good for company verdict, not part of the person's rating: set when the caller has
+    # recipe.company (Owners; the phones = the legacy member), ignored otherwise; omitted = left as it is, null = cleared
     company: Literal["yes", "maybe", "no"] | None = None
     note: Annotated[str, Field(max_length=2000)] | None = None
     member_id: int | None = None     # rate for a child profile (rate.for_children); omitted = yourself
@@ -161,6 +163,17 @@ class RatingIn(BaseModel):
     @classmethod
     def blank_note_is_none(cls, v):
         return (v.strip() or None) if v is not None else None
+
+
+class CompanyIn(BaseModel):
+    company: Literal["yes", "maybe", "no"] | None   # None = not decided (clears it)
+
+
+class CompanyOut(BaseModel):
+    company: str | None
+    company_set_by: int | None = None
+    company_set_by_name: str | None = None
+    company_set_at: str | None = None
 
 
 class RecipeRatingIn(RatingIn):
@@ -571,8 +584,23 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     A = [Depends(household_scope)]
 
     def viewer(s: Scope) -> int | None:
-        """Whose ratings a request reads and writes by default: the signed-in member; the shared token = Family."""
-        return None if s.via == "legacy" else s.member_id
+        """Whose ratings a request reads and writes by default: the signed-in member; the shared token (the phones) =
+        the household's legacy member (households.legacy_member). None (Family) only for a household without
+        members yet."""
+        return s.member_id
+
+    def company_from_rating(c, s: Scope, body: RatingIn, recipe_id: int) -> None:
+        """A rating write that carries `company` sets the recipe's verdict when the caller may (recipe.company);
+        otherwise the answer is ignored (it is no longer part of a person's rating)."""
+        if "company" in body.model_fields_set and "recipe.company" in s.permissions:
+            set_verdict(c, s, recipe_id, body.company)
+
+    def set_verdict(c, s: Scope, recipe_id: int, company: str | None) -> dict | None:
+        out = db.set_company(c, recipe_id, company, s.member_id)
+        if out is not None and out["before"] != out["after"]:
+            households.audit(c, s.household_id, "recipe.company", f"recipe:{recipe_id}", s.member_id, s.user_id,
+                             {"from": out["before"], "to": out["after"]})
+        return out
 
     def rater_for(c, s: Scope, member_id: int | None) -> tuple[int | None, int | None]:
         """(rater, entered_by) for a rating write: yourself, or a child profile of the household for a member with
@@ -900,10 +928,20 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         if body.cooked_on is not None and body.cooked_on > today():
             raise HTTPException(422, "cooked_on can't be in the future")
         rater, by = rater_for(c, s, body.member_id)
-        out = db.rate_recipe(c, recipe_id, body.family, body.company, body.note, today(), body.cooked_on, rater, by)
+        out = db.rate_recipe(c, recipe_id, body.family, None, body.note, today(), body.cooked_on, rater, by)
         if out is None:
             raise HTTPException(404, f"recipe {recipe_id}")
+        company_from_rating(c, s, body, recipe_id)
         return RecipeRatingOut(**out)
+
+    @app.put("/recipes/{recipe_id}/company", dependencies=A)
+    def put_company(recipe_id: int, body: CompanyIn, c=Depends(get_conn),
+                    s: Scope = Depends(household_scope)) -> CompanyOut:
+        """The household's Good for company verdict for the recipe (yes / maybe / no; null = not decided). Owners
+        (recipe.company); changes go to the audit log."""
+        if set_verdict(c, s, recipe_id, body.company) is None:
+            raise HTTPException(404, f"recipe {recipe_id}")
+        return CompanyOut(**db.company_verdicts(c, [recipe_id]).get(recipe_id, {"company": None}))
 
     @app.delete("/recipes/{recipe_id}/rating", status_code=204, dependencies=A)
     def delete_recipe_rating(recipe_id: int, cooked_on: date = Query(...), member_id: int | None = Query(None),
@@ -952,10 +990,14 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.put("/plan/{entry_id}/rating", status_code=204, dependencies=A)
     def put_rating(entry_id: int, body: RatingIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
-        """Your rating of that dinner (member_id: a child profile's); the shared token rates as Family."""
+        """Your rating of that dinner (member_id: a child profile's); the shared token rates as the
+        household's legacy member. `company` sets the recipe's Good for company verdict for an Owner."""
         rater, by = rater_for(c, s, body.member_id)
-        if not db.set_rating(c, entry_id, body.family, body.company, body.note, rater=rater, by=by):
+        if not db.set_rating(c, entry_id, body.family, None, body.note, rater=rater, by=by):
             raise HTTPException(404, f"plan entry {entry_id}")
+        row = c.execute("SELECT recipe_id FROM plan WHERE id=%s", (entry_id,)).fetchone()
+        if row:
+            company_from_rating(c, s, body, row[0])
 
     @app.delete("/plan/{entry_id}/rating", status_code=204, dependencies=A)
     def delete_rating(entry_id: int, member_id: int | None = Query(None), c=Depends(get_conn),

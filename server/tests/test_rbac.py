@@ -129,7 +129,7 @@ def test_roles_grant_what_the_plan_says(conn):
              for k, kind in (("owner", "account"), ("approver", "account"), ("planner", "account"),
                              ("contributor", "account"), ("child", "child"))}
     assert perms == {
-        "owner": {"members.manage", "roles.assign", "household.settings"},
+        "owner": {"members.manage", "roles.assign", "household.settings", "recipe.company"},
         "approver": {"request.approve", "cart.build", "cart.send"},
         "planner": {"plan.edit", "recipe.edit", "fridge.edit", "rate.for_children"},
         "contributor": {"recipe.read", "plan.read", "rate.self", "request.create"},

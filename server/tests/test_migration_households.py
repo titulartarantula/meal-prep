@@ -94,7 +94,7 @@ def test_migration_backfills_every_household_row_and_is_idempotent(old_db):
         db.migrate(c)                      # … and the next start
         assert c.execute("SELECT id, name, store_id, plan, status FROM households").fetchall() == \
             [(1, "Household", "1092", "free", "active")]
-        assert counts(c, OWNED + GLOBAL) == {**before, "seeds": before["seeds"] + 1}   # + role_permissions-1
+        assert counts(c, OWNED + GLOBAL) == {**before, "seeds": before["seeds"] + 2}   # + role_permissions-1, -2
         for t in OWNED:
             col = c.execute("SELECT is_nullable FROM information_schema.columns WHERE table_name=%s "
                             "AND column_name='household_id'", (t,)).fetchone()

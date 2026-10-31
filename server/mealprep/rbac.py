@@ -10,7 +10,7 @@ in tests/test_rbac_routes.py fails until it is).
 PERMISSIONS = frozenset({
     "recipe.read", "plan.read", "rate.self", "rate.for_children", "request.create", "plan.edit", "recipe.edit",
     "fridge.edit", "request.approve", "cart.build", "cart.send", "members.manage", "roles.assign",
-    "household.settings"})
+    "household.settings", "recipe.company"})
 MEMBER = "member"           # any member of the household, whatever their roles
 
 OWNER, APPROVER, CHILD = "owner", "approver", "child"
@@ -46,6 +46,7 @@ ROUTES: dict[tuple[str, str], str] = {
     ("DELETE", "/plan/{entry_id}/rating"): "rate.self",
     ("PUT", "/recipes/{recipe_id}/rating"): "rate.self",
     ("DELETE", "/recipes/{recipe_id}/rating"): "rate.self",
+    ("PUT", "/recipes/{recipe_id}/company"): "recipe.company",   # the household's Good for company verdict (Owners)
     # Sunday prep + cook cards: retired 2026-10-31, these answer 410 (kept so an older app gets a clear answer)
     ("POST", "/prep-plans"): "plan.edit",
     ("GET", "/prep-plans/{plan_id}"): "plan.read",

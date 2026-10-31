@@ -27,7 +27,10 @@ def test_rating_upsert_keeps_history(conn):
     assert db.set_rating(conn, eid, 3, at=at(14, 8)) is True
     assert db.set_rating(conn, eid, 5, company="yes", note="kids loved it", at=at(14, 9)) is True
     [e] = db.get_week(conn, date(2026, 10, 11))
-    assert e.rating.family == 5 and e.rating.company == "yes" and e.rating.note == "kids loved it"
+    # the rating's company is the recipe's household verdict now, not the rating's own answer (kept in history)
+    assert e.rating.family == 5 and e.rating.company is None and e.rating.note == "kids loved it"
+    db.set_company(conn, e.recipe_id, "yes", None)
+    assert db.get_week(conn, date(2026, 10, 11))[0].rating.company == "yes"
     assert datetime.fromisoformat(e.rating.rated_at) == at(14, 9)
     assert conn.execute("SELECT count(*) FROM ratings").fetchone()[0] == 1
     hist = conn.execute("SELECT plan_id, family, company, note, action FROM rating_history ORDER BY id").fetchall()
@@ -93,25 +96,28 @@ def test_summary_math(conn):
     s = db.rating_summaries(conn, TODAY)
     assert s[chili] == {
         "times_cooked": 4, "times_rated": 3, "avg_family": 3.7, "last_family": 4,
-        "last_rated_at": s[chili]["last_rated_at"], "company": "maybe",
+        "last_rated_at": s[chili]["last_rated_at"], "company": None,   # the ratings' old answers aren't the verdict
         "notes": [{"note": "kids picked out peppers", "date": "2026-10-12", "rated_at": s[chili]["notes"][0]["rated_at"],
                    "member_id": None, "name": "Family"},
                   {"note": "too salty", "date": "2026-09-30", "rated_at": s[chili]["notes"][1]["rated_at"],
                    "member_id": None, "name": "Family"}],
         "imported_ratings": 0, "rating_count": 3,
-        # before profiles every rating is the Family's: one rater, latest = the newest rating, its company answer
-        "people": [{"member_id": None, "name": "Family", "kind": "family", "family": 4, "company": None,
+        # before profiles every rating is the Family's: one rater, latest = the newest rating
+        "people": [{"member_id": None, "name": "Family", "kind": "family", "family": 4,
                     "note": "kids picked out peppers", "date": "2026-10-12", "rated_at": s[chili]["last_rated_at"],
                     "avg": 3.7, "count": 3}],
-        "company_votes": {"yes": 0, "maybe": 1, "no": 0}, "good_for_company": False}
+        "good_for_company": False, "company_set_by": None, "company_set_by_name": None, "company_set_at": None}
     assert datetime.fromisoformat(s[chili]["last_rated_at"]) == at(13)
     assert datetime.fromisoformat(s[chili]["notes"][1]["rated_at"]) == at(1)
     assert s[soup]["times_cooked"] == 1 and s[soup]["avg_family"] == 5.0
     assert s[soup]["notes"] == [] and s[soup]["company"] is None
     assert s[never] == {"times_cooked": 0, "times_rated": 0, "avg_family": None, "last_family": None,
                         "last_rated_at": None, "company": None, "notes": [],
-                        "imported_ratings": 0, "rating_count": 0, "people": [],
-                        "company_votes": {"yes": 0, "maybe": 0, "no": 0}, "good_for_company": False}
+                        "imported_ratings": 0, "rating_count": 0, "people": [], "good_for_company": False,
+                        "company_set_by": None, "company_set_by_name": None, "company_set_at": None}
+    db.set_company(conn, chili, "yes", None)
+    s = db.rating_summaries(conn, TODAY, [chili])[chili]
+    assert s["company"] == "yes" and s["good_for_company"] is True and s["company_set_at"]
 
 
 def test_avg_rounds_half_up(conn):
