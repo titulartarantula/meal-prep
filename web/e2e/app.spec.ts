@@ -90,8 +90,19 @@ test.describe("signed in", () => {
   test("recipes: search, open, add to a week; import a link", async ({ page }) => {
     await page.getByRole("link", { name: "Recipes" }).click();
     await expect(page.getByRole("heading", { name: "Recipes" })).toBeVisible();
+    // a recipe's photo loads; a link that fails and a recipe without one both show the placeholder
+    const tile = (name: string) => page.getByRole("listitem").filter({ has: page.getByRole("button", { name }) });
+    await expect(tile("Sheet-pan gnocchi with sausage & peppers").locator("img.photo")).toHaveJSProperty("complete", true);
+    expect(await tile("Sheet-pan gnocchi with sausage & peppers").locator("img.photo").evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
+    await expect(tile("Lemon orzo with peas, feta & mint").locator(".photo.placeholder")).toBeVisible();
+    await expect(tile("Lemon orzo with peas, feta & mint").locator("img")).toHaveCount(0);
+    await expect(tile("Halloumi grain bowls").locator(".photo.placeholder")).toBeVisible();
     await axe(page);
     await shot(page, "05-recipes");
+    await page.getByRole("button", { name: /Miso-glazed salmon/ }).click();
+    await expect(page.getByRole("dialog", { name: "Miso-glazed salmon with sesame greens" })
+      .getByRole("img", { name: "Miso-glazed salmon with sesame greens" })).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
     await page.getByRole("searchbox", { name: "Search recipes" }).fill("roast chicken");
     await page.getByRole("button", { name: /Roast chicken with lemon potatoes/ }).click();
     const drawer = page.getByRole("dialog", { name: "Roast chicken with lemon potatoes" });

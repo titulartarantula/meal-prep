@@ -113,7 +113,7 @@ function RecipeDrawer({ id, onClose }: { id: number | null; onClose: () => void 
     <Modal open={id != null} onClose={onClose} drawer title={d?.title ?? "Recipe"}>
       {r.isPending ? <Loading /> : r.error ? <ErrorNote error={r.error} /> : d && (
         <div className="recipe-detail">
-          <Photo src={d.image} title={d.title} className="hero" />
+          <Photo src={d.image} title={d.title} alt={d.title} className="hero" />
           <div className="meta big">
             {formatMinutes(d.total_minutes) && <span><Icon name="clock" size={15} />{formatMinutes(d.total_minutes)}</span>}
             {d.servings && <span>Serves {d.servings}</span>}

@@ -70,7 +70,7 @@ export function mockApi(): Plugin {
     let g: RegExpMatchArray | null;
 
     if (path === "/_mock/reset") { db = fresh(); return send(res, 204); }
-    if ((g = path.match(/^\/_mock\/photo\/(\w+)\.svg$/))) return svg(res, photoSvg(g[1]));
+    if ((g = path.match(/^\/_mock\/photo\/(\w+)\.svg$/))) return g[1] === "broken" ? send(res, 404) : svg(res, photoSvg(g[1]));
     if ((g = path.match(/^\/_mock\/product\/(\w+)\.svg$/))) return svg(res, productSvg(byCode(g[1])?.color ?? "#ccc"));
     if (path === "/auth/login") {
       res.writeHead(303, { Location: url.searchParams.get("next") || "/", "Set-Cookie": `${COOKIE}=1; Path=/; HttpOnly; SameSite=Lax` });

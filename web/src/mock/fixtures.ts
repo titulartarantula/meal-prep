@@ -9,7 +9,7 @@ export interface MockRecipe {
   source_kind: "nyt" | "book" | "other";
   source_title?: string;
   source_ref?: string;
-  photo: string | null; // palette key for a generated SVG "photo", or null (no image, like most NYT shares)
+  photo: string | null; // palette key for a generated SVG "photo"; "broken" = a link that 404s (shows the placeholder); null = no image
   avg: number | null;
   cooked: number;
   description?: string;
@@ -41,7 +41,7 @@ export const RECIPES: MockRecipe[] = [
       [4, null, "naan"]],
     steps: ["Simmer lentils with coconut milk and spices until soft.", "Stir in the spinach.", "Warm the naan with garlic butter."] },
   { id: 5, title: "Lemon orzo with peas, feta & mint", minutes: 30, servings: 4, source: "nyt", source_kind: "nyt",
-    photo: null, avg: 3.8, cooked: 2,
+    photo: "broken", avg: 3.8, cooked: 2,
     ingredients: [[2, "cup", "orzo"], [1.5, "cup", "frozen peas"], [200, "g", "feta"], [1, null, "lemon"], [0.25, "cup", "mint", "chopped"]],
     steps: ["Cook the orzo; add peas for the last 2 minutes.", "Toss with lemon, feta and mint."] },
   { id: 6, title: "Green curry meatballs with jasmine rice", minutes: 35, servings: 4, source: "nyt", source_kind: "nyt",

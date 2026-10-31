@@ -61,10 +61,14 @@ export function Modal({ open, onClose, title, children, footer, drawer, wide, la
 const TINTS = ["#D9CDBA", "#CFD1BC", "#DACBBF", "#D4CDB8", "#DDD1B5", "#D2C7B9"];
 
 /** A recipe's photo, or a calm tonal tile (most NYT shares have no image). */
-export function Photo({ src, title, className }: { src?: string | null; title: string; className?: string }) {
-  const [broken, setBroken] = useState(false);
-  if (src && !broken) {
-    return <img className={["photo", className].filter(Boolean).join(" ")} src={src} alt="" loading="lazy" onError={() => setBroken(true)} />;
+/** A recipe's photo (an NYT recipe's is a link to NYT's own copy) or, without one or when it fails to load, a tinted
+ * placeholder. `alt`: the recipe's title where the photo stands alone (the detail drawer); "" (default) where the title
+ * is written right next to it, so a screen reader doesn't read it twice. */
+export function Photo({ src, title, className, alt = "" }: { src?: string | null; title: string; className?: string; alt?: string }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  if (src && broken !== src) {
+    return <img className={["photo", className].filter(Boolean).join(" ")} src={src} alt={alt} loading="lazy" decoding="async"
+      referrerPolicy="no-referrer" onError={() => setBroken(src)} />;
   }
   const h = [...title].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
   return (
