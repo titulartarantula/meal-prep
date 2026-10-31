@@ -357,6 +357,8 @@ def test_draft_edit_send_flow(conn):
     assert r.status_code == 200 and r.json() == {"pcx_cart_id": "pcx1"}
     assert pcx.adds == [("pcx1", {"A": 1, "B": 2})]                          # beef removed
     assert c.post(f"/drafts/{did}/send", headers=H).json() == {"pcx_cart_id": "pcx1"} and pcx.created == ["pcx1"]
+    assert conn.execute("SELECT action, target FROM audit_log WHERE action='cart.send'").fetchall() == \
+        [("cart.send", f"draft:{did}")] * 2          # each send is audited (the repeat returns the same cart)
     assert wk() is True
     d = c.get(f"/drafts/{did}", headers=H).json()
     assert d["status"] == "sent" and d["pcx_cart_id"] == "pcx1"

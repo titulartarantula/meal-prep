@@ -1208,11 +1208,13 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         extras.delete_extra(c, extra_id)
 
     @app.post("/drafts/{draft_id}/send", dependencies=A)
-    def send_draft(draft_id: int, c=Depends(get_conn)):
+    def send_draft(draft_id: int, c=Depends(get_conn), s: Scope = Depends(household_scope)):
         try:
-            return {"pcx_cart_id": _draft_call(drafts.send_draft, c, draft_id, shop)}
+            cart_id = _draft_call(drafts.send_draft, c, draft_id, shop)
         except httpx.HTTPError as e:   # nothing recorded; draft stays ready so the user can retry
             raise HTTPException(502, f"PC Express cart failed: {type(e).__name__}: {str(e)[:200]}")
+        households.audit(c, s.household_id, "cart.send", f"draft:{draft_id}", s.member_id, s.user_id)
+        return {"pcx_cart_id": cart_id}
 
     def run_prep(pid: int, s: Scope):
         # background thread with its own connection, like draft builds
