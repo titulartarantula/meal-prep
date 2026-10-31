@@ -133,7 +133,7 @@ def _is_recipe(n) -> bool:
     return t == "Recipe" or (isinstance(t, list) and "Recipe" in t)
 
 
-def parse_nyt_html(html: str, url: str):
+def _recipe_node(html: str) -> dict | None:
     for block in re.findall(r'<script[^>]*application/ld\+json[^>]*>(.*?)</script>', html, re.S):
         try:
             data = json.loads(block)
@@ -142,6 +142,54 @@ def parse_nyt_html(html: str, url: str):
         nodes = data if isinstance(data, list) else data.get("@graph", [data]) if isinstance(data, dict) else []
         for n in nodes:
             if _is_recipe(n):
-                ings = [htmllib.unescape(i).strip() for i in n.get("recipeIngredient", [])]
-                return htmllib.unescape(n.get("name", "")), _servings(n.get("recipeYield")), ings, _steps(n.get("recipeInstructions"))
-    raise NotARecipe(url)
+                return n
+    return None
+
+
+def parse_nyt_html(html: str, url: str):
+    n = _recipe_node(html)
+    if n is None:
+        raise NotARecipe(url)
+    ings = [htmllib.unescape(i).strip() for i in n.get("recipeIngredient", [])]
+    return htmllib.unescape(n.get("name", "")), _servings(n.get("recipeYield")), ings, _steps(n.get("recipeInstructions"))
+
+
+# NYT publishes each photo in several crops (the "#<crop>" end of an ImageObject's @id, also in the file name). A card
+# wants a mid-sized landscape one: 4:3 at 800 × 600 first, then 3:2, then whatever is closest to 800 px wide.
+_CROPS = ("googleFourByThree", "threeByTwoMediumAt2X", "threeByTwoLargeAt2X", "threeByTwoSmallAt2X")
+
+
+def _https(v) -> str | None:
+    v = v.strip() if isinstance(v, str) else ""
+    return v if v.startswith("https://") and len(v) <= 2000 and not any(c.isspace() for c in v) else None
+
+
+def parse_nyt_image(html: str) -> str | None:
+    """The recipe photo's link from the page's JSON-LD `image` (a link, a list of links or ImageObjects), or None.
+    Only https links (the web app's CSP and mixed content); the photo stays on NYT's servers (hotlinked)."""
+    n = _recipe_node(html)
+    img = n.get("image") if n else None
+    items = img if isinstance(img, list) else [img]
+    found: list[tuple[str, str, int]] = []   # (link, id + link to match a crop name in, width)
+    for it in items:
+        if isinstance(it, str):
+            link, key, width = _https(it), it, 0
+        elif isinstance(it, dict):
+            link = _https(it.get("url")) or _https(it.get("contentUrl"))
+            key = f"{it.get('@id', '')} {link or ''}"
+            try:
+                width = int(it.get("width") or 0)
+            except (TypeError, ValueError):
+                width = 0
+        else:
+            continue
+        if link:
+            found.append((link, key, width))
+    for crop in _CROPS:
+        for link, key, _ in found:
+            if crop in key:
+                return link
+    sized = [f for f in found if f[2]]
+    if sized:
+        return min(sized, key=lambda f: abs(f[2] - 800))[0]
+    return found[0][0] if found else None

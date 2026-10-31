@@ -16,7 +16,8 @@ from .ai import AIError, get_provider
 from .ai.metered import Meter, Metered
 from .exchange import importer, jsonld, safe
 from .config import Settings
-from .importers.nyt import BASE as NYT_BASE, extract_nyt_url, fetch_nyt_recipe, parse_nyt_html, recipe_id as nyt_id
+from .importers.nyt import BASE as NYT_BASE, extract_nyt_url, fetch_nyt_recipe, parse_nyt_html, parse_nyt_image, \
+    recipe_id as nyt_id
 from .importers.photo import import_photo, import_subrecipe
 from .importers.structure import structure_ingredients
 from .matcher import fill_cart
@@ -611,11 +612,13 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         try:
             html, url = fetch_nyt_recipe(url)   # a wrong slug or id-only link resolves to the canonical one
             title, servings, lines, steps = parse_nyt_html(html, url)
+            image = parse_nyt_image(html)   # a link to NYT's photo (hotlinked, never downloaded)
             ings = structure_ingredients(metered(ai, s, "share"), lines)
         except Exception as e:   # NytFetchError, NotARecipe, AIError
             log.warning("share import of %s failed: %s: %s", url, type(e).__name__, str(e)[:300])
             raise HTTPException(502, f"import failed: {type(e).__name__}: {str(e)[:200]}")
-        r = Recipe(title=title, source="nyt", source_url=url, servings=servings, ingredients=ings, steps=steps)
+        r = Recipe(title=title, source="nyt", source_url=url, servings=servings, ingredients=ings, steps=steps,
+                   image=image)
         return _save_and_plan(c, r, body.week)
 
     @app.post("/recipes/photo", dependencies=A)

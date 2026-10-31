@@ -41,14 +41,15 @@ class Recipe(BaseModel):
     # Stable id (import/export, 2026-10-06): a uuid in its own column, the schema.org identifier (urn:uuid:<uid>) and
     # the de-dup key across libraries. None only before saving (the column default fills it; an import brings its own).
     uid: str | None = None
-    # Optional details an imported recipe can bring (kept in `data`; None/{} for recipes from NYT or photos).
+    # Optional details an imported recipe can bring (kept in `data`; None/{} for recipes from photos; an NYT recipe
+    # keeps only its photo link, `image`, read from the page at import or by `python -m mealprep.nyt_images`).
     description: str | None = None
     notes: str | None = None
     prep_minutes: int | None = None
     cook_minutes: int | None = None
     total_minutes: int | None = None
     yield_text: str | None = None    # the yield as the source wrote it ("Makes 24 cookies")
-    image: str | None = None         # an http(s) link, kept as text, never fetched
+    image: str | None = None         # an http(s) link, kept as text, never fetched (the web app hotlinks it)
     schema_extra: dict = {}          # whitelisted schema.org keys passed through (recipeCuisine, keywords …)
 
     def default_kind(self) -> str:

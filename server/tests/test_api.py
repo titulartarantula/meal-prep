@@ -455,3 +455,13 @@ def test_recipes_endpoint_has_uid(conn, nyt):
     detail = c.get(f"/recipes/{rid}", headers=H).json()
     assert len(row["uid"]) == 36 and detail["uid"] == row["uid"]
     assert conn.execute("SELECT uid::text FROM recipes WHERE id=%s", (rid,)).fetchone()[0] == row["uid"]
+
+
+def test_share_keeps_the_photo_link(conn, nyt):
+    r = client(conn).post("/recipes/share", headers=H, json={"text": NYT})
+    assert r.json()["recipe"]["image"] == "https://images.example/cookies-googleFourByThree.jpg"
+    rid = r.json()["recipe"]["id"]
+    assert client(conn).get("/recipes", headers=H).json()[0]["image"] == r.json()["recipe"]["image"]
+    # an edit keeps it
+    p = client(conn).patch(f"/recipes/{rid}", headers=H, json={"title": "Cookies"})
+    assert p.status_code == 200 and p.json()["image"] == "https://images.example/cookies-googleFourByThree.jpg"

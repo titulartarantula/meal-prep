@@ -136,3 +136,39 @@ def test_network_error_is_a_fetch_error():
     respx.get(SHARE).mock(side_effect=httpx.ConnectError("down"))
     with pytest.raises(NytFetchError, match="ConnectError"):
         fetch_nyt_recipe(SHARE)
+
+
+# --- the recipe photo's link (hotlinked; never downloaded) ---------------------------------------------------------
+import json as _json
+from mealprep.importers.nyt import parse_nyt_image
+
+
+def _page(image) -> str:
+    return ("<html><script type='application/ld+json'>"
+            + _json.dumps({"@type": "Recipe", "name": "Soup", "image": image}) + "</script></html>")
+
+
+def test_image_from_fixture_prefers_four_by_three():
+    html = Path(__file__).parent.joinpath("fixtures/recipe_page.html").read_text()
+    assert parse_nyt_image(html) == "https://images.example/cookies-googleFourByThree.jpg"
+
+
+def test_image_three_by_two_then_closest_to_800_wide():
+    obj = lambda crop, w: {"@id": f"img://x#{crop}", "url": f"https://images.example/x-{crop}.jpg", "width": str(w)}
+    assert parse_nyt_image(_page([obj("jumbo", 2048), obj("threeByTwoMediumAt2X", 1500)])) \
+        == "https://images.example/x-threeByTwoMediumAt2X.jpg"
+    assert parse_nyt_image(_page([obj("jumbo", 2048), obj("thumb", 150), obj("mid", 1000)])) \
+        == "https://images.example/x-mid.jpg"
+
+
+def test_image_plain_links_content_url_and_bad_values():
+    assert parse_nyt_image(_page("https://images.example/a.jpg")) == "https://images.example/a.jpg"
+    assert parse_nyt_image(_page(["https://images.example/a.jpg", "https://images.example/b.jpg"])) \
+        == "https://images.example/a.jpg"
+    assert parse_nyt_image(_page({"@type": "ImageObject", "contentUrl": "https://images.example/c.jpg"})) \
+        == "https://images.example/c.jpg"
+    # only https: an http link would be mixed content (and outside the web app's CSP)
+    assert parse_nyt_image(_page(["http://images.example/a.jpg", "javascript:alert(1)", 7, None])) is None
+    assert parse_nyt_image(_page({"url": "https://images.example/a b.jpg", "width": "wide"})) is None
+    assert parse_nyt_image(PAGE) is None
+    assert parse_nyt_image("<html></html>") is None

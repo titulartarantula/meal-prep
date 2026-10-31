@@ -193,7 +193,9 @@ def test_shared_token_acts_as_the_legacy_member(conn):
 
 # --- Google not configured ----------------------------------------------------------------------------------------
 
-def test_sign_in_routes_are_503_without_a_google_client(conn):
+def test_sign_in_routes_are_503_without_a_google_client(conn, monkeypatch):
+    for v in ("MEALPREP_GOOGLE_CLIENT_ID", "MEALPREP_GOOGLE_CLIENT_SECRET"):   # a server's .env may set them
+        monkeypatch.delenv(v, raising=False)
     c = make(conn)
     assert c.get("/auth/login", follow_redirects=False).status_code == 503
     assert c.get("/auth/callback", params={"code": "x", "state": "y"}).status_code == 503
