@@ -42,10 +42,11 @@
 	@pages not path /assets/*
 	header @pages Cache-Control "no-cache"
 
-	# A single-page app: any path that isn't a file is the app's route.
+	# A single-page app: any path that isn't a file is the app's route. /privacy and /terms are static pages
+	# (privacy.html, terms.html: no JavaScript, no sign-in).
 	handle {
 		root * /srv
-		try_files {path} /index.html
+		try_files {path} {path}.html /index.html
 		file_server
 	}
 }

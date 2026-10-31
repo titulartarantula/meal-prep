@@ -21,9 +21,17 @@ npm run build        # static files in dist/ for Caddy
 ```sh
 npm test             # unit tests (weeks, formatting, cart maths) + WCAG AA contrast of every theme token pair
 npm run e2e          # Playwright against the mock API: sign-in, week (move/drag/rate/add), recipes + import,
-                     # list → build → review/swap/add → send → handoff; axe WCAG 2.1 AA scan on every screen
+                     # list → build → review/swap/add → send → handoff; /privacy + /terms (no JS); axe WCAG 2.1 AA
+                     # scan on every screen
 SHOTS=1 npm run e2e  # also writes 1440×900 screenshots to e2e/screens/
 ```
+
+## Privacy policy and terms
+
+`/privacy` and `/terms` are static pages (no JavaScript, no sign-in), linked from the sign-in screen: `privacy.html`
+and `terms.html` are filled at build time from `docs/web/privacy-policy.md` and `docs/web/terms.md`
+(`src/legal/`: a small Markdown subset), and Caddy serves `{path}.html` before falling back to the app. Edit the
+Markdown, bump its "Last updated" line, and deploy. Google's OAuth consent screen points at both URLs.
 
 ## API types
 

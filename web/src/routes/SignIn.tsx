@@ -20,6 +20,11 @@ export function SignIn({ noHousehold }: { noHousehold?: boolean }) {
           </>
         )}
       </div>
+      {/* Plain links: /privacy and /terms are static pages outside the app. */}
+      <footer className="signin-foot">
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+      </footer>
     </main>
   );
 }
