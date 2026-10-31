@@ -62,7 +62,50 @@ cd ~/meal-prep/server && set -a && . ../.env && set +a && .venv/bin/python deplo
 Adds recipe_id:day entries → `POST /prep-plans` → polls to ready (timed) → prints the plan and cards → ticks a task on
 and off → deletes the entries, the prep plan and its task events.
 
-## API (all but /health need `Authorization: Bearer $MEALPREP_TOKEN`)
+## Sign-in and households
+
+Every route except `/health` and the sign-in routes acts for one household and needs a permission (the route →
+permission map is `mealprep/rbac.py`; a member without it gets 403, a household the caller isn't in is 404). Who calls:
+
+- **Web**: `GET /auth/login?next=/path[&invite=TOKEN]` → Google (authorization code + PKCE, scopes `openid email
+  profile`) → `GET /auth/callback` sets the `__Host-mealprep_session` cookie (HttpOnly, Secure, SameSite=Lax). Writes
+  with the cookie need `X-CSRF-Token` = `csrf_token` from `GET /auth/me`.
+- **Android**: Credential Manager's Google ID token (audience = the web client id) → `POST /auth/google
+  {id_token, invite?}` → `{token, expires_at, household_id}`; send `Authorization: Bearer <token>`.
+- **Shared token** (until the app signs in): `Authorization: Bearer $MEALPREP_TOKEN`, accepted only from
+  `MEALPREP_LEGACY_NETWORKS` (default `127.0.0.1/32,192.168.1.0/24,10.8.0.0/24`), acting as the household's
+  legacy member. Don't let uvicorn trust forwarded headers from the reverse proxy, or the proxy's clients would be
+  judged by `X-Forwarded-For`. An empty `MEALPREP_TOKEN` turns it off.
+- `X-Household: <id>` picks one of the caller's households (else the session's last one, `PUT /auth/household`).
+  Sign-in is invite-only: an account without a membership, a member with its verified email, or an invite gets 403.
+
+Settings (`.env`): `MEALPREP_GOOGLE_CLIENT_ID`, `MEALPREP_GOOGLE_CLIENT_SECRET` (sign-in answers 503 without them),
+`MEALPREP_PUBLIC_URL` (default `https://mealprep.drwhom.ca`), `MEALPREP_GOOGLE_REDIRECT_URI` (default
+`$MEALPREP_PUBLIC_URL/api/auth/callback`: the reverse proxy serves the API under `/api/` with the prefix stripped),
+`MEALPREP_SESSION_DAYS` (30, sliding), `MEALPREP_AI_DAILY_BUDGET` (AI calls per 24 h for new households, 400).
+
+Rows of one household are kept apart by Postgres row-level security: requests run as the role `mealprep_app` with
+the household set (`db.scope`); the schema migration creates the role, adds `household_id` to every household-owned
+table and backfills existing rows to the first household. Name it and add its members from a private file (never the
+repo):
+
+```bash
+cd ~/meal-prep/server && set -a && . ../.env && set +a && .venv/bin/python -m mealprep.seed ~/meal-prep/household.json
+```
+
+(format in `mealprep/seed.py`; members without an email are claimed with an invite: `POST /household/invites
+{member_id, roles}`).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /auth/me` | user, households, current household, member, roles, permissions (+ `csrf_token` for the cookie) |
+| `POST /auth/logout` · `PUT /auth/household {household_id}` · `POST /invites/accept {token}` | end the session · switch household · join another household |
+| `GET`/`PATCH /household` `{name?, store_id?}` | the household (`household.settings` to change) |
+| `GET /household/members` · `POST {name, kind account\|child, birth_year?, email?, roles?}` · `PATCH`/`DELETE /household/members/{id}` · `PUT /household/members/{id}/roles {roles}` | members (`members.manage`; roles need `roles.assign`; Child only on child profiles and alone; the last Owner and the last Approver / Purchaser stay → 409) |
+| `GET`/`POST /household/invites {email?, roles, member_id?, days?}` · `DELETE /household/invites/{id}` | one-use invite links (token shown once; email-bound or not; `member_id` claims that member) |
+| `GET /household/ai-usage?days=` | AI calls per day and feature, the daily budget |
+
+## API (all but /health and /auth/* need a session or the shared token; see above)
 
 | Endpoint | Purpose |
 |---|---|
