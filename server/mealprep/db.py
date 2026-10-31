@@ -265,13 +265,16 @@ def _rating(family, company, note, rated_at) -> Rating | None:
     return Rating(family=family, company=company, note=note, rated_at=rated_at.isoformat())
 
 
-def get_week(conn, week: date) -> list[PlanEntry]:
-    rows = conn.execute("SELECT p.id, p.week, p.recipe_id, p.day, p.multiplier, rc.title, "
-                        "r.family, r.company, r.note, r.rated_at "
-                        "FROM plan p JOIN recipes rc ON rc.id = p.recipe_id LEFT JOIN ratings r ON r.plan_id = p.id "
-                        "WHERE p.week=%s ORDER BY COALESCE(p.day, 99), p.id", (week_start(week),))
-    return [PlanEntry(id=i, week=w.isoformat(), recipe_id=r, day=d, multiplier=m, title=t, rating=_rating(*rt))
-            for i, w, r, d, m, t, *rt in rows]
+def get_week(conn, week: date, viewer: int | None = None) -> list[PlanEntry]:
+    """The week's entries with everyone's ratings; viewer = the member asking (None = the shared token / Family)."""
+    rows = conn.execute("SELECT p.id, p.week, p.recipe_id, p.day, p.multiplier, rc.title "
+                        "FROM plan p JOIN recipes rc ON rc.id = p.recipe_id "
+                        "WHERE p.week=%s ORDER BY COALESCE(p.day, 99), p.id", (week_start(week),)).fetchall()
+    people = _people(conn)
+    rated = _plan_ratings(conn, [r[0] for r in rows], people)
+    return [PlanEntry(id=i, week=w.isoformat(), recipe_id=r, day=d, multiplier=m, title=t,
+                      **_cooked(rated.get(i, []), viewer, people))
+            for i, w, r, d, m, t in rows]
 
 
 _UNSET = object()
@@ -386,158 +389,285 @@ def default_cart_week(conn, today: date) -> date | None:
     return next((w for w in planned if w not in sent or sent[w]), None)
 
 
-# --- ratings: one per plan entry (time cooked); rating_history is the append-only log for reports ---
+# --- ratings: one per time cooked and person (plan entry, or the recipe on a day); rating_history is the append-only
+# log for reports. member_id NULL = "Family": ratings from before profiles and what the shared token writes. ---
+
+FAMILY, FORMER = "Family", "Former member"
+
+
+def _people(conn) -> dict[int, tuple[str, str, int]]:
+    """The scoped household's members: id → (name, kind, household order)."""
+    rows = conn.execute("SELECT id, display_name, kind FROM members WHERE household_id = "
+                        "NULLIF(current_setting('mealprep.household_id', true), '')::int ORDER BY joined_at, id")
+    return {i: (n, k, o) for o, (i, n, k) in enumerate(rows)}
+
+
+def _who(people: dict, member_id: int | None) -> tuple[str, str]:
+    if member_id is None:
+        return FAMILY, "family"
+    p = people.get(member_id)
+    return (p[0], p[1]) if p else (FORMER, "former")
+
+
+def _order(people: dict, member_id: int | None) -> tuple:
+    """Members in household order, then Family, then former members."""
+    if member_id is None:
+        return (1, 0)
+    p = people.get(member_id)
+    return (0, p[2]) if p else (2, member_id)
+
+
+def _avg(scores) -> float | None:
+    scores = list(scores)
+    if not scores:
+        return None
+    return float((Decimal(sum(scores)) / Decimal(len(scores))).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+
+def verdict(answers) -> str | None:
+    """The family's company verdict from each rater's latest answer: more yes than no = yes, more no than yes = no,
+    otherwise (a tie, or only maybes) maybe; None without answers."""
+    answers = [a for a in answers if a]
+    if not answers:
+        return None
+    yes, no = answers.count("yes"), answers.count("no")
+    return "yes" if yes > no else "no" if no > yes else "maybe"
+
+
+def _person_rating(people: dict, member_id, by, family, company, note, rated_at) -> dict:
+    name, kind = _who(people, member_id)
+    other = by is not None and by != member_id
+    return {"member_id": member_id, "name": name, "kind": kind, "family": family, "company": company, "note": note,
+            "rated_at": rated_at.isoformat(), "entered_by": by if other else None,
+            "entered_by_name": _who(people, by)[0] if other else None}
+
+
+def _plan_ratings(conn, plan_ids: list[int], people: dict) -> dict[int, list[dict]]:
+    """{plan_id: [person rating, …]} newest first."""
+    if not plan_ids:
+        return {}
+    out: dict[int, list[dict]] = {}
+    for pid, *r in conn.execute("SELECT plan_id, member_id, entered_by, family, company, note, rated_at FROM ratings "
+                                "WHERE plan_id = ANY(%s) ORDER BY rated_at DESC, id DESC", (plan_ids,)):
+        out.setdefault(pid, []).append(_person_rating(people, *r))
+    return out
+
+
+def _cooked(rows: list[dict], viewer: int | None, people: dict) -> dict:
+    """CookedRatings fields for one time cooked from its person ratings (newest first). `rating` (older clients) =
+    the viewer's own, else the newest; `my_rating` = the viewer's own (viewer None = the Family rating)."""
+    def plain(x):
+        return {k: x[k] for k in ("family", "company", "note", "rated_at")} if x else None
+    mine = next((x for x in rows if x["member_id"] == viewer), None)
+    return {"rating": plain(mine or (rows[0] if rows else None)), "my_rating": plain(mine),
+            "ratings": sorted(rows, key=lambda x: _order(people, x["member_id"])),
+            "rating_avg": _avg(x["family"] for x in rows), "rating_count": len(rows)}
+
+
+def _same(column: str) -> str:
+    return f"{column} IS NOT DISTINCT FROM %(m)s"
+
 
 def set_rating(conn, entry_id: int, family: int, company: str | None = None, note: str | None = None,
-               at: datetime | None = None) -> bool:
-    """Upsert the entry's rating and log it. False if the plan entry doesn't exist."""
+               at: datetime | None = None, rater: int | None = None, by: int | None = None) -> bool:
+    """Upsert the rater's rating of the entry (rater None = Family) and log it. False if the plan entry doesn't
+    exist."""
     with conn.transaction():
         row = conn.execute("SELECT recipe_id, week, day FROM plan WHERE id=%s FOR UPDATE", (entry_id,)).fetchone()
         if row is None:
             return False
         conn.execute(
-            "INSERT INTO ratings(plan_id, family, company, note, rated_at) VALUES(%s,%s,%s,%s,COALESCE(%s::timestamptz, now())) "
-            "ON CONFLICT(plan_id) DO UPDATE SET family=excluded.family, company=excluded.company, note=excluded.note, "
-            "rated_at=excluded.rated_at", (entry_id, family, company, note, at))
-        conn.execute("INSERT INTO rating_history(plan_id, recipe_id, week, day, action, family, company, note, at) "
-                     "VALUES(%s,%s,%s,%s,'set',%s,%s,%s,COALESCE(%s::timestamptz, now()))", (entry_id, *row, family, company, note, at))
+            "INSERT INTO ratings(plan_id, member_id, entered_by, family, company, note, rated_at) "
+            "VALUES(%s,%s,%s,%s,%s,%s,COALESCE(%s::timestamptz, now())) "
+            "ON CONFLICT(plan_id, member_id) DO UPDATE SET family=excluded.family, company=excluded.company, "
+            "note=excluded.note, rated_at=excluded.rated_at, entered_by=excluded.entered_by",
+            (entry_id, rater, by, family, company, note, at))
+        conn.execute("INSERT INTO rating_history(plan_id, recipe_id, week, day, action, family, company, note, at, "
+                     "member_id, entered_by) VALUES(%s,%s,%s,%s,'set',%s,%s,%s,COALESCE(%s::timestamptz, now()),%s,%s)",
+                     (entry_id, *row, family, company, note, at, rater, by))
     return True
 
 
-def delete_rating(conn, entry_id: int) -> bool:
-    """Remove the entry's rating (logged in history if there was one). False if the plan entry doesn't exist."""
+def delete_rating(conn, entry_id: int, rater: int | None = None, by: int | None = None) -> bool:
+    """Remove the rater's rating of the entry (logged in history if there was one). False if the plan entry doesn't
+    exist."""
     with conn.transaction():
         row = conn.execute("SELECT recipe_id, week, day FROM plan WHERE id=%s FOR UPDATE", (entry_id,)).fetchone()
         if row is None:
             return False
-        if conn.execute("DELETE FROM ratings WHERE plan_id=%s", (entry_id,)).rowcount:
-            conn.execute("INSERT INTO rating_history(plan_id, recipe_id, week, day, action) VALUES(%s,%s,%s,%s,'delete')",
-                         (entry_id, *row))
+        if conn.execute("DELETE FROM ratings WHERE plan_id=%(p)s AND " + _same("member_id"),
+                        {"p": entry_id, "m": rater}).rowcount:
+            conn.execute("INSERT INTO rating_history(plan_id, recipe_id, week, day, action, member_id, entered_by) "
+                         "VALUES(%s,%s,%s,%s,'delete',%s,%s)", (entry_id, *row, rater, by))
     return True
 
 
-# --- ratings from the recipe (not a planned night): one per recipe and day, in recipe_ratings ---
+# --- ratings from the recipe (not a planned night): one per recipe, day and person, in recipe_ratings ---
 
-def _night_entry(conn, recipe_id: int, day: date) -> int | None:
-    """The recipe's plan entry placed on that night (an unrated one first), or None."""
-    row = conn.execute("SELECT p.id FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id WHERE p.recipe_id=%s "
-                       "AND p.day IS NOT NULL AND p.week + p.day::int = %s ORDER BY r.plan_id IS NOT NULL, p.id LIMIT 1",
-                       (recipe_id, day)).fetchone()
+def _night_entry(conn, recipe_id: int, day: date, rater: int | None) -> int | None:
+    """The recipe's plan entry placed on that night (one the rater hasn't rated first), or None."""
+    row = conn.execute("SELECT p.id FROM plan p WHERE p.recipe_id=%(r)s AND p.day IS NOT NULL "
+                       "AND p.week + p.day::int = %(d)s ORDER BY EXISTS (SELECT 1 FROM ratings x WHERE "
+                       "x.plan_id = p.id AND " + _same("x.member_id") + "), p.id LIMIT 1",
+                       {"r": recipe_id, "d": day, "m": rater}).fetchone()
     return row[0] if row else None
 
 
 def rate_recipe(conn, recipe_id: int, family: int, company: str | None, note: str | None, today: date,
-                cooked_on: date | None = None) -> dict | None:
-    """Rate a time the recipe was cooked, from the recipe itself. Without cooked_on, the newest dinner of this recipe
-    still waiting for a rating (GET /ratings/pending) takes it, else today. A night on the plan for the recipe on that
-    day takes the rating (the same as PUT /plan/{id}/rating), else it's the recipe's rating for that day (made or
-    overwritten). Returns {cooked_on, entry_id, recipe_rating_id}; None if the recipe doesn't exist."""
+                cooked_on: date | None = None, rater: int | None = None, by: int | None = None) -> dict | None:
+    """Rate a time the recipe was cooked, from the recipe itself, as `rater` (None = Family). Without cooked_on, the
+    newest dinner of this recipe still waiting for the rater's rating (GET /ratings/pending) takes it, else today. A
+    night on the plan for the recipe on that day takes the rating (the same as PUT /plan/{id}/rating), else it's the
+    rater's rating of the recipe for that day (made or overwritten). Returns {cooked_on, entry_id, recipe_rating_id};
+    None if the recipe doesn't exist."""
     if conn.execute("SELECT 1 FROM recipes WHERE id=%s", (recipe_id,)).fetchone() is None:
         return None
     if cooked_on is None:
-        waiting = next((p for p in pending_ratings(conn, today) if p["recipe_id"] == recipe_id), None)
+        waiting = next((p for p in pending_ratings(conn, today, rater=rater) if p["recipe_id"] == recipe_id), None)
         if waiting:
-            set_rating(conn, waiting["entry_id"], family, company, note)
+            set_rating(conn, waiting["entry_id"], family, company, note, rater=rater, by=by)
             return {"cooked_on": waiting["date"], "entry_id": waiting["entry_id"], "recipe_rating_id": None}
         cooked_on = today
-    eid = _night_entry(conn, recipe_id, cooked_on)
+    eid = _night_entry(conn, recipe_id, cooked_on, rater)
     if eid is not None:
-        set_rating(conn, eid, family, company, note)
+        set_rating(conn, eid, family, company, note, rater=rater, by=by)
         return {"cooked_on": cooked_on.isoformat(), "entry_id": eid, "recipe_rating_id": None}
     with conn.transaction():
         rrid = conn.execute(
-            "INSERT INTO recipe_ratings(recipe_id, cooked_on, family, company, note) VALUES(%s,%s,%s,%s,%s) "
-            "ON CONFLICT(household_id, recipe_id, cooked_on) DO UPDATE SET family=excluded.family, "
-            "company=excluded.company, note=excluded.note, rated_at=now() RETURNING id",
-            (recipe_id, cooked_on, family, company, note)).fetchone()[0]
+            "INSERT INTO recipe_ratings(recipe_id, cooked_on, member_id, entered_by, family, company, note) "
+            "VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(household_id, recipe_id, cooked_on, member_id) DO UPDATE SET "
+            "family=excluded.family, company=excluded.company, note=excluded.note, entered_by=excluded.entered_by, "
+            "rated_at=now() RETURNING id",
+            (recipe_id, cooked_on, rater, by, family, company, note)).fetchone()[0]
         conn.execute("INSERT INTO rating_history(plan_id, recipe_rating_id, recipe_id, week, day, action, family, "
-                     "company, note) VALUES(NULL,%s,%s,%s,%s,'set',%s,%s,%s)",
-                     (rrid, recipe_id, week_start(cooked_on), (cooked_on.weekday() + 1) % 7, family, company, note))
+                     "company, note, member_id, entered_by) VALUES(NULL,%s,%s,%s,%s,'set',%s,%s,%s,%s,%s)",
+                     (rrid, recipe_id, week_start(cooked_on), (cooked_on.weekday() + 1) % 7, family, company, note,
+                      rater, by))
     return {"cooked_on": cooked_on.isoformat(), "entry_id": None, "recipe_rating_id": rrid}
 
 
-def unrate_recipe(conn, recipe_id: int, cooked_on: date) -> bool:
-    """Remove the rating of the time the recipe was cooked on that day: the planned night's, else the recipe's own.
-    False if the recipe doesn't exist."""
+def unrate_recipe(conn, recipe_id: int, cooked_on: date, rater: int | None = None, by: int | None = None) -> bool:
+    """Remove the rater's rating of the time the recipe was cooked on that day: of the planned night, else of the
+    recipe that day. False if the recipe doesn't exist."""
     if conn.execute("SELECT 1 FROM recipes WHERE id=%s", (recipe_id,)).fetchone() is None:
         return False
-    row = conn.execute("SELECT p.id FROM plan p JOIN ratings r ON r.plan_id = p.id WHERE p.recipe_id=%s "
-                       "AND p.day IS NOT NULL AND p.week + p.day::int = %s ORDER BY p.id LIMIT 1",
-                       (recipe_id, cooked_on)).fetchone()
+    row = conn.execute("SELECT p.id FROM plan p JOIN ratings r ON r.plan_id = p.id WHERE p.recipe_id=%(r)s "
+                       "AND p.day IS NOT NULL AND p.week + p.day::int = %(d)s AND " + _same("r.member_id")
+                       + " ORDER BY p.id LIMIT 1", {"r": recipe_id, "d": cooked_on, "m": rater}).fetchone()
     if row:
-        return delete_rating(conn, row[0])
+        return delete_rating(conn, row[0], rater, by)
     with conn.transaction():
-        gone = conn.execute("DELETE FROM recipe_ratings WHERE recipe_id=%s AND cooked_on=%s RETURNING id",
-                            (recipe_id, cooked_on)).fetchone()
+        gone = conn.execute("DELETE FROM recipe_ratings WHERE recipe_id=%(r)s AND cooked_on=%(d)s AND "
+                            + _same("member_id") + " RETURNING id",
+                            {"r": recipe_id, "d": cooked_on, "m": rater}).fetchone()
         if gone:
-            conn.execute("INSERT INTO rating_history(plan_id, recipe_rating_id, recipe_id, week, day, action) "
-                         "VALUES(NULL,%s,%s,%s,%s,'delete')",
-                         (gone[0], recipe_id, week_start(cooked_on), (cooked_on.weekday() + 1) % 7))
+            conn.execute("INSERT INTO rating_history(plan_id, recipe_rating_id, recipe_id, week, day, action, "
+                         "member_id, entered_by) VALUES(NULL,%s,%s,%s,%s,'delete',%s,%s)",
+                         (gone[0], recipe_id, week_start(cooked_on), (cooked_on.weekday() + 1) % 7, rater, by))
     return True
 
 
-def recipe_rated_history(conn, recipe_id: int) -> list[dict]:
-    """The recipe's ratings made from the recipe (not a planned night), newest day first."""
-    rows = conn.execute("SELECT cooked_on, family, company, note, rated_at FROM recipe_ratings WHERE recipe_id=%s "
-                        "ORDER BY cooked_on DESC, id DESC", (recipe_id,))
-    return [{"date": d.isoformat(), "rating": _rating(f, c, n, at).model_dump()} for d, f, c, n, at in rows]
+def recipe_rated_history(conn, recipe_id: int, viewer: int | None = None) -> list[dict]:
+    """The recipe's ratings made from the recipe (not a planned night), one entry per day, newest day first."""
+    people = _people(conn)
+    days: dict[date, list[dict]] = {}
+    for d, *r in conn.execute("SELECT cooked_on, member_id, entered_by, family, company, note, rated_at "
+                              "FROM recipe_ratings WHERE recipe_id=%s ORDER BY cooked_on DESC, rated_at DESC, id DESC",
+                              (recipe_id,)):
+        days.setdefault(d, []).append(_person_rating(people, *r))
+    return [{"date": d.isoformat(), **_cooked(rows, viewer, people)} for d, rows in days.items()]
 
 
-def pending_ratings(conn, today: date, days: int = 14) -> list[dict]:
-    """Entries placed on a night before today (within `days`) that have no rating yet — most recent first."""
+def pending_ratings(conn, today: date, days: int = 14, rater: int | None = None) -> list[dict]:
+    """Entries placed on a night before today (within `days`) that the rater hasn't rated yet — most recent first.
+    rater None (the shared token): nights nobody has rated (the household question, as before profiles)."""
+    who = "" if rater is None else " AND {}.member_id = %(m)s"
     rows = conn.execute(
         "SELECT p.id, p.week, p.day, p.week + p.day::int AS d, p.recipe_id, r.title, p.multiplier "
         "FROM plan p JOIN recipes r ON r.id = p.recipe_id "
         "WHERE p.day IS NOT NULL AND p.week + p.day::int < %(t)s AND p.week + p.day::int >= %(t)s - %(n)s::int "
-        "AND NOT EXISTS (SELECT 1 FROM ratings x WHERE x.plan_id = p.id) "
+        "AND NOT EXISTS (SELECT 1 FROM ratings x WHERE x.plan_id = p.id" + who.format("x") + ") "
         "AND NOT EXISTS (SELECT 1 FROM recipe_ratings y WHERE y.recipe_id = p.recipe_id "
-        "AND y.cooked_on = p.week + p.day::int) ORDER BY d DESC, p.id",
-        {"t": today, "n": days})
+        "AND y.cooked_on = p.week + p.day::int" + who.format("y") + ") ORDER BY d DESC, p.id",
+        {"t": today, "n": days, "m": rater})
     return [{"entry_id": i, "week": w.isoformat(), "day": dy, "date": d.isoformat(), "recipe_id": rid, "title": t,
              "multiplier": m} for i, w, dy, d, rid, t, m in rows]
 
 
 def _empty_summary() -> dict:
     return {"times_cooked": 0, "times_rated": 0, "avg_family": None, "last_family": None,
-            "last_rated_at": None, "company": None, "notes": [], "imported_ratings": 0}
+            "last_rated_at": None, "company": None, "notes": [], "imported_ratings": 0, "rating_count": 0,
+            "people": [], "company_votes": {"yes": 0, "maybe": 0, "no": 0}, "good_for_company": False}
+
+
+def _cooking_rows(recipe_ids: list[int] | None, extra: str = "") -> str:
+    """Every time cooked with its ratings, one row per rating (or one unrated row): recipe_id, cooking key, the
+    day, multiplier, family, company, note, rated_at, imported, member_id, entered_by, tie-break."""
+    ids = "" if recipe_ids is None else " AND {} = ANY(%(ids)s)"
+    return ("SELECT p.recipe_id, 'p' || p.id AS k, p.week + p.day::int AS d, p.multiplier, r.family, r.company, "
+            "r.note, r.rated_at, false AS imported, r.member_id, r.entered_by, p.id AS t "
+            "FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id WHERE " + (extra or "true") + ids.format("p.recipe_id")
+            + " UNION ALL SELECT recipe_id, 'i' || id, cooked_on, multiplier, family, company, note, rated_at, true, "
+            "NULL::int, NULL::int, -id FROM imported_ratings WHERE true" + ids.format("recipe_id")
+            + " UNION ALL SELECT recipe_id, 'r' || cooked_on, cooked_on, 1::real, family, company, note, rated_at, "
+            "false, member_id, entered_by, 0 FROM recipe_ratings WHERE true" + ids.format("recipe_id"))
 
 
 def rating_summaries(conn, today: date, recipe_ids: list[int] | None = None) -> dict[int, dict]:
-    """Per-recipe rating summary (all recipes, or just recipe_ids)."""
+    """Per-recipe rating summary (all recipes, or just recipe_ids). A time cooked can have one rating per person:
+    avg_family = the mean of every rating (each person's rating of each time cooked counts once; a Family rating —
+    from before profiles or the shared token — counts as one rater; imported ones count one each, as before);
+    times_rated = times cooked with at least one rating; people = per person: their latest rating and average."""
     where = "" if recipe_ids is None else " WHERE id = ANY(%(ids)s)"
     out = {rid: _empty_summary() for (rid,) in conn.execute("SELECT id FROM recipes" + where, {"ids": recipe_ids})}
-    # the household's plan entries and the times cooked an import brought in (each one cooked, rated or not)
-    ids = "" if recipe_ids is None else " WHERE {} = ANY(%(ids)s)"
-    rows = conn.execute(
-        "SELECT * FROM (SELECT p.recipe_id, p.week + p.day::int, r.family, r.company, r.note, r.rated_at, false, "
-        "p.id FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id" + ids.format("p.recipe_id")
-        + " UNION ALL SELECT recipe_id, cooked_on, family, company, note, rated_at, true, -id FROM imported_ratings"
-        + ids.format("recipe_id")
-        + " UNION ALL SELECT recipe_id, cooked_on, family, company, note, rated_at, false, 0 FROM recipe_ratings"
-        + ids.format("recipe_id") + ") x ORDER BY 6 DESC NULLS LAST, 8 DESC", {"ids": recipe_ids})
-    totals: dict[int, int] = {}
-    for rid, cooked_on, family, company, note, rated_at, imported, _ in rows:   # rated rows newest first
+    people = _people(conn)
+    rows = conn.execute("SELECT * FROM (" + _cooking_rows(recipe_ids) + ") x ORDER BY rated_at DESC NULLS LAST, t DESC",
+                        {"ids": recipe_ids})
+    cooked: dict[int, set] = {}
+    rated: dict[int, set] = {}
+    scores: dict[int, list[int]] = {}
+    per: dict[int, dict] = {}       # recipe → member key → {latest, scores}
+    votes: dict[int, dict] = {}     # recipe → rater key → their latest company answer
+    for rid, key, cooked_on, _m, family, company, note, rated_at, imported, member, _by, _t in rows:  # newest first
         s = out.get(rid)
         if s is None:
             continue
         if family is None:
             if imported or (cooked_on is not None and cooked_on < today):
-                s["times_cooked"] += 1
+                cooked.setdefault(rid, set()).add(key)
             continue
-        s["times_cooked"] += 1
-        s["times_rated"] += 1
+        cooked.setdefault(rid, set()).add(key)
+        rated.setdefault(rid, set()).add(key)
+        scores.setdefault(rid, []).append(family)
         s["imported_ratings"] += imported
-        totals[rid] = totals.get(rid, 0) + family
         if s["last_family"] is None:
             s["last_family"], s["last_rated_at"] = family, rated_at.isoformat()
-        if s["company"] is None and company is not None:
-            s["company"] = company
+        rater = "imported" if imported else member
+        if company is not None:
+            votes.setdefault(rid, {}).setdefault(rater, company)
+        name = None if imported else _who(people, member)[0]
         if note and len(s["notes"]) < 5:
             s["notes"].append({"note": note, "date": cooked_on.isoformat() if cooked_on else None,
-                               "rated_at": rated_at.isoformat()})
-    for rid, total in totals.items():
-        avg = Decimal(total) / Decimal(out[rid]["times_rated"])
-        out[rid]["avg_family"] = float(avg.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+                               "rated_at": rated_at.isoformat(), "member_id": member, "name": name})
+        if not imported:
+            p = per.setdefault(rid, {}).get(member)
+            if p is None:
+                n, kind = _who(people, member)
+                per[rid][member] = p = {"member_id": member, "name": n, "kind": kind, "family": family,
+                                        "company": company, "note": note,
+                                        "date": cooked_on.isoformat() if cooked_on else None,
+                                        "rated_at": rated_at.isoformat(), "scores": []}
+            p["scores"].append(family)
+    for rid, s in out.items():
+        s["times_cooked"], s["times_rated"] = len(cooked.get(rid, ())), len(rated.get(rid, ()))
+        s["rating_count"], s["avg_family"] = len(scores.get(rid, ())), _avg(scores.get(rid, ()))
+        answers = list(votes.get(rid, {}).values())
+        s["company_votes"] = {a: answers.count(a) for a in ("yes", "maybe", "no")}
+        s["company"] = verdict(answers)
+        s["good_for_company"] = s["company"] == "yes"
+        s["people"] = [{**{k: v for k, v in p.items() if k != "scores"}, "avg": _avg(p["scores"]),
+                        "count": len(p["scores"])}
+                       for m, p in sorted(per.get(rid, {}).items(), key=lambda kv: _order(people, kv[0]))]
     return out
 
 
@@ -549,36 +679,48 @@ def planned_weeks(conn, today: date, recipe_ids: list[int] | None = None) -> dic
     return {rid: [w.isoformat() for w in weeks] for rid, weeks in rows}
 
 
-def recipe_history(conn, recipe_id: int) -> list[dict]:
-    """Every plan entry for a recipe (newest week first) with its rating."""
+def recipe_history(conn, recipe_id: int, viewer: int | None = None) -> list[dict]:
+    """Every plan entry for a recipe (newest week first) with its ratings."""
     rows = conn.execute(
-        "SELECT p.id, p.week, p.day, p.week + p.day::int, p.multiplier, r.family, r.company, r.note, r.rated_at "
-        "FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id WHERE p.recipe_id=%s "
-        "ORDER BY p.week DESC, COALESCE(p.day, -1) DESC, p.id DESC", (recipe_id,))
+        "SELECT p.id, p.week, p.day, p.week + p.day::int, p.multiplier FROM plan p WHERE p.recipe_id=%s "
+        "ORDER BY p.week DESC, COALESCE(p.day, -1) DESC, p.id DESC", (recipe_id,)).fetchall()
+    people = _people(conn)
+    rated = _plan_ratings(conn, [r[0] for r in rows], people)
     return [{"entry_id": i, "week": w.isoformat(), "day": dy, "date": d.isoformat() if d else None, "multiplier": m,
-             "rating": (rt.model_dump() if (rt := _rating(*r)) else None)} for i, w, dy, d, m, *r in rows]
+             **_cooked(rated.get(i, []), viewer, people)} for i, w, dy, d, m in rows]
 
 
 def rating_entries(conn, today: date, recipe_ids: list[int] | None = None) -> dict[int, list[dict]]:
     """{recipe_id: [entry, …]} — every time cooked, for the export's `mealprep:ratings.entries`: plan entries that are
     rated or were placed on a night before today (so times_cooked survives a trip to another library), the ratings
-    made from the recipe (recipe_ratings) and the imported ones. Each entry: date (the night, or null), multiplier, family, company, note, rated_at. Newest first
-    (rated_at, else the night)."""
-    ids = "" if recipe_ids is None else " AND {} = ANY(%(ids)s)"
+    made from the recipe (recipe_ratings) and the imported ones. Each entry: date (the night, or null), multiplier,
+    family, company, note, rated_at. Newest first (rated_at, else the night). A time cooked that several people rated
+    is one entry: family = their mean (rounded half up), company = their verdict, notes "Name: note" joined."""
     rows = conn.execute(
-        "SELECT * FROM (SELECT p.recipe_id, p.week + p.day::int AS d, p.multiplier, r.family, r.company, r.note, "
-        "r.rated_at, p.id AS k FROM plan p LEFT JOIN ratings r ON r.plan_id = p.id "
-        "WHERE (r.plan_id IS NOT NULL OR (p.day IS NOT NULL AND p.week + p.day::int < %(t)s))" + ids.format("p.recipe_id")
-        + " UNION ALL SELECT recipe_id, cooked_on, multiplier, family, company, note, rated_at, -id FROM imported_ratings"
-        " WHERE true" + ids.format("recipe_id")
-        + " UNION ALL SELECT recipe_id, cooked_on, 1::real, family, company, note, rated_at, 0 FROM recipe_ratings"
-        " WHERE true" + ids.format("recipe_id")
-        + ") x ORDER BY COALESCE(rated_at, d::timestamptz) DESC NULLS LAST, k DESC", {"t": today, "ids": recipe_ids})
+        "SELECT * FROM (" + _cooking_rows(recipe_ids, "(r.plan_id IS NOT NULL OR (p.day IS NOT NULL AND "
+                                                       "p.week + p.day::int < %(t)s))")
+        + ") x ORDER BY COALESCE(rated_at, d::timestamptz) DESC NULLS LAST, t DESC", {"t": today, "ids": recipe_ids})
+    people = _people(conn)
+    cookings: dict[tuple, dict] = {}    # insertion order = newest first
+    for rid, key, d, m, family, company, note, rated_at, _imp, member, _by, _t in rows:
+        e = cookings.setdefault((rid, key), {"rid": rid, "date": d, "multiplier": float(m), "rows": []})
+        if family is not None:
+            e["rows"].append((family, company, note, rated_at, member))
     out: dict[int, list[dict]] = {}
-    for rid, d, m, family, company, note, rated_at, _ in rows:
-        out.setdefault(rid, []).append({"date": d.isoformat() if d else None, "multiplier": float(m), "family": family,
-                                        "company": company, "note": note,
-                                        "rated_at": rated_at.astimezone(timezone.utc).isoformat() if rated_at else None})
+    for e in cookings.values():
+        rs = e["rows"]
+        if len(rs) > 1:
+            family = int((Decimal(sum(r[0] for r in rs)) / len(rs)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+            company = verdict(r[1] for r in rs)
+            note = " · ".join(f"{_who(people, r[4])[0]}: {r[2]}"
+                             for r in sorted(rs, key=lambda r: _order(people, r[4])) if r[2]) or None
+        else:
+            family, company, note = (rs[0][0], rs[0][1], rs[0][2]) if rs else (None, None, None)
+        rated_at = max((r[3] for r in rs), default=None)
+        out.setdefault(e["rid"], []).append({
+            "date": e["date"].isoformat() if e["date"] else None, "multiplier": e["multiplier"], "family": family,
+            "company": company, "note": note,
+            "rated_at": rated_at.astimezone(timezone.utc).isoformat() if rated_at else None})
     return out
 
 

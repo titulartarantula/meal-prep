@@ -280,7 +280,9 @@ def test_imported_ratings_count_and_export_back(conn):
     s = d["ratings"]
     assert (s["times_cooked"], s["times_rated"], s["avg_family"], s["last_family"], s["company"], s["imported_ratings"]) \
         == (3, 2, 4.5, 5, "yes", 2)
-    assert s["notes"] == [{"note": "Less sugar next time.", "date": "2026-09-27", "rated_at": s["last_rated_at"]}]
+    assert s["notes"] == [{"note": "Less sugar next time.", "date": "2026-09-27", "rated_at": s["last_rated_at"],
+                           "member_id": None, "name": None}]               # imported: no one in this household
+    assert s["people"] == [] and s["rating_count"] == 2 and s["good_for_company"] is True
     assert [(h["date"], h["rating"]["family"] if h["rating"] else None) for h in d["imported_history"]] == [
         ("2026-09-27", 5), ("2026-09-06", 4), ("2026-08-16", None)]
     assert d["history"] == []

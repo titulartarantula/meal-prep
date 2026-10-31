@@ -94,16 +94,24 @@ def test_summary_math(conn):
     assert s[chili] == {
         "times_cooked": 4, "times_rated": 3, "avg_family": 3.7, "last_family": 4,
         "last_rated_at": s[chili]["last_rated_at"], "company": "maybe",
-        "notes": [{"note": "kids picked out peppers", "date": "2026-10-12", "rated_at": s[chili]["notes"][0]["rated_at"]},
-                  {"note": "too salty", "date": "2026-09-30", "rated_at": s[chili]["notes"][1]["rated_at"]}],
-        "imported_ratings": 0}
+        "notes": [{"note": "kids picked out peppers", "date": "2026-10-12", "rated_at": s[chili]["notes"][0]["rated_at"],
+                   "member_id": None, "name": "Family"},
+                  {"note": "too salty", "date": "2026-09-30", "rated_at": s[chili]["notes"][1]["rated_at"],
+                   "member_id": None, "name": "Family"}],
+        "imported_ratings": 0, "rating_count": 3,
+        # before profiles every rating is the Family's: one rater, latest = the newest rating, its company answer
+        "people": [{"member_id": None, "name": "Family", "kind": "family", "family": 4, "company": None,
+                    "note": "kids picked out peppers", "date": "2026-10-12", "rated_at": s[chili]["last_rated_at"],
+                    "avg": 3.7, "count": 3}],
+        "company_votes": {"yes": 0, "maybe": 1, "no": 0}, "good_for_company": False}
     assert datetime.fromisoformat(s[chili]["last_rated_at"]) == at(13)
     assert datetime.fromisoformat(s[chili]["notes"][1]["rated_at"]) == at(1)
     assert s[soup]["times_cooked"] == 1 and s[soup]["avg_family"] == 5.0
     assert s[soup]["notes"] == [] and s[soup]["company"] is None
     assert s[never] == {"times_cooked": 0, "times_rated": 0, "avg_family": None, "last_family": None,
                         "last_rated_at": None, "company": None, "notes": [],
-                                   "imported_ratings": 0}
+                        "imported_ratings": 0, "rating_count": 0, "people": [],
+                        "company_votes": {"yes": 0, "maybe": 0, "no": 0}, "good_for_company": False}
 
 
 def test_avg_rounds_half_up(conn):
@@ -130,7 +138,8 @@ def test_recipe_history(conn):
     db.set_rating(conn, a, 5)
     h = db.recipe_history(conn, rid)
     assert [x["entry_id"] for x in h] == [b, a]                         # newest first
-    assert h[0] == {"entry_id": b, "week": "2026-10-11", "day": 1, "date": "2026-10-12", "multiplier": 1.5, "rating": None}
+    assert h[0] == {"entry_id": b, "week": "2026-10-11", "day": 1, "date": "2026-10-12", "multiplier": 1.5, "rating": None,
+                    "my_rating": None, "ratings": [], "rating_avg": None, "rating_count": 0}
     assert h[1]["rating"]["family"] == 5
 
 

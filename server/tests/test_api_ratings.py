@@ -112,7 +112,8 @@ def test_recipes_include_rating_summary(conn):
     assert [(n["note"], n["date"]) for n in s["notes"]] == [("bland", "2026-10-12")] and n_has_rated_at(s)
     assert rs[soup]["ratings"] == {"times_cooked": 0, "times_rated": 0, "avg_family": None, "last_family": None,
                                    "last_rated_at": None, "company": None, "notes": [],
-                                   "imported_ratings": 0}
+                                   "imported_ratings": 0, "rating_count": 0, "people": [],
+                        "company_votes": {"yes": 0, "maybe": 0, "no": 0}, "good_for_company": False}
     assert [r["id"] for r in c.get("/recipes", headers=H).json()] == [soup, chili]   # default sort unchanged
 
 

@@ -598,7 +598,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS recipes_household_source_url_idx ON recipes(ho
 DROP INDEX IF EXISTS recipes_uid_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS recipes_household_uid_idx ON recipes(household_id, uid);
 DROP INDEX IF EXISTS fridge_items_key_unit_idx;
-CREATE UNIQUE INDEX IF NOT EXISTS recipe_ratings_household_recipe_day_idx ON recipe_ratings(household_id, recipe_id, cooked_on);
+DROP INDEX IF EXISTS recipe_ratings_household_recipe_day_idx;   -- one per recipe and day → per person (below)
 CREATE UNIQUE INDEX IF NOT EXISTS fridge_items_household_key_unit_idx ON fridge_items(household_id, key, coalesce(unit, ''));
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'picks_pkey'
@@ -607,6 +607,32 @@ DO $$ BEGIN
     ALTER TABLE picks ADD PRIMARY KEY (household_id, key);
   END IF;
 END $$;
+
+-- Per-person ratings (2026-10-31): each member rates a time cooked for themselves (a parent can rate for a child
+-- profile: member_id = the child, entered_by = the parent). member_id NULL = "Family": every rating from before
+-- profiles, and what the shared token (the phones) writes. No FK to members: a removed member's ratings stay (shown
+-- as a former member). One rating per time cooked and person: ratings (plan_id, member_id) and recipe_ratings
+-- (household, recipe, day, member_id), NULLS NOT DISTINCT so there's one Family rating too.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
+                 AND table_name = 'ratings' AND column_name = 'id') THEN
+    ALTER TABLE ratings ADD COLUMN id bigserial;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ratings_pkey'
+             AND pg_get_constraintdef(oid) = 'PRIMARY KEY (plan_id)') THEN
+    ALTER TABLE ratings DROP CONSTRAINT ratings_pkey;
+    ALTER TABLE ratings ADD PRIMARY KEY (id);
+  END IF;
+END $$;
+ALTER TABLE ratings ADD COLUMN IF NOT EXISTS member_id int;
+ALTER TABLE ratings ADD COLUMN IF NOT EXISTS entered_by int;
+CREATE UNIQUE INDEX IF NOT EXISTS ratings_plan_member_idx ON ratings(plan_id, member_id) NULLS NOT DISTINCT;
+ALTER TABLE recipe_ratings ADD COLUMN IF NOT EXISTS member_id int;
+ALTER TABLE recipe_ratings ADD COLUMN IF NOT EXISTS entered_by int;
+CREATE UNIQUE INDEX IF NOT EXISTS recipe_ratings_household_recipe_day_member_idx
+  ON recipe_ratings(household_id, recipe_id, cooked_on, member_id) NULLS NOT DISTINCT;
+ALTER TABLE rating_history ADD COLUMN IF NOT EXISTS member_id int;
+ALTER TABLE rating_history ADD COLUMN IF NOT EXISTS entered_by int;
 
 GRANT USAGE ON SCHEMA public TO mealprep_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mealprep_app;

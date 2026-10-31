@@ -155,6 +155,7 @@ class RatingIn(BaseModel):
     family: Annotated[int, Field(strict=True, ge=1, le=5)]
     company: Literal["yes", "maybe", "no"] | None = None
     note: Annotated[str, Field(max_length=2000)] | None = None
+    member_id: int | None = None     # rate for a child profile (rate.for_children); omitted = yourself
 
     @field_validator("note")
     @classmethod
@@ -569,6 +570,25 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     A = [Depends(household_scope)]
 
+    def viewer(s: Scope) -> int | None:
+        """Whose ratings a request reads and writes by default: the signed-in member; the shared token = Family."""
+        return None if s.via == "legacy" else s.member_id
+
+    def rater_for(c, s: Scope, member_id: int | None) -> tuple[int | None, int | None]:
+        """(rater, entered_by) for a rating write: yourself, or a child profile of the household for a member with
+        rate.for_children (the shared token too: it rates for a child as the household)."""
+        me = viewer(s)
+        if member_id is None or member_id == me:
+            return me, me
+        try:
+            _, kind, _ = households._member(c, s.household_id, member_id)
+        except households.NotFound:
+            raise HTTPException(404, f"member {member_id}")
+        if kind != "child":
+            raise HTTPException(403, "You can only rate for yourself or a child profile.")
+        s.require("rate.for_children")
+        return member_id, me
+
     @app.middleware("http")
     async def import_size_guard(request, call_next):
         """Refuse an import upload whose declared size is far over the cap before it is spooled (the cap itself is
@@ -860,53 +880,60 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         return out
 
     @app.get("/recipes/{recipe_id}", dependencies=A)
-    def recipe_detail(recipe_id: int, c=Depends(get_conn)) -> RecipeDetail:
+    def recipe_detail(recipe_id: int, c=Depends(get_conn), s: Scope = Depends(household_scope)) -> RecipeDetail:
         r = db.get_recipe(c, recipe_id)
         if r is None:
             raise HTTPException(404, f"recipe {recipe_id}")
         return RecipeDetail(**r.model_dump(), ratings=db.rating_summaries(c, today(), [recipe_id])[recipe_id],
                             planned_weeks=db.planned_weeks(c, today(), [recipe_id]).get(recipe_id, []),
-                            history=db.recipe_history(c, recipe_id),
+                            history=db.recipe_history(c, recipe_id, viewer(s)),
                             imported_history=db.imported_history(c, recipe_id),
-                            rated_history=db.recipe_rated_history(c, recipe_id))
+                            rated_history=db.recipe_rated_history(c, recipe_id, viewer(s)))
 
     @app.put("/recipes/{recipe_id}/rating", dependencies=A)
-    def put_recipe_rating(recipe_id: int, body: RecipeRatingIn, c=Depends(get_conn)) -> RecipeRatingOut:
-        """Rate the recipe from the recipe itself (not from a night on the plan). cooked_on (default: the newest dinner
-        of it still waiting for a rating, else today) can't be later than today. A night on the plan for it that day
-        takes the rating, so it's the same as rating that dinner; otherwise it's one rating per recipe and day."""
+    def put_recipe_rating(recipe_id: int, body: RecipeRatingIn, c=Depends(get_conn),
+                          s: Scope = Depends(household_scope)) -> RecipeRatingOut:
+        """Rate the recipe from the recipe itself (not from a night on the plan), as yourself or (member_id) for a
+        child profile. cooked_on (default: the newest dinner of it still waiting for this person's rating, else today)
+        can't be later than today. A night on the plan for it that day takes the rating, so it's the same as rating
+        that dinner; otherwise it's one rating per recipe, day and person."""
         if body.cooked_on is not None and body.cooked_on > today():
             raise HTTPException(422, "cooked_on can't be in the future")
-        out = db.rate_recipe(c, recipe_id, body.family, body.company, body.note, today(), body.cooked_on)
+        rater, by = rater_for(c, s, body.member_id)
+        out = db.rate_recipe(c, recipe_id, body.family, body.company, body.note, today(), body.cooked_on, rater, by)
         if out is None:
             raise HTTPException(404, f"recipe {recipe_id}")
         return RecipeRatingOut(**out)
 
     @app.delete("/recipes/{recipe_id}/rating", status_code=204, dependencies=A)
-    def delete_recipe_rating(recipe_id: int, cooked_on: date = Query(...), c=Depends(get_conn)):
-        """Remove the rating of the time it was cooked that day (the planned night's or the recipe's own)."""
-        if not db.unrate_recipe(c, recipe_id, cooked_on):
+    def delete_recipe_rating(recipe_id: int, cooked_on: date = Query(...), member_id: int | None = Query(None),
+                             c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        """Remove your (or a child profile's) rating of the time it was cooked that day (the planned night's or the
+        recipe's own)."""
+        if not db.unrate_recipe(c, recipe_id, cooked_on, *rater_for(c, s, member_id)):
             raise HTTPException(404, f"recipe {recipe_id}")
 
     @app.get("/ratings/pending", dependencies=A)
-    def ratings_pending(today_: date | None = Query(None, alias="today"), c=Depends(get_conn)):
-        """Placed nights before today (last 14 days) with no rating yet — the app's morning-after prompt."""
-        return db.pending_ratings(c, today_ or today())
+    def ratings_pending(today_: date | None = Query(None, alias="today"), c=Depends(get_conn),
+                        s: Scope = Depends(household_scope)):
+        """Placed nights before today (last 14 days) you haven't rated yet — the morning-after prompt. The shared
+        token: nights nobody has rated."""
+        return db.pending_ratings(c, today_ or today(), rater=viewer(s))
 
     @app.get("/weeks", dependencies=A)
     def weeks(from_: date | None = Query(None, alias="from"), count: int = Query(8, ge=1, le=52), c=Depends(get_conn)):
         return db.week_summaries(c, from_ or today(), count)
 
     @app.get("/weeks/{week}", dependencies=A)
-    def get_week(week: date, c=Depends(get_conn)) -> list[PlanEntry]:
-        return db.get_week(c, week)
+    def get_week(week: date, c=Depends(get_conn), s: Scope = Depends(household_scope)) -> list[PlanEntry]:
+        return db.get_week(c, week, viewer(s))
 
     @app.post("/weeks/{week}/entries", dependencies=A)
-    def add_entry(week: date, body: EntryIn, c=Depends(get_conn)) -> PlanEntry:
+    def add_entry(week: date, body: EntryIn, c=Depends(get_conn), s: Scope = Depends(household_scope)) -> PlanEntry:
         if db.get_recipe(c, body.recipe_id) is None:
             raise HTTPException(404, f"recipe {body.recipe_id}")
         eid = db.add_to_week(c, week, body.recipe_id)
-        return next(e for e in db.get_week(c, week) if e.id == eid)
+        return next(e for e in db.get_week(c, week, viewer(s)) if e.id == eid)
 
     @app.patch("/plan/{entry_id}", status_code=204, dependencies=A)
     def patch_entry(entry_id: int, body: EntryPatch, c=Depends(get_conn)):
@@ -924,13 +951,16 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         db.remove_entry(c, entry_id)
 
     @app.put("/plan/{entry_id}/rating", status_code=204, dependencies=A)
-    def put_rating(entry_id: int, body: RatingIn, c=Depends(get_conn)):
-        if not db.set_rating(c, entry_id, body.family, body.company, body.note):
+    def put_rating(entry_id: int, body: RatingIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        """Your rating of that dinner (member_id: a child profile's); the shared token rates as Family."""
+        rater, by = rater_for(c, s, body.member_id)
+        if not db.set_rating(c, entry_id, body.family, body.company, body.note, rater=rater, by=by):
             raise HTTPException(404, f"plan entry {entry_id}")
 
     @app.delete("/plan/{entry_id}/rating", status_code=204, dependencies=A)
-    def delete_rating(entry_id: int, c=Depends(get_conn)):
-        if not db.delete_rating(c, entry_id):
+    def delete_rating(entry_id: int, member_id: int | None = Query(None), c=Depends(get_conn),
+                      s: Scope = Depends(household_scope)):
+        if not db.delete_rating(c, entry_id, *rater_for(c, s, member_id)):
             raise HTTPException(404, f"plan entry {entry_id}")
 
     @app.post("/list", dependencies=A)

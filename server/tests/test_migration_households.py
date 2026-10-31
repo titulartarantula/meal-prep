@@ -106,6 +106,10 @@ def test_migration_backfills_every_household_row_and_is_idempotent(old_db):
                              "AND column_name='household_id'", (t,)).fetchone() is None, t
         assert c.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='picks_pkey'"
                          ).fetchone()[0] == "PRIMARY KEY (household_id, key)"
+        # per-person ratings: the old ratings stay, as Family (no member); one per night and person now
+        assert c.execute("SELECT family, company, member_id, entered_by FROM ratings").fetchall() == [(5, "yes", None, None)]
+        assert c.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='ratings_pkey'"
+                         ).fetchone()[0] == "PRIMARY KEY (id)"
         assert {k for (k,) in c.execute("SELECT key FROM roles")} == {"owner", "approver", "planner", "contributor",
                                                                       "child"}
         # the household sees everything it had …

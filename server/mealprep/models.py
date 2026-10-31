@@ -165,13 +165,34 @@ class Rating(BaseModel):
     rated_at: str                # ISO timestamp
 
 
-class PlanEntry(BaseModel):
+class PersonRating(BaseModel):
+    """One person's rating of one time cooked (per-person ratings, 2026-10-31)."""
+    member_id: int | None        # None = "Family": a rating from before profiles, or made with the shared token
+    name: str                    # the member's name, "Family", or "Former member" (removed from the household)
+    kind: str                    # "account" | "child" | "family" | "former"
+    family: int
+    company: str | None = None
+    note: str | None = None
+    rated_at: str
+    entered_by: int | None = None       # a parent who entered it for a child profile (None = the person themselves)
+    entered_by_name: str | None = None
+
+
+class CookedRatings(BaseModel):
+    """The ratings of one time cooked. `rating` stays for older clients: the caller's own, else the newest one."""
+    rating: Rating | None = None
+    my_rating: Rating | None = None      # the caller's own (shared token: the Family rating)
+    ratings: list[PersonRating] = []     # everyone's, household order, Family after the members
+    rating_avg: float | None = None      # mean of these (1 decimal, half up)
+    rating_count: int = 0
+
+
+class PlanEntry(CookedRatings):
     id: int
     week: str                    # ISO date of the Sunday
     recipe_id: int
     day: int | None = None       # 0=Sun … 6=Sat; None = not placed on a night yet
     multiplier: float = 1.0
-    rating: Rating | None = None
     title: str | None = None     # the recipe's title, so the app can draw a week without the whole library
 
 
@@ -179,6 +200,28 @@ class RatingNote(BaseModel):
     note: str
     date: str | None             # night it was cooked (None if never placed on a night)
     rated_at: str
+    member_id: int | None = None # who wrote it (None = Family, or imported)
+    name: str | None = None      # their name, "Family", "Former member"; None = imported from another library
+
+
+class PersonSummary(BaseModel):
+    """One person's ratings of a recipe: their latest (score, company, note, day cooked) and their average."""
+    member_id: int | None        # None = Family
+    name: str
+    kind: str                    # "account" | "child" | "family" | "former"
+    family: int                  # their latest score
+    company: str | None = None   # their latest company answer (of that rating)
+    note: str | None = None      # their latest rating's note
+    date: str | None = None      # the day it was cooked
+    rated_at: str
+    avg: float
+    count: int
+
+
+class CompanyVotes(BaseModel):
+    yes: int = 0
+    maybe: int = 0
+    no: int = 0
 
 
 class RatingSummary(BaseModel):
@@ -187,9 +230,14 @@ class RatingSummary(BaseModel):
     avg_family: float | None = None
     last_family: int | None = None
     last_rated_at: str | None = None
-    company: str | None = None   # most recent non-null company verdict
+    company: str | None = None   # the family's verdict: each rater's latest answer, more yes than no = "yes", more no
+                                 # = "no", else "maybe" (one rater: their latest answer, as before)
     notes: list[RatingNote] = [] # most recent first, max 5
     imported_ratings: int = 0    # of times_rated, how many came from another library's export ("incl. N from …")
+    rating_count: int = 0        # individual ratings averaged in avg_family (a time cooked can have several)
+    people: list[PersonSummary] = []     # per person (and Family), household order
+    company_votes: CompanyVotes = CompanyVotes()   # each rater's latest company answer
+    good_for_company: bool = False       # company == "yes"
 
 
 # What the app's Edit recipe changes (PATCH /recipes/{id}); `revision` is a hash of these, so an edit made on an older
@@ -214,13 +262,12 @@ class RecipeOut(Recipe):
         return self
 
 
-class CookedEntry(BaseModel):
+class CookedEntry(CookedRatings):
     entry_id: int
     week: str
     day: int | None
     date: str | None
     multiplier: float
-    rating: Rating | None
 
 
 class ImportedEntry(BaseModel):
@@ -230,9 +277,9 @@ class ImportedEntry(BaseModel):
     rated_at: str | None = None
 
 
-class RatedEntry(BaseModel):
+class RatedEntry(CookedRatings):
     date: str                    # the day it was cooked
-    rating: Rating
+    rating: Rating               # the caller's own, else the newest
 
 
 class RecipeDetail(RecipeOut):

@@ -32,6 +32,8 @@ from . import durations
 CONTEXT = ["https://schema.org", {"mealprep": "https://github.com/titulartarantula/meal-prep/ns/v1#"}]
 FORMAT = 1
 BLOCK, RATINGS, EXPORT = "mealprep:recipe", "mealprep:ratings", "mealprep:export"
+EXPORT_SUMMARY = {"times_cooked", "times_rated", "avg_family", "last_family", "last_rated_at", "company", "notes",
+                  "imported_ratings"}
 # schema.org keys passed through untouched (Recipe.schema_extra); everything else in a foreign file is left out.
 EXTRA_KEYS = ("recipeCategory", "recipeCuisine", "keywords", "suitableForDiet", "nutrition", "tool", "author",
               "datePublished")
@@ -176,10 +178,11 @@ def to_jsonld(r: RecipeOut, entries: list[dict], *, ratings: bool = True, standa
         "image": r.image, "schema_extra": dict(r.schema_extra),
     }
     if ratings:
-        summary = r.ratings.model_dump(mode="json")
+        # the household-level summary only: who rated what (people, names on notes) stays out of the file
+        summary = r.ratings.model_dump(mode="json", include=EXPORT_SUMMARY)
         summary["last_rated_at"] = _utc(summary["last_rated_at"])
-        for n in summary["notes"]:
-            n["rated_at"] = _utc(n["rated_at"])
+        summary["notes"] = [{"note": n["note"], "date": n["date"], "rated_at": _utc(n["rated_at"])}
+                            for n in summary["notes"]]
         node[RATINGS] = {"summary": summary, "good_for_company": r.ratings.company == "yes", "entries": list(entries)}
     for k, v in r.schema_extra.items():   # last, and never over a key written above
         if k in EXTRA_KEYS and k not in node:

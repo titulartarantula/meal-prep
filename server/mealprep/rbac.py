@@ -41,7 +41,7 @@ ROUTES: dict[tuple[str, str], str] = {
     ("PATCH", "/plan/{entry_id}"): "plan.edit",
     ("DELETE", "/plan/{entry_id}"): "plan.edit",
     ("GET", "/ratings/pending"): "plan.read",
-    # one household rating per dinner until per-person ratings (task 5)
+    # per-person ratings: each member rates for themselves; member_id = a child profile also needs rate.for_children
     ("PUT", "/plan/{entry_id}/rating"): "rate.self",
     ("DELETE", "/plan/{entry_id}/rating"): "rate.self",
     ("PUT", "/recipes/{recipe_id}/rating"): "rate.self",
