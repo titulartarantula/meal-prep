@@ -2,7 +2,7 @@ import base64, mimetypes, threading, time
 import anthropic
 from .base import AIError, parse_json
 
-# Streamed, so a long answer (a week's prep plan, a document's recipes) never hits an HTTP timeout. The model
+# Streamed, so a long answer (a document's recipes) never hits an HTTP timeout. The model
 # thinks (adaptive) before it answers, and the thinking counts against max_tokens, so leave plenty of room.
 MAX_TOKENS = 64000
 _now = time.monotonic

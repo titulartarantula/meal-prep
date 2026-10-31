@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, books, db, drafts, extras, fridge, households, prepplan, rbac, recipe_edit, staples, subrecipe
+from . import auth, books, db, drafts, extras, fridge, households, rbac, recipe_edit, staples, subrecipe
 from .ai import AIError, get_provider
 from .ai.metered import Meter, Metered
 from .exchange import importer, jsonld, safe
@@ -25,6 +25,8 @@ from .models import EDITABLE_FIELDS, FridgeItem, ListItem, PlanEntry, Recipe, Re
 from .pcx import Pcx
 from .shopping import build_list
 
+
+PREP_RETIRED = "Sunday prep and cook cards have been retired; update the app."
 
 class ShareIn(BaseModel):
     text: str
@@ -355,14 +357,6 @@ class AddLineIn(BaseModel):   # "Add an item" on a cart under review
     quantity: Annotated[int, Field(gt=0, le=10000)] = 1
 
 
-class PrepPlanIn(BaseModel):
-    weeks: list[date] = Field(min_length=1)
-
-
-class TaskPatch(BaseModel):
-    done: Annotated[bool, Field(strict=True)]
-
-
 class GoogleIn(BaseModel):        # Android: Credential Manager's Google ID token
     id_token: Annotated[str, Field(min_length=20, max_length=8000)]
     invite: Annotated[str, Field(max_length=200)] | None = None
@@ -466,7 +460,6 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                              settings.google_redirect_uri or settings.public_url.rstrip("/") + "/api/auth/callback")
     legacy_nets = auth.networks(settings.legacy_networks)
     ai = provider or get_provider(settings)
-    prep_ai = provider or get_provider(settings, timeout=settings.prep_timeout)
     import_ai = provider or get_provider(settings, timeout=settings.import_ai_timeout)
     document_ai = provider or get_provider(settings, timeout=settings.document_ai_timeout)
     edit_ai = provider or get_provider(settings, timeout=settings.edit_ai_timeout)
@@ -479,7 +472,6 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     if conn is None:
         with db.connect(settings.dsn) as c:       # apply schema once at startup
             drafts.fail_interrupted(c)            # builds cut off by a restart will never finish
-            prepplan.fail_interrupted(c)
             importer.fail_interrupted(c)
             fridge.fail_interrupted(c)
             auth.clean_expired(c)
@@ -658,8 +650,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         """Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it
         comes from. An NYT recipe has no book title or page. A different book title sent without an author/ISBN clears
         them (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else
-        the deterministic clean-up). The id, uid, plan entries and ratings stay; a cart or prep plan made from the old
-        lines goes stale (db.plan_fingerprint, prepplan._stale)."""
+        the deterministic clean-up). The id, uid, plan entries and ratings stay; a cart made from the old
+        lines goes stale (db.plan_fingerprint)."""
         fields = body.model_dump(include=body.model_fields_set)   # only what the client sent
         expected = fields.pop("expected_revision", None)
         for f in ("title", "source_kind", "ingredients", "steps"):
@@ -1219,53 +1211,16 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         households.audit(c, s.household_id, "cart.send", f"draft:{draft_id}", s.member_id, s.user_id)
         return {"pcx_cart_id": cart_id}
 
-    def run_prep(pid: int, s: Scope):
-        # background thread with its own connection, like draft builds
-        try:
-            with scoped_conn(s.household_id) as bc:
-                prepplan.build_prep_plan(bc, pid, metered(prep_ai, s, "prep"), workers=settings.prep_workers)
-        except Exception:
-            log.exception("prep plan %s: background build crashed", pid)
+    # Sunday prep plans and cook cards were retired on 2026-10-31: no more plans are written (no AI calls). The routes
+    # answer 410 so an older app says so instead of failing oddly; the prep_plans/prep_tasks/prep_task_events/cook_cards
+    # tables and their rows are left in place (DESIGN.md "Status — Sunday prep retired" says how to drop them).
+    def prep_retired():
+        raise HTTPException(410, PREP_RETIRED)
 
-    @app.post("/prep-plans", status_code=202, dependencies=A)
-    def create_prep_plan(body: PrepPlanIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
-        try:
-            pid = prepplan.create_prep_plan(c, body.weeks, today(), ai_provider=settings.provider,
-                                            people=settings.default_people)
-        except prepplan.NothingPlanned as e:
-            raise HTTPException(422, str(e))
-        threading.Thread(target=run_prep, args=(pid, s), name=f"prep-{pid}", daemon=True).start()
-        return {"id": pid, "status": "building"}
-
-    @app.get("/prep-plans/{plan_id}", dependencies=A)
-    def get_prep_plan(plan_id: int, c=Depends(get_conn)):
-        p = prepplan.get_prep_plan(c, plan_id)
-        if p is None:
-            raise HTTPException(404, f"prep plan {plan_id}")
-        return p
-
-    @app.get("/weeks/{week}/prep-plan", dependencies=A)
-    def week_prep_plan(week: date, c=Depends(get_conn)):
-        p = prepplan.latest_for_week(c, week)
-        if p is None:
-            raise HTTPException(404, f"no prep plan for the week of {db.week_start(week)}")
-        return p
-
-    @app.patch("/prep-plans/{plan_id}/tasks/{task_id}", dependencies=A)
-    def patch_prep_task(plan_id: int, task_id: str, body: TaskPatch, c=Depends(get_conn)):
-        try:
-            return prepplan.set_task_done(c, plan_id, task_id, body.done)
-        except prepplan.PrepNotFound as e:
-            raise HTTPException(404, str(e))
-        except prepplan.PrepStateError as e:
-            raise HTTPException(409, str(e))
-
-    @app.get("/plan/{entry_id}/card", dependencies=A)
-    def cook_card(entry_id: int, c=Depends(get_conn)):
-        card = prepplan.get_card(c, entry_id)
-        if card is None:
-            raise HTTPException(404, f"no cook card for plan entry {entry_id} — place it on a night and generate the prep plan")
-        return card
+    for method, path in (("POST", "/prep-plans"), ("GET", "/prep-plans/{plan_id}"), ("GET", "/weeks/{week}/prep-plan"),
+                         ("PATCH", "/prep-plans/{plan_id}/tasks/{task_id}"), ("GET", "/plan/{entry_id}/card")):
+        app.add_api_route(path, prep_retired, methods=[method], dependencies=A, include_in_schema=False,
+                          name=f"retired {method} {path}")
 
     @app.put("/picks/{key:path}", status_code=204, dependencies=A)
     def put_pick(key: str, body: PickIn, c=Depends(get_conn)):

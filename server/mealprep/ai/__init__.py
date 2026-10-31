@@ -8,7 +8,7 @@ __all__ = ["AIError", "Provider", "parse_json", "get_provider", "ClaudeCli", "Op
 
 
 def get_provider(s, timeout: int | None = None) -> Provider:
-    """timeout overrides s.ai_timeout (e.g. the longer prep-plan budget)."""
+    """timeout overrides s.ai_timeout (e.g. the longer document-read budget)."""
     t = timeout or s.ai_timeout
     if s.provider == "claude-cli":
         return ClaudeCli(s.claude_bin, s.claude_model, timeout=t)

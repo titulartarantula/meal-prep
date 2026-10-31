@@ -322,12 +322,6 @@ def shopping_key(servings, ingredients) -> str:
                              for i in rows if not i.get("expanded")]])[:16]
 
 
-def cooking_key(r: Recipe) -> str:
-    """What a prep plan and cook card were written from: servings, every ingredient line and the steps (not the title or
-    notes)."""
-    return _hash([r.servings, [i.model_dump(mode="json") for i in r.ingredients], list(r.steps)])[:16]
-
-
 def plan_fingerprint(conn, weeks, version: int = 2) -> str:
     """Stable hash of the shopping-relevant plan of these weeks: the multiset of (week, recipe, scale) over every entry,
     placed on a night or not (as the shopping list uses them). Moving a dinner to another night doesn't change it;

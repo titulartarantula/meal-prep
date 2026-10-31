@@ -170,8 +170,6 @@ def test_households_are_isolated(conn):
                        ).fetchone()[0]
     lid = conn.execute("INSERT INTO cart_lines(cart_id, item_key, source, status) VALUES(%s,'k','ai','added') "
                        "RETURNING id", (did,)).fetchone()[0]
-    pid = conn.execute("INSERT INTO prep_plans(weeks, status, input) VALUES(%s,'ready','{}') RETURNING id",
-                       ([date(2026, 10, 11)],)).fetchone()[0]
     jid = conn.execute("INSERT INTO import_jobs(file_sha, choices_sha, report) VALUES('a','b','{}') RETURNING id"
                        ).fetchone()[0]
     rdid = conn.execute("INSERT INTO fridge_reads(photos_sha, photo_count, status) VALUES('s',1,'ready') RETURNING id"
@@ -181,9 +179,8 @@ def test_households_are_isolated(conn):
     other = new_household(conn)
     b, _ = member_session(conn, other, ALL_ROLES)
     c = TestClient(app(conn))
-    for url in (f"/recipes/{rid}", f"/recipes/{rid}/export", f"/drafts/{did}", f"/prep-plans/{pid}",
-                f"/imports/{jid}", f"/fridge/reads/{rdid}", f"/plan/{eid}/card", f"/weeks/{WEEK}/draft",
-                f"/weeks/{WEEK}/prep-plan"):
+    for url in (f"/recipes/{rid}", f"/recipes/{rid}/export", f"/drafts/{did}",
+                f"/imports/{jid}", f"/fridge/reads/{rdid}", f"/weeks/{WEEK}/draft"):
         assert c.get(url, headers=b).status_code == 404, url
     for method, url, body in (("PATCH", f"/recipes/{rid}", {"title": "Theirs"}),
                               ("PUT", f"/plan/{eid}/rating", {"family": 1}), ("DELETE", f"/plan/{eid}/rating", None),
@@ -191,8 +188,7 @@ def test_households_are_isolated(conn):
                               ("PATCH", f"/extras/{xid}", {"quantity": 3}),
                               ("PATCH", f"/drafts/{did}/lines/{lid}", {"removed": True}),
                               ("POST", f"/drafts/{did}/send", None), ("POST", f"/weeks/{WEEK}/entries", {"recipe_id": rid}),
-                              ("POST", f"/fridge/reads/{rdid}/dismiss", None),
-                              ("PATCH", f"/prep-plans/{pid}/tasks/t1", {"done": True})):
+                              ("POST", f"/fridge/reads/{rdid}/dismiss", None)):
         assert c.request(method, url, headers=b, json=body).status_code == 404, (method, url)
     for method, url in (("DELETE", f"/plan/{eid}"), ("DELETE", f"/staples/{sid}"), ("DELETE", f"/fridge/{fid}"),
                         ("DELETE", f"/extras/{xid}"), ("PATCH", f"/plan/{eid}")):
@@ -365,6 +361,23 @@ def test_routes_meter_their_ai_calls(conn):
     usage = c.get("/household/ai-usage", headers=H).json()
     assert usage["budget"] is None and usage["days"][0]["feature"] == "edit" and usage["days"][0]["calls"] == 1
 
+
+
+def test_retired_prep_routes_answer_410_and_call_no_ai(conn):
+    """Sunday prep + cook cards were retired 2026-10-31: every old route says so (an older app shows it), nothing is
+    written and no AI is asked; rows from before stay in the tables."""
+    db.add_to_week(conn, date(2026, 10, 11), db.save_recipe(conn, Recipe(title="Soup", source="photo", ingredients=[], steps=[])))
+    pid = conn.execute("INSERT INTO prep_plans(weeks, status, input) VALUES(%s,'ready','{}') RETURNING id",
+                       ([date(2026, 10, 11)],)).fetchone()[0]
+    ai = AI()
+    c = TestClient(app(conn, ai))
+    for method, url, body in (("POST", "/prep-plans", {"weeks": [WEEK]}), ("GET", f"/prep-plans/{pid}", None),
+                              ("GET", f"/weeks/{WEEK}/prep-plan", None),
+                              ("PATCH", f"/prep-plans/{pid}/tasks/t1", {"done": True}), ("GET", "/plan/1/card", None)):
+        r = c.request(method, url, headers=H, json=body)
+        assert r.status_code == 410 and "retired" in r.json()["detail"], (method, url)
+    assert ai.n == 0 and conn.execute("SELECT count(*) FROM ai_usage").fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM prep_plans").fetchone()[0] == 1
 
 # --- seeding -------------------------------------------------------------------------------------------------------------
 

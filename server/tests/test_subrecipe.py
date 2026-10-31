@@ -1,6 +1,5 @@
-from datetime import date
 import pytest
-from mealprep import db, prepplan
+from mealprep import db
 from mealprep.ai.base import AIError
 from mealprep.importers.photo import import_subrecipe
 from mealprep.models import Ingredient, Recipe
@@ -75,15 +74,6 @@ def test_import_subrecipe_bad_factor_means_one_and_missing_page_is_error():
     assert ings[0].qty == 1.0
     with pytest.raises(AIError, match="not found"):
         import_subrecipe(SubAI({"title": None}), ["/tmp/x.jpg"], "Batter, page 191", 191)
-
-
-def test_prep_input_uses_attached_subrecipe(conn):
-    r = attach_subrecipe(gateau(), 1, "Crêpe batter", [Ingredient(raw="1 cup flour", name="flour", qty=1, unit="cup")], [])
-    rid = db.save_recipe(conn, r)
-    eid = db.add_to_week(conn, date(2026, 10, 11), rid)
-    db.update_entry(conn, eid, day=2)
-    [m] = prepplan.gather_meals(conn, [date(2026, 10, 11)], date(2026, 10, 7))
-    assert m.ingredients == ["1 lb spinach", "1 cup flour (for the Crêpe batter)", "2 cup milk"]
 
 
 def test_attach_pages_endpoint(conn):

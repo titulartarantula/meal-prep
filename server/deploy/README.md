@@ -53,15 +53,6 @@ line to its first alternative (records a **user pick** for that item) → remove
 twice (same cart id) → reads the anonymous PC Express cart back and checks codes/quantities. Creates one real anonymous
 cart and marks the week carted.
 
-Prep plan (empty test week only; deletes what it adds unless `--keep`):
-
-```bash
-cd ~/meal-prep/server && set -a && . ../.env && set +a && .venv/bin/python deploy/smoke_prep.py 2026-11-01 3:2 1:4
-```
-
-Adds recipe_id:day entries → `POST /prep-plans` → polls to ready (timed) → prints the plan and cards → ticks a task on
-and off → deletes the entries, the prep plan and its task events.
-
 ## Sign-in and households
 
 Every route except `/health` and the sign-in routes acts for one household and needs a permission (the route →
@@ -150,14 +141,10 @@ cd ~/meal-prep/server && set -a && . ../.env && set +a && .venv/bin/python -m me
 | `GET /recipes/{id}` | one recipe + `ratings` summary + `planned_weeks` + `history` (every plan entry with its rating) + `imported_history` (times cooked an import brought in: `{date, multiplier, rating, rated_at}`, newest first). Every `ratings` summary counts imported ratings like the household's own (Favourites, stars, company) and carries `imported_ratings` = how many of `times_rated` came from another library |
 | `POST /weeks/{date}/entries` `{recipe_id}` | add a library recipe to a week (not on a night yet) → the entry; no duplicate check (the app checks first) |
 | `GET /weeks/{date}` | that week's plan entries, each with `title` and `rating` or null |
-| `POST /prep-plans` `{weeks}` | generate the Sunday prep plan + cook cards → 202 `{id, status:"building"}` (422 if nothing is planned); runs in the background (~4 min for 2 recipes with Claude CLI) |
-| `GET /prep-plans/{id}` | status `building/ready/failed`, progress, `sections` (knife → sauces → proteins → pack, each task with `id`, `text`, `serves` [recipe + night], `est_minutes`, `shelf_life` ok/day_of/freeze_then_thaw, `thaw`, `contents`, `flags`, `done`), `total_minutes`, `warnings`, `entries`, `checklist` (done/total, est vs actual minutes), `stale` |
-| `GET /weeks/{date}/prep-plan` | newest prep plan for that week (any status) + `last_ready_id` |
-| `PATCH /prep-plans/{id}/tasks/{task}` `{done}` | tick/untick a checklist task (409 unless `ready`); every change logged in `prep_task_events` |
-| `GET /plan/{entry}/card` | day-of cook card from the newest ready plan: `kit`, `day_of`, `thaw`, `steps` (`minutes`, `timer_minutes`), `total_minutes`, `rating_notes` ("last time: less salt"), `stale` if the entry moved night/multiplier since |
+| `POST /prep-plans`, `GET /prep-plans/{id}`, `GET /weeks/{date}/prep-plan`, `PATCH /prep-plans/{id}/tasks/{task}`, `GET /plan/{entry}/card` | **retired 2026-10-31** (Sunday prep + cook cards): 410 with a short message; no AI calls. The `prep_plans`, `prep_tasks`, `prep_task_events` and `cook_cards` tables and their rows are kept |
 | `POST /recipes/{id}/pages` multipart `files` (1–10) + optional `for_line` | read a cross-referenced sub-recipe page ("Batter for 24 crêpes, page 191") and add its ingredients/steps to the recipe (sync, ~25–30 s); 422 if the line is ambiguous, 409 if already attached |
 
-A restart marks in-flight (`building`) drafts and prep plans `failed`; start a new one.
+A restart marks in-flight (`building`) drafts `failed`; start a new one.
 
 ### Purchase planner (`mealprep/planner.py`)
 

@@ -229,6 +229,6 @@ def test_get_provider_uses_ai_timeout():
 
 
 def test_get_provider_timeout_override_for_long_jobs():
-    s = Settings(provider="claude-cli", ai_timeout=42, prep_timeout=900)
-    assert get_provider(s, timeout=s.prep_timeout).timeout == 900
+    s = Settings(provider="claude-cli", ai_timeout=42, document_ai_timeout=900)
+    assert get_provider(s, timeout=s.document_ai_timeout).timeout == 900
     assert get_provider(s).timeout == 42

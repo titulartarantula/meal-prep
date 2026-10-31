@@ -1,15 +1,15 @@
 # Meal Prep
 
 A small, self-hosted meal-planning system for one household: share recipe links from your phone, plan the
-week's dinners night by night, turn the week into a grocery pickup cart, and get a Sunday prep checklist
-plus a cook card for each night.
+week's dinners night by night, turn the week into a grocery pickup cart, and rate the dinners afterwards. (A Sunday prep checklist and
+per-night cook cards existed until 2026-10-31 and were retired: they didn't fit how the household cooks.)
 
 It has two parts:
 
 - **Android app** (`android/`, Kotlin + Jetpack Compose, package `dev.mealprep.app`). Share an NYT Cooking
   link or scan a cookbook page into Recipes (with its book and page), then add recipes from Recipes to a week and
   arrange them on nights in the "This week" view. After dinner, rate it (family score, good for company, a note
-  that shows on the recipe's next cook card). Each phone plans its own local reminders (thaw the evening before,
+  that shows the next time you rate it and on the recipe). Each phone plans its own local reminders (thaw the evening before,
   how was dinner the morning after, optional tonight, cart ready) from its copy of the week. Recipes move in and
   out as schema.org JSON-LD files: export one recipe or the whole library (ratings and notes included) to a file
   or another app, and import files from Meal Prep or other recipe apps (or a saved recipe web page) with a preview
@@ -17,7 +17,7 @@ It has two parts:
   cookbook chapter) can be imported too: the server finds each recipe in them and you pick which to keep. The
   file picker also takes photos of a recipe's pages (e.g. from OneDrive, which the photo picker can't see); they
   go to the same review as Choose photos. Any recipe can be edited (title, servings, ingredient lines, steps,
-  notes), e.g. to fix a word the photo reading got wrong; a cart or prep plan made from the old lines is marked as
+  notes), e.g. to fix a word the photo reading got wrong; a cart made from the old lines is marked as
   out of date. A Fridge list keeps what needs using up (typed, or proposed from photos of the fridge and
   reviewed before anything is saved): the app suggests dinners from Recipes that use it up with the fewest extra
   ingredients, the shopping list leaves out what the fridge covers, and the morning after a fridge dinner one tap
@@ -31,8 +31,7 @@ It has two parts:
   with Google Books as a fallback), stores the weekly plan and ratings, builds a grocery cart
   for PC Express (Loblaws) by matching ingredients to products (quantities from the package sizes, checked by the AI
   once the cart is built, with what a pack holds learned per product), keeps the household's fridge list (photos read by
-  the AI, then deleted; dinner suggestions that use it up; the list's subtraction), and writes the Sunday prep plan and per-night
-  cook cards with an LLM followed by a deterministic food-safety pass.
+  the AI, then deleted; dinner suggestions that use it up; the list's subtraction).
 
 ```
 phone (app) ──HTTP + bearer token──▶ mealprep server (FastAPI, systemd user unit) ──▶ Postgres (Docker)
@@ -49,7 +48,7 @@ Not affiliated with The New York Times or Loblaws.
 | Path | What |
 |---|---|
 | `android/` | The app. `android/tools/` holds build/release helper scripts (see below). |
-| `server/mealprep/` | API (`api.py`), DB access + schema (`db.py`, `schema.sql`), importers, AI providers (`ai/`), cart drafts and product matching (`drafts.py`, `matcher.py`, `pcx.py`), quantities (`planner.py`, `qtycheck.py`, `packs.py`), prep plans (`prepplan.py`, `prep_rules.py`), the fridge list (`fridge.py`). |
+| `server/mealprep/` | API (`api.py`), DB access + schema (`db.py`, `schema.sql`), importers, AI providers (`ai/`), cart drafts and product matching (`drafts.py`, `matcher.py`, `pcx.py`), quantities (`planner.py`, `qtycheck.py`, `packs.py`), the fridge list (`fridge.py`). |
 | `server/tests/` | pytest suite (DB tests need a Postgres test database). |
 | `server/deploy/` | systemd unit, deploy script, smoke scripts, and the API reference (`README.md`). |
 | `docker-compose.yml` | Postgres for the server. |

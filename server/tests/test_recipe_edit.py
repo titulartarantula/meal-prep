@@ -4,14 +4,14 @@ from datetime import date
 
 import pytest
 
-from mealprep import db, drafts, prepplan, recipe_edit
+from mealprep import db, drafts, recipe_edit
 from mealprep.ai.base import AIError
 from mealprep.models import Ingredient, Recipe
 from test_api import H, client
 from test_drafts import FakeAI as CartAI, FakePcx, build, item, prod
-from test_prepplan import FakeAI as PrepAI, TODAY, WK, plan_for
 
 ON = "2026-10-11"
+WK = date(2026, 10, 11)
 
 
 class LineAI:
@@ -296,42 +296,3 @@ def test_carts_from_before_recipe_edits_counted_keep_their_meaning(conn):
     db.add_to_week(conn, WK, rid)                                                   # a v1 change still counts
     assert week(conn)["cart_stale"] is True
 
-
-# --- prep plans and cook cards: written from the recipe as it was ---------------------------------------------
-
-def prepped(conn, rid, day=2):
-    eid = db.add_to_week(conn, WK, rid)
-    db.update_entry(conn, eid, day=day)
-    other = db.add_to_week(conn, WK, db.save_recipe(conn, Recipe(title="Test Soup", source="photo", ingredients=[
-        ing("1 leek", "leek", 1)], steps=["Cook."])))
-    db.update_entry(conn, other, day=4)
-    pid = prepplan.create_prep_plan(conn, [WK], TODAY, ai_provider="fake")
-    prepplan.build_prep_plan(conn, pid, PrepAI(plan_for(eid, other)))
-    return pid, eid, other
-
-
-def test_editing_a_prepped_recipe_makes_its_plan_and_card_stale(conn):
-    rid = saved(conn)
-    pid, eid, other = prepped(conn, rid)
-    c = client(conn, ai=LineAI())
-    assert prepplan.get_prep_plan(conn, pid)["stale"] is False and prepplan.get_card(conn, eid)["stale"] is False
-    patch(c, rid, title="Test Renamed Stew", notes="n", description="d")             # the cook's work didn't change
-    assert prepplan.get_prep_plan(conn, pid)["stale"] is False and prepplan.get_card(conn, eid)["stale"] is False
-    patch(c, rid, steps=["Brown the beef.", "Simmer 3 hours."])
-    assert prepplan.get_prep_plan(conn, pid)["stale"] is True
-    assert prepplan.get_card(conn, eid)["stale"] is True and prepplan.get_card(conn, other)["stale"] is False
-    patch(c, rid, steps=["Brown the beef.", "Simmer."])                             # undone
-    assert prepplan.get_prep_plan(conn, pid)["stale"] is False and prepplan.get_card(conn, eid)["stale"] is False
-    patch(c, rid, ingredients=["2 cups stock", "2 onions", "Salt"])
-    assert prepplan.get_prep_plan(conn, pid)["stale"] is True and prepplan.get_card(conn, eid)["stale"] is True
-
-
-def test_prep_plans_from_before_recipe_keys_are_not_stale_by_content(conn):
-    rid = saved(conn)
-    pid, eid, _ = prepped(conn, rid)
-    conn.execute("UPDATE prep_plans SET input = (SELECT jsonb_agg(m - 'recipe_key') FROM jsonb_array_elements(input) m) "
-                 "WHERE id=%s", (pid,))
-    patch(client(conn, ai=LineAI()), rid, steps=["Something else."])
-    assert prepplan.get_prep_plan(conn, pid)["stale"] is False and prepplan.get_card(conn, eid)["stale"] is False
-    db.update_entry(conn, eid, day=5)                                               # the old rules still apply
-    assert prepplan.get_prep_plan(conn, pid)["stale"] is True and prepplan.get_card(conn, eid)["stale"] is True
