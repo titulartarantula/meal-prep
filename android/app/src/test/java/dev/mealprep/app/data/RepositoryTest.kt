@@ -101,10 +101,10 @@ class RepositoryTest {
     }
 
     @Test fun `404 on an optional read is cached as none`() = runTest {
-        val p = env.repo.weekPrepPlan(wk)         // no route → 404
+        val p = env.repo.weekDraft(wk)            // no route → 404
         assertNull(p.value); assertNull(p.error)
         env.offline = true
-        val again = env.repo.weekPrepPlan(wk)
+        val again = env.repo.weekDraft(wk)
         assertNull(again.value); assertTrue(again.offline)
     }
 

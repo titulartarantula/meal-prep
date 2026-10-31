@@ -2,7 +2,12 @@
 
 Audit of 2026-10-31: Android app 0.15.0 (vc 23) against the web app at `mealprep.drwhom.ca` (web v1 + NYT photos +
 legal pages + the mobile layout). Built from the Android UI code (`android/app/src/main/java/dev/mealprep/app/ui/`) and
-the web code (`web/src/`). The web household plan lists fridge, Sunday prep and cook cards as "later on web" (plan item 8).
+the web code (`web/src/`). The web household plan lists the fridge as "later on web" (plan item 8).
+
+**Update 2026-10-31 (same day):** Sunday prep and cook cards were **retired** on Android, the server and the web
+(they don't fit how the household cooks), and these gaps were closed on the web: edit recipe, edit source + book
+search, the company verdict, "So far" + earlier notes, the "How was …?" banner, the Good for company filter, the docked
+This week action on phones, and the theme menu fix. The rows below are updated.
 
 **Yes** = the web does what the phone does. **Partial** = some of it (what's missing is listed). **No** = not on the web.
 **Web only** = the web has it and the phone doesn't.
@@ -17,8 +22,8 @@ the web code (`web/src/`). The web household plan lists fridge, Sunday prep and 
 | Drag a dinner between nights | Yes (desktop) | Mouse drag only; on touch screens use the ⋮ menu (HTML drag-and-drop doesn't start from touch). |
 | Undo after Remove from week | No | The web removes at once (toast, no Undo). |
 | Amount per dinner (Half / Normal / 1½ / Double) | Partial | Shows "×2"; can't change it. |
-| Week status strip (Planned · Cart sent · Prep done) | Yes | Hidden on narrow laptops and landscape tablets (900–1180 px). |
-| Context button (Build cart / Review cart / View cart) | Yes | Start Sunday prep / Tonight are not offered (no prep on web). |
+| Week status strip (Planned · Cart sent) | Yes | Hidden on narrow laptops and landscape tablets (900–1180 px). "Prep done" was retired with Sunday prep. |
+| Context button (Build cart / Review cart / View cart; Android: Tonight → the recipe) | Yes | Docked above the tab bar on phones, like Android. Tonight isn't offered on the web. |
 | Empty week → Add recipes | Yes | |
 | "Use up the fridge · N nights free" | No | Fridge isn't on the web. |
 | Import cards (Adding X to Recipes, page prompts) | No | The web's imports show their state in the Add a recipe dialog only. |
@@ -30,14 +35,14 @@ the web code (`web/src/`). The web household plan lists fridge, Sunday prep and 
 | Library list, search (case/accents) | Yes | Web searches title + book title. |
 | Sort Newest / Favourites / A–Z | Yes | |
 | Source filter (NYT, each book, Unknown book, named Other sources, with counts) | Partial | Web: All / NYT Cooking / Books / Other only; no per-book or per-source entries, no counts. |
-| "Good for company" filter | No | |
+| "Good for company" filter | Yes | |
 | Rows: rating, "On the plan", "⚠ Page N missing" | Partial | Rating, times cooked, planned week; no missing-page warning. |
 | Recipe photos | Web only | NYT photo links (Android shows none). |
 | Recipe detail: ingredients (sub-recipe groups), steps, notes, history, link | Partial | No sub-recipe headings, no description/prep/cook/yield line, no "incl. N from another library". |
 | Add to a week (week + optional night) | Yes | |
-| Edit recipe (title, servings, lines, steps, notes, times, yield) | No | |
-| Edit source / Add book (Book · Other, "Used before") | No | |
-| Book search ("Which book?", Open Library / Google Books) | No | |
+| Edit recipe (title, servings, lines, steps, notes, times, yield) | Yes | Same PATCH with `expected_revision`; a 409 keeps the edits and says why. |
+| Edit source / Add book (Book · Other, "Used before") | Yes | |
+| Book search ("Which book?", Open Library / Google Books) | Yes | Your books first, then the server's search. |
 | Add photo of p.N (cross-referenced pages) | No | |
 | Import an NYT link | Yes | |
 | Cookbook photo import (camera, multi-page, reorder/retake/delete, Which book? + page) | No | A phone browser could use `<input type=file capture>`; not built. |
@@ -51,9 +56,9 @@ the web code (`web/src/`). The web household plan lists fridge, Sunday prep and 
 | Feature (Android) | Web | Notes |
 |---|---|---|
 | Rate a dinner (family 1–5 + note), change, remove | Yes | |
-| "Would you make it for company?" Yes / Maybe / No | No | |
-| "So far" + earlier notes in the rating screen | No | History list shows on the recipe instead. |
-| "How was …?" banner (newest unrated dinner, Later) | No | Past nights show "How was it?" on their card instead. |
+| "Would you make it for company?" Yes / Maybe / No | Yes | Choose the same answer again to clear it. |
+| "So far" + earlier notes in the rating screen | Yes | |
+| "How was …?" banner (newest unrated dinner, Later) | Yes | Later hides it on that browser until tomorrow. Past nights also show "How was it?" on their card. |
 
 ## Shopping and cart
 
@@ -78,15 +83,15 @@ the web code (`web/src/`). The web household plan lists fridge, Sunday prep and 
 | Add an item to the cart by search | Yes | |
 | Stale cart ("Older cart": read-only, Build a new cart) | Partial | Warning + send disabled; no "Build a new cart" button on the cart, and the list hides the stale cart instead of offering "Open old cart". |
 | Send to Loblaws | Yes | |
-| Loblaws handoff | Partial | Android: in-app WebView sets the cart automatically. Web: copy the cart ID + bookmarklet on a signed-out loblaws.ca tab (laptop). On a phone browser the bookmarklet route is impractical. |
+| Loblaws handoff | Partial | Android: in-app WebView sets the cart automatically. Web: copy the cart ID + bookmarklet on a signed-out loblaws.ca tab (laptop). On a phone browser the page says to use a laptop or the Android app (kept as is, 2026-10-31). |
 | Sent cart: Open in Loblaws again | Partial | The handoff steps stay on the sent cart's page. |
 
 ## Cooking
 
 | Feature (Android) | Web | Notes |
 |---|---|---|
-| Sunday prep: write the plan, progress, checklist ticks, stale plan / rewrite, previous plan | No | Web reads the plan only for the "Prep done" step. |
-| Cook cards: steps with ticks, Timer N min, Print, keep screen on, Rate this dinner, notes since | No | |
+| Sunday prep: write the plan, progress, checklist ticks, stale plan / rewrite, previous plan | Retired | Removed from Android (0.16.0), the server (routes answer 410, no AI) and the web, 2026-10-31. |
+| Cook cards: steps with ticks, Timer N min, Print, keep screen on, Rate this dinner, notes since | Retired | Same. Rating stays on both (rating screen / dialog and the banner). |
 | Fridge cleaner: list (amount, as of, use soon, use by), add with list names, edit, remove | No | |
 | Fridge photos → review changes | No | |
 | Suggest dinners from the fridge | No | |
@@ -96,11 +101,11 @@ the web code (`web/src/`). The web household plan lists fridge, Sunday prep and 
 
 | Feature (Android) | Web | Notes |
 |---|---|---|
-| Notifications (import done, cart ready, prep ready, thaw, how was dinner, tonight, staples) + settings | No | |
-| Offline copies (week, recipes, cards, fridge) + offline banner | No | The web needs a connection; no service worker. |
-| Background jobs you can leave (imports, cart builds, prep) | Partial | Server jobs keep running; the web shows progress only while the page is open. |
+| Notifications (import done, cart ready, how was dinner, tonight, staples) + settings | No | Prep ready and thaw reminders were retired with Sunday prep. |
+| Offline copies (week, recipes, fridge) + offline banner | No | The web needs a connection; no service worker. |
+| Background jobs you can leave (imports, cart builds) | Partial | Server jobs keep running; the web shows progress only while the page is open. |
 | Settings: server address + token | n/a | The web is same-origin with a session. |
-| Theme | Partial | Android: fixed Garden theme, dark follows the system. Web: Stone theme, Light / Dark / Match the system. |
+| Theme | Partial | Android: fixed Garden theme, dark follows the system. Web: Stone theme, Light / Dark / Match the system (offered only once a theme was chosen). |
 | Sign in with Google, households, roles, switcher | Web only | Android still uses the shared token (plan Task 7). |
 | Role-aware screens (only purchasers build/send, etc.) | Web only | |
 | Add to home screen | Web only | Web app manifest + icons (no offline). |
@@ -109,8 +114,9 @@ the web code (`web/src/`). The web household plan lists fridge, Sunday prep and 
 ## Summary
 
 - **Same on both:** week plan (place, move, remove), library search/sort, add to a week, NYT link import, file and
-  document import, rating with a note, shopping list with staples, build → review → swap → add → send.
-- **Phone only, biggest gaps:** cookbook photos, edit recipe / source / book search, export, Sunday prep, cook cards,
-  fridge cleaner, notifications, offline, staples editing, pins and pack sizes, chooser filters and detail, company
-  verdict and filter.
+  document import, edit recipe and source (book search), rating with company verdict, note, So far and earlier notes,
+  the How was banner, Good for company, shopping list with staples, build → review → swap → add → send.
+- **Phone only, biggest gaps:** cookbook photos, export, fridge cleaner, notifications, offline, staples editing, pins
+  and pack sizes, chooser filters and detail.
+- **Retired everywhere (2026-10-31):** Sunday prep and cook cards.
 - **Web only:** Google sign-in + households + roles, recipe photos, cart filters, theme switch, add to home screen.

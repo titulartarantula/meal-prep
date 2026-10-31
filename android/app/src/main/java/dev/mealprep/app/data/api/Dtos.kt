@@ -205,40 +205,6 @@ import kotlinx.serialization.Serializable
 @Serializable data class SentCart(val pcxCartId: String)
 @Serializable data class JobStarted(val id: Int, val status: String)
 
-@Serializable data class PrepIn(val weeks: List<String>)
-@Serializable data class Serves(val entryId: Int, val recipeId: Int, val title: String, val night: String, val date: String? = null)
-@Serializable data class PrepTask(
-    val id: String, val section: String, val text: String, val serves: List<Serves> = emptyList(),
-    val estMinutes: Int = 0, val shelfLife: String = "ok", val thaw: String? = null,
-    val contents: List<String> = emptyList(), val flags: List<String> = emptyList(),
-    val done: Boolean = false, val doneAt: String? = null,
-)
-@Serializable data class PrepSection(val key: String, val title: String, val tasks: List<PrepTask> = emptyList())
-@Serializable data class PrepEntry(
-    val entryId: Int, val recipeId: Int, val title: String, val night: String, val date: String? = null,
-    val hasCard: Boolean = false,
-)
-@Serializable data class Checklist(
-    val done: Int = 0, val total: Int = 0, val estMinutes: Int = 0, val firstDoneAt: String? = null,
-    val lastDoneAt: String? = null, val actualMinutes: Int? = null,
-)
-@Serializable data class PrepPlan(
-    val id: Int, val status: String, val error: String? = null, val weeks: List<String> = emptyList(),
-    val progress: Progress = Progress(), val createdAt: String? = null, val finishedAt: String? = null,
-    val generationSeconds: Double? = null, val totalMinutes: Int? = null, val warnings: List<String> = emptyList(),
-    val sections: List<PrepSection> = emptyList(), val entries: List<PrepEntry> = emptyList(),
-    val checklist: Checklist = Checklist(), val stale: Boolean = false, val lastReadyId: Int? = null,
-)
-@Serializable data class TaskDone(val done: Boolean)
-
-@Serializable data class CardStep(val text: String, val minutes: Int? = null, val timerMinutes: Int? = null)
-@Serializable data class CookCard(
-    val entryId: Int, val recipeId: Int, val title: String, val night: String, val date: String? = null,
-    val kit: List<String> = emptyList(), val dayOf: List<String> = emptyList(), val thaw: List<String> = emptyList(),
-    val steps: List<CardStep> = emptyList(), val totalMinutes: Int = 0, val ratingNotes: List<String> = emptyList(),
-    val prepPlanId: Int? = null, val generatedAt: String? = null, val stale: Boolean = false,
-)
-
 /** POST /recipes/import (the preview, and the 202 of an apply) and GET /imports/{id} (the apply job) share this shape.
  *  [counts] keys: preview new / duplicate / failed; job added / updated / duplicate / skipped / failed / pending. */
 @Serializable data class ImportReport(

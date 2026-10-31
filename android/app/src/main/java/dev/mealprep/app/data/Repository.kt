@@ -10,7 +10,6 @@ import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.Bodies
 import dev.mealprep.app.data.api.Choices
 import dev.mealprep.app.data.api.BookHit
-import dev.mealprep.app.data.api.CookCard
 import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.data.api.DraftIn
 import dev.mealprep.app.data.api.DraftLine
@@ -36,9 +35,6 @@ import dev.mealprep.app.data.api.ListItem
 import dev.mealprep.app.data.api.MealPrepApi
 import dev.mealprep.app.data.api.PendingRating
 import dev.mealprep.app.data.api.PlanEntry
-import dev.mealprep.app.data.api.PrepIn
-import dev.mealprep.app.data.api.PrepPlan
-import dev.mealprep.app.data.api.PrepTask
 import dev.mealprep.app.data.api.Product
 import dev.mealprep.app.data.api.RatingIn
 import dev.mealprep.app.data.api.Recipe
@@ -48,7 +44,6 @@ import dev.mealprep.app.data.api.Staple
 import dev.mealprep.app.data.api.StapleIn
 import dev.mealprep.app.data.api.ShareIn
 import dev.mealprep.app.data.api.ShareResult
-import dev.mealprep.app.data.api.TaskDone
 import dev.mealprep.app.data.api.WeekSummary
 import dev.mealprep.app.data.api.apiCall
 import dev.mealprep.app.data.cache.CacheDao
@@ -167,23 +162,6 @@ class Repository(
         return load("recipe:$id", Recipe.serializer()) { it.recipe(id) }
     }
     suspend fun sources(): Loaded<List<RecipeSource>> = load("sources", ListSerializer(RecipeSource.serializer())) { it.sources() }
-    suspend fun weekPrepPlan(week: LocalDate): Loaded<PrepPlan?> =
-        loadOptional("prep:${wk(week)}", PrepPlan.serializer()) { it.weekPrepPlan(wk(week)) }
-    /** One plan by id (the last ready one, shown while a newer plan is writing or after it failed). */
-    suspend fun prepPlanCopy(id: Int): Loaded<PrepPlan?> =
-        loadOptional("prepplan:$id", PrepPlan.serializer()) { it.prepPlan(id) }
-    suspend fun card(entryId: Int): Loaded<CookCard?> = loadOptional("card:$entryId", CookCard.serializer()) { it.card(entryId) }
-
-    /** Saves a ready plan's cook cards for offline reading; cards already saved from this plan aren't asked for
-     *  again. Stops at the first failure (off the home network every call would wait for the connect timeout). */
-    suspend fun saveCards(plan: PrepPlan) {
-        if (plan.status != "ready") return
-        for (e in plan.entries.filter { it.hasCard }) {
-            val saved = cache.get("card:${e.entryId}")?.let { runCatching { json.decodeFromString(CookCard.serializer(), it.json) }.getOrNull() }
-            if (saved?.prepPlanId == plan.id) continue
-            if (card(e.entryId).error != null) return
-        }
-    }
     suspend fun weekDraft(week: LocalDate): Loaded<Draft?> =
         loadOptional("draft:${wk(week)}", Draft.serializer()) { it.weekDraft(wk(week)) }
     suspend fun staples(): Loaded<List<Staple>> = load("staples", ListSerializer(Staple.serializer())) { it.staples() }
@@ -198,7 +176,6 @@ class Repository(
     suspend fun health(): ApiResult<Health> = call { it.health() }
     suspend fun defaultCartWeek(): ApiResult<LocalDate?> = call { api -> api.defaultCartWeek().week?.let(LocalDate::parse) }
     suspend fun draft(id: Int): ApiResult<Draft> = call { it.draft(id) }
-    suspend fun prepPlan(id: Int): ApiResult<PrepPlan> = call { it.prepPlan(id) }
     /** Book suggestions for "Which book?" (live, never saved: offline the caller falls back to the household's books). */
     suspend fun searchBooks(q: String, limit: Int = 8): ApiResult<List<BookHit>> = call { it.searchBooks(q, limit) }
     suspend fun shoppingList(weeks: List<LocalDate>, staples: List<Int> = emptyList(), fridge: Boolean = false): ApiResult<List<ListItem>> {
@@ -300,9 +277,6 @@ class Repository(
     suspend fun dismissRead(id: Int): ApiResult<FridgeRead> = call { it.dismissRead(id) }
     /** "Update fridge" ([apply]) or "Not now" on the morning-after nudge; the first answer from either phone wins. */
     suspend fun answerUsed(entryId: Int, apply: Boolean): ApiResult<UsedAnswer> = call { it.answerUsed(entryId, UsedIn(apply)) }
-    suspend fun startPrep(weeks: List<LocalDate>): ApiResult<JobStarted> = call { it.startPrep(PrepIn(weeks.map(::wk))) }
-    suspend fun tickTask(planId: Int, taskId: String, done: Boolean): ApiResult<PrepTask> =
-        call { it.tickTask(planId, taskId, TaskDone(done)) }
 
     // --- recipe files (import / export) ---
     /** One recipe as a schema.org file, saved in [dir] under the server's file name (ratings and notes included). */

@@ -26,7 +26,6 @@ import java.time.ZonedDateTime
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -51,8 +50,6 @@ class SyncWorkerTest {
             {"id":22,"week":"2026-10-11","recipe_id":6,"day":4,"title":"Fish soup"}]""")
         env.on("GET", "/weeks/2026-10-04", body = "[]")
         env.on("GET", "/weeks/2026-10-18", body = "[]")
-        env.on("GET", "/weeks/2026-10-11/prep-plan", body = fixture("prep_plan_ready.json"))
-        env.on("GET", "/plan/21/card", body = fixture("cook_card.json"))
         env.on("GET", "/recipes", body = "[]")
         env.on("GET", "/weeks/2026-10-11/draft", body = fixture("draft_ready.json"))
     }
@@ -68,38 +65,37 @@ class SyncWorkerTest {
     private fun queued() = wm.getWorkInfosByTag(ReminderScheduler.TAG).get().filter { it.state == WorkInfo.State.ENQUEUED }
         .flatMap { it.tags }.filter { it.startsWith("reminder-") }.toSet()
 
-    @Test fun `sync schedules this week's reminders, saves cards offline and announces the cart once`() = runTest {
+    @Test fun `sync schedules this week's reminders and announces the cart once`() = runTest {
         assertTrue(worker().doWork() is Result.Success)
-        assertEquals(setOf("reminder-rate-21", "reminder-rate-22", "reminder-thaw-22"), queued())
+        assertEquals(setOf("reminder-rate-21", "reminder-rate-22"), queued())
         assertEquals("Cart ready to review", notes().single().extras.getString(Notification.EXTRA_TITLE))
         worker().doWork()
         assertEquals(1, notes().size)
-        env.offline = true
-        assertNotNull(env.repo.card(21).value)                                  // readable away from home
         val planned = env.repo.getLocal(SyncWorker.PLANNED, SyncWorker.plannedSerializer)!!
-        assertEquals(listOf("rate-21", "thaw-22", "rate-22"), planned.map { it.id })   // Wed 9:00, Wed 20:00, Fri 9:00
+        assertEquals(listOf("rate-21", "rate-22"), planned.map { it.id })       // Wed 9:00, Fri 9:00
+        assertTrue(env.requests.none { "prep" in it.url.encodedPath || "/card" in it.url.encodedPath })   // Sunday prep retired
     }
 
     @Test fun `away from home the saved copies keep the reminders, a week never saved changes nothing`() = runTest {
         worker().doWork()
         env.offline = true
         worker().doWork()
-        assertEquals(setOf("reminder-rate-21", "reminder-rate-22", "reminder-thaw-22"), queued())
+        assertEquals(setOf("reminder-rate-21", "reminder-rate-22"), queued())
         env.offline = false
         env.db.clearAllTables()
         env.offline = true
         worker().doWork()                                                         // nothing known now: keep what's queued
-        assertEquals(setOf("reminder-rate-21", "reminder-rate-22", "reminder-thaw-22"), queued())
+        assertEquals(setOf("reminder-rate-21", "reminder-rate-22"), queued())
     }
 
     @Test fun `switching a kind off cancels its reminders, no cart notice while the app is open`() = runTest {
         foreground = true
         worker().doWork()
         assertTrue(notes().isEmpty())
-        settings = settings.copy(notif = NotifPrefs(rate = false, cartReady = false))
+        settings = settings.copy(notif = NotifPrefs(rate = false, tonight = true, cartReady = false))
         foreground = false
         worker().doWork()
-        assertEquals(setOf("reminder-thaw-22"), queued())
+        assertEquals(setOf("reminder-tonight-21", "reminder-tonight-22"), queued())
         assertTrue(notes().isEmpty())
     }
 

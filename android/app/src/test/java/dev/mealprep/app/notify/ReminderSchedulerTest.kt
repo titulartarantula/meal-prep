@@ -102,14 +102,11 @@ class ReminderSchedulerTest {
     @Test fun `when due, a dinner rated or moved meanwhile needs no reminder`() = runBlocking {
         val wk = LocalDate.parse("2026-10-11")
         env.on("GET", "/weeks/2026-10-11", body = fixture("week_home.json"))
-        env.on("GET", "/weeks/2026-10-11/prep-plan", body = fixture("prep_plan_ready.json"))
         val rate21 = Reminder("rate-21", ReminderKind.RATE, LocalDateTime.parse("2026-10-14T09:00"), "", "", "", 21, wk)
         assertTrue(Reminders.stillWanted(rate21, env.repo, NotifPrefs()))
         assertFalse(Reminders.stillWanted(rate21.copy(id = "rate-22", entryId = 22), env.repo, NotifPrefs()))   // rated already
         assertFalse(Reminders.stillWanted(rate21.copy(at = LocalDateTime.parse("2026-10-15T09:00")), env.repo, NotifPrefs()))  // moved
         assertFalse(Reminders.stillWanted(rate21, env.repo, NotifPrefs(rate = false)))                       // switched off
-        val thaw = Reminder("thaw-22", ReminderKind.THAW, LocalDateTime.parse("2026-10-14T20:00"), "", "", "", 22, wk)
-        assertTrue(Reminders.stillWanted(thaw, env.repo, NotifPrefs()))
         env.offline = true                                                                                   // the saved copies decide
         assertFalse(Reminders.stillWanted(rate21.copy(id = "rate-22", entryId = 22), env.repo, NotifPrefs()))
         assertTrue(Reminders.stillWanted(rate21.copy(week = LocalDate.parse("2026-11-01")), env.repo, NotifPrefs()))  // nothing known: show it

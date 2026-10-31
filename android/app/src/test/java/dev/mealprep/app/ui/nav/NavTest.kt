@@ -15,9 +15,9 @@ class NavTest {
         assertEquals(CameraRoute("ref", 3, 1, 191), Nav.parse(Nav.ref(3, 1, 191)))
         assertEquals(CameraRoute("ref", 3, 1), Nav.parse("ref/3/1"))                // links from 0.2.x notifications
         assertEquals(RatingRoute(21, "2026-10-11"), Nav.parse(Nav.rating(21, wk)))
-        assertEquals(CardRoute(21), Nav.parse(Nav.card(21)))
+        assertEquals(HomeRoute(), Nav.parse("card/21"))                            // retired cook card: the week
         assertEquals(DraftRoute(7), Nav.parse(Nav.draft(7)))
-        assertEquals(PrepRoute("2026-10-11"), Nav.parse(Nav.prep(wk)))
+        assertEquals(HomeRoute("2026-10-11"), Nav.parse("prep/2026-10-11"))         // retired Sunday prep: that week
         assertEquals(ListRoute(""), Nav.parse(Nav.list()))
         assertEquals(RecipeRoute(4), Nav.parse(Nav.recipe(4)))
         assertEquals(RecipeRoute(4, addToWeek = true), Nav.parse(Nav.recipe(4, addToWeek = true)))
@@ -40,7 +40,7 @@ class NavTest {
     }
 
     @Test fun `garbage is ignored`() {
-        assertNull(Nav.parse(null)); assertNull(Nav.parse("card/x")); assertNull(Nav.parse("nope/1"))
+        assertNull(Nav.parse(null)); assertNull(Nav.parse("draft/x")); assertNull(Nav.parse("nope/1"))
     }
 
     @Test fun `context buttons open their screen, an empty week the Recipes tab`() {
@@ -49,6 +49,8 @@ class NavTest {
         assertEquals(LibraryRoute, contextRoute(ContextAction.AddRecipes))
         assertEquals("Choose from Recipes", ContextAction.AddRecipes.label)
         assertNull(contextRoute(ContextAction.AllSet))
+        assertEquals(RecipeRoute(5), contextRoute(ContextAction.Tonight(21, 5, "Chili")))   // tonight: its recipe
+        assertEquals(DraftRoute(7), contextRoute(ContextAction.ReviewCart(7, false)))
     }
 
     @Test fun `camera titles say what to photograph`() {

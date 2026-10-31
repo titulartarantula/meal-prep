@@ -95,7 +95,7 @@ private fun RatingBody(
             }
             OutlinedTextField(s.note, onNote, label = { Text("Note (optional)") }, placeholder = { Text("e.g. less salt next time") },
                 modifier = Modifier.fillMaxWidth())
-            Text("Notes show on this recipe's cook card the next time it's planned.", style = MaterialTheme.typography.bodySmall,
+            Text("Notes show on the recipe and here the next time it's rated.", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             MessageText(s.error)
             Button(onSave, enabled = !s.saving && !s.loading, modifier = Modifier.fillMaxWidth()) {

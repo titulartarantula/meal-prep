@@ -76,21 +76,12 @@ class ApiTest {
     }
 
     @Test fun `parses synthetic replies`() = runTest {
-        reply(fixture("share_result.json")); reply(fixture("draft_ready.json")); reply(fixture("prep_plan_ready.json"))
-        reply(fixture("prep_plan_building.json")); reply(fixture("cook_card.json")); reply(fixture("pending.json"))
+        reply(fixture("share_result.json")); reply(fixture("draft_ready.json")); reply(fixture("pending.json"))
         val s = api.share(ShareIn("x", "2026-10-11"))
         assertTrue(s.existing); assertEquals(listOf(1), s.recipe.missingPages); assertEquals(4.5, s.recipe.ratings.avgFamily!!, 0.0)
         val d = api.draft(7)
         assertNull(d.lines[1].product); assertEquals("memory", d.lines[0].source)
         assertEquals(1, d.lines[0].quantity); assertNull(d.lines[1].quantity)
-        val p = api.prepPlan(4)
-        assertEquals(listOf("knife", "sauces", "proteins", "pack"), p.sections.map { it.key })
-        assertEquals("freeze_then_thaw", p.sections[2].tasks[0].shelfLife)
-        assertEquals(4, p.checklist.total)
-        val b = api.prepPlan(5)
-        assertEquals("building", b.status); assertEquals(emptyList<String>(), b.warnings); assertNull(b.totalMinutes)
-        val c = api.card(21)
-        assertEquals(20, c.steps[1].timerMinutes); assertEquals(listOf("Chop the cilantro"), c.dayOf)
         assertEquals("Chili", api.pendingRatings("2026-10-14").single().title)
     }
 

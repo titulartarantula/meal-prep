@@ -92,20 +92,18 @@ class JobWatchWorkerTest {
         assertEquals("Every product search failed. Try again later.", text(n))
     }
 
-    @Test fun `failed prep plan is reported with the server's reason`() = runTest {
-        env.on("GET", "/prep-plans/5", body = """{"id":5,"status":"failed","error":"AI timed out after 900 s"}""")
-        worker(JobWatchWorker.PREP, 5).doWork()
-        val n = notes().single()
-        assertEquals("Prep plan failed", title(n))
-        assertEquals("AI timed out after 900 s", text(n))
+    @Test fun `a prep plan watch from before Sunday prep was retired ends without asking the server`() = runTest {
+        assertTrue(worker("prep", 5).doWork() is Result.Failure)
+        assertTrue(env.requests.isEmpty())
+        assertTrue(notes().isEmpty())
     }
 
     @Test fun `still building after the polls retries, then gives up with a note`() = runTest {
-        env.on("GET", "/prep-plans/5", body = fixture("prep_plan_building.json"))
-        assertTrue(worker(JobWatchWorker.PREP, 5, maxPolls = 3).doWork() is Result.Retry)
+        env.on("GET", "/drafts/7", body = """{"id":7,"status":"building"}""")
+        assertTrue(worker(JobWatchWorker.DRAFT, 7, maxPolls = 3).doWork() is Result.Retry)
         assertTrue(notes().isEmpty())
-        assertTrue(worker(JobWatchWorker.PREP, 5, maxPolls = 3, attempt = JobWatchWorker.MAX_ATTEMPTS - 1).doWork() is Result.Failure)
-        assertEquals("Prep plan failed", title(notes().single()))
+        assertTrue(worker(JobWatchWorker.DRAFT, 7, maxPolls = 3, attempt = JobWatchWorker.MAX_ATTEMPTS - 1).doWork() is Result.Failure)
+        assertEquals("Cart couldn't be built", title(notes().single()))
         assertEquals(JobWatchWorker.GAVE_UP, text(notes().single()))
     }
 

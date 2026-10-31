@@ -14,27 +14,19 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
-import dev.mealprep.app.data.api.CookCard
 import dev.mealprep.app.data.api.Http
 import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.fixture
-import dev.mealprep.app.ui.card.CardContent
-import dev.mealprep.app.ui.card.CardState
-import dev.mealprep.app.ui.card.CardUiActions
 import dev.mealprep.app.ui.cart.StaplesContent
 import dev.mealprep.app.ui.cart.StaplesState
 import dev.mealprep.app.ui.library.RecipeContent
 import dev.mealprep.app.ui.library.RecipeState
-import dev.mealprep.app.ui.prep.PrepActions
-import dev.mealprep.app.ui.prep.PrepContent
-import dev.mealprep.app.ui.prep.PrepState
 import dev.mealprep.app.ui.rating.RatingContent
 import dev.mealprep.app.ui.rating.RatingState
 import dev.mealprep.app.ui.setup.SettingsContent
 import dev.mealprep.app.ui.share.ShareContent
 import dev.mealprep.app.ui.share.ShareState
 import dev.mealprep.app.core.ShareInput
-import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -72,15 +64,6 @@ class BarsTest {
     @Test fun `staples`() = pushed("Staples") { b -> StaplesContent(StaplesState(loading = false), { true }, {}, { _, _ -> }, onBack = b) }
 
     @Test fun `settings`() = pushed("Settings") { b -> SettingsContent(onBack = b, extra = { Text("Notifications") }, server = {}) }
-
-    @Test fun `sunday prep`() = pushed("Sunday prep") { b ->
-        PrepContent(PrepState(loading = false), LocalDate.parse("2026-10-11"), LocalDate.parse("2026-10-07"), PrepActions(onBack = b))
-    }
-
-    @Test fun `cook card`() {
-        val card = Http.json.decodeFromString(CookCard.serializer(), fixture("cook_card.json"))
-        pushed(card.title) { b -> CardContent(CardState(card, loading = false), emptySet(), CardUiActions(onBack = b)) }
-    }
 
     @Test fun `share`() = pushed("Save a recipe") { b ->
         ShareContent(ShareState(ShareInput.NytLink("https://cooking.nytimes.com/recipes/1015819-chili", "")), {}, b, {})

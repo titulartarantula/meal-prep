@@ -25,7 +25,8 @@ Everything below belongs to your household. Other households can't see it.
 
 - **Recipes:** recipes you add or import, with their ingredients, steps, source (a link, a cookbook's title and
   page, or a name you give), photo links, and your ratings and notes.
-- **Plans:** which dinners are on which night, prep plans and cook cards.
+- **Plans:** which dinners are on which night. (Sunday prep plans and cook cards made before 31 October 2026,
+  when that feature was retired, are still stored; no new ones are made.)
 - **Shopping:** shopping lists, staples, items you add by hand, the fridge list, the products you prefer, and
   grocery carts with their history (what was in each cart, and when it was sent).
 - **Your household:** its name, its members and their roles, and invites that haven't been used yet.

@@ -2,10 +2,8 @@ package dev.mealprep.app.ui.home
 
 import androidx.work.WorkInfo
 import androidx.work.workDataOf
-import dev.mealprep.app.data.api.Checklist
 import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.data.api.PlanEntry
-import dev.mealprep.app.data.api.PrepPlan
 import dev.mealprep.app.work.ImportWorker
 import java.time.LocalDate
 import java.util.UUID
@@ -17,7 +15,6 @@ class HomeLogicTest {
     private val wed = LocalDate.parse("2026-10-07")                  // the week before: planning ahead
     private fun e(id: Int, day: Int?, title: String = "R$id") = PlanEntry(id, "2026-10-11", id, day, title = title)
     private val entries = listOf(e(21, 2, "Chili"), e(22, 4, "Fish soup"), e(23, null))
-    private fun prep(status: String, done: Int, total: Int) = PrepPlan(4, status, checklist = Checklist(done = done, total = total))
 
     @Test fun `week view groups nights and the tray`() {
         val v = weekView(LocalDate.parse("2026-10-14"), entries)
@@ -29,42 +26,37 @@ class HomeLogicTest {
     }
 
     @Test fun `status strip`() {
-        assertEquals(StatusStrip(true, true, true), statusStrip(entries, true, prep("ready", 4, 4)))
-        assertEquals(StatusStrip(false, false, false), statusStrip(listOf(e(23, null)), false, prep("ready", 3, 4)))
-        assertEquals(true, prepDone(prep("ready", 0, 0)))    // nothing to prep counts as done
-        assertEquals(false, prepDone(prep("building", 0, 0)))
+        assertEquals(StatusStrip(true, true), statusStrip(entries, true))
+        assertEquals(StatusStrip(false, false), statusStrip(listOf(e(23, null)), false))
     }
 
     @Test fun `context action follows the week`() {
-        assertEquals(ContextAction.AddRecipes, contextAction(wk, wed, emptyList(), false, null, null))
-        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, null, null))
-        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "failed"), null))
-        assertEquals(ContextAction.ReviewCart(7, true), contextAction(wk, wed, entries, false, Draft(7, "building"), null))
-        assertEquals(ContextAction.ReviewCart(7, false), contextAction(wk, wed, entries, false, Draft(7, "ready"), null))
-        assertEquals(ContextAction.StartPrep(wk), contextAction(wk, wed, entries, true, Draft(7, "sent"), null))
-        assertEquals(ContextAction.StartPrep(wk), contextAction(wk, wed, entries, true, null, prep("failed", 0, 0)))
-        assertEquals(ContextAction.ContinuePrep(wk, 0, 0, true), contextAction(wk, wed, entries, true, null, prep("building", 0, 0)))
-        assertEquals(ContextAction.ContinuePrep(wk, 1, 4, false), contextAction(wk, wed, entries, true, null, prep("ready", 1, 4)))
-        assertEquals(ContextAction.AllSet, contextAction(wk, wed, entries, true, null, prep("ready", 4, 4)))
-        assertEquals(ContextAction.AllSet, contextAction(wk, wed, entries, true, null, prep("ready", 0, 0)))
+        assertEquals(ContextAction.AddRecipes, contextAction(wk, wed, emptyList(), false, null))
+        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, null))
+        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "failed")))
+        assertEquals(ContextAction.ReviewCart(7, true), contextAction(wk, wed, entries, false, Draft(7, "building")))
+        assertEquals(ContextAction.ReviewCart(7, false), contextAction(wk, wed, entries, false, Draft(7, "ready")))
+        assertEquals(ContextAction.AllSet, contextAction(wk, wed, entries, true, Draft(7, "sent")))          // no prep step since 0.16.0
+        assertEquals(ContextAction.AllSet, contextAction(wk, wed, entries, true, null))
     }
 
     @Test fun `a stale cart is an older cart - the week goes back to Build cart`() {
         // The server says carted = false once the week's recipes changed after the cart was sent.
-        assertEquals(StatusStrip(planned = true, cartSent = false, prepDone = false), statusStrip(entries, false, null))
-        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "sent", stale = true), null))
-        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "ready", stale = true), null))
-        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "building", stale = true), null))
-        assertEquals(ContextAction.ReviewCart(8, false), contextAction(wk, wed, entries, false, Draft(8, "ready"), null))  // a new one
+        assertEquals(StatusStrip(planned = true, cartSent = false), statusStrip(entries, false))
+        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "sent", stale = true)))
+        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "ready", stale = true)))
+        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wed, entries, false, Draft(7, "building", stale = true)))
+        assertEquals(ContextAction.ReviewCart(8, false), contextAction(wk, wed, entries, false, Draft(8, "ready")))  // a new one
     }
 
-    @Test fun `tonight wins once the prep Sunday has passed`() {
+    @Test fun `tonight wins once the week's Sunday has passed`() {
         val tue = LocalDate.parse("2026-10-13")
-        assertEquals(ContextAction.Tonight(21, "Chili"), contextAction(wk, tue, entries, false, null, null))
+        assertEquals(ContextAction.Tonight(21, 21, "Chili"), contextAction(wk, tue, entries, false, null))
+        assertEquals("Tonight: Chili", ContextAction.Tonight(21, 21, "Chili").label)
         val sundayEntry = listOf(e(30, 0, "Roast"))
-        assertEquals(ContextAction.StartPrep(wk), contextAction(wk, wk, sundayEntry, true, null, null))         // Sunday = prep day
-        assertEquals(ContextAction.Tonight(30, "Roast"), contextAction(wk, wk, sundayEntry, true, null, prep("ready", 2, 2)))
-        assertEquals(ContextAction.AllSet, contextAction(wk, LocalDate.parse("2026-10-20"), entries, false, null, null)) // week over
+        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wk, sundayEntry, false, null))           // Sunday: shopping first
+        assertEquals(ContextAction.Tonight(30, 30, "Roast"), contextAction(wk, wk, sundayEntry, true, null))   // then tonight
+        assertEquals(ContextAction.AllSet, contextAction(wk, LocalDate.parse("2026-10-20"), entries, false, null)) // week over
     }
 
     @Test fun `import cards`() {

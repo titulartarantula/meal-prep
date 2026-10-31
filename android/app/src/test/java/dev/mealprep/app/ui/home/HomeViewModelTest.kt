@@ -72,7 +72,7 @@ class HomeViewModelTest {
         val ui = vm.week(wk).await { !it.loading }
         assertEquals(listOf(23), ui.view!!.unplaced.map { it.id })
         assertEquals(listOf("Chili"), ui.view!!.nights[2].entries.map { it.title })
-        assertEquals(StatusStrip(planned = true, cartSent = false, prepDone = false), ui.strip)
+        assertEquals(StatusStrip(planned = true, cartSent = false), ui.strip)
         assertEquals(ContextAction.BuildCart(wk), ui.action)
     }
 
@@ -80,7 +80,7 @@ class HomeViewModelTest {
         env.on("GET", "/weeks", body = """[{"week":"2026-10-11","entries":3,"carted":false,"cart_stale":true}]""")
         env.on("GET", "/weeks/2026-10-11/draft", body = fixture("draft_3_sent.json").replaceFirst("{", "{\"stale\": true, "))
         val ui = vm.week(wk).await { !it.loading }
-        assertEquals(StatusStrip(planned = true, cartSent = false, prepDone = false), ui.strip)
+        assertEquals(StatusStrip(planned = true, cartSent = false), ui.strip)
         assertEquals(ContextAction.BuildCart(wk), ui.action)
         assertEquals(null, ui.sentDraftId)                                         // "Cart sent" doesn't open the old one
     }

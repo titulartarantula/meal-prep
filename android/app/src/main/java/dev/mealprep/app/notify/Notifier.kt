@@ -46,7 +46,7 @@ class Notifier(private val context: Context) {
     fun ensureChannels() {
         nm.createNotificationChannelsCompat(listOf(
             NotificationChannelCompat.Builder(CH_PROGRESS, NotificationManagerCompat.IMPORTANCE_LOW).setName("Working in the background").build(),
-            NotificationChannelCompat.Builder(CH_JOBS, NotificationManagerCompat.IMPORTANCE_DEFAULT).setName("Recipes, cart and prep plan").build(),
+            NotificationChannelCompat.Builder(CH_JOBS, NotificationManagerCompat.IMPORTANCE_DEFAULT).setName("Recipes and cart").build(),
             NotificationChannelCompat.Builder(CH_REMINDERS, NotificationManagerCompat.IMPORTANCE_HIGH).setName("Reminders").build(),
         ))
     }
@@ -100,21 +100,12 @@ class Notifier(private val context: Context) {
         else "${read.error ?: "Couldn't read the fridge in those photos."} Open it to try again.",
         Nav.fridgeReview(read.id))
 
-    /** A cart draft or prep plan left "building" (JobWatchWorker). [error] is the server's reason when it failed. */
+    /** A cart draft left "building" (JobWatchWorker). [error] is the server's reason when it failed. */
     fun jobDone(kind: String, id: Int, week: LocalDate, ok: Boolean, error: String?) {
-        val draft = kind == JobWatchWorker.DRAFT
-        val title = when {
-            draft && ok -> "Cart ready to review"
-            draft -> "Cart couldn't be built"
-            ok -> "Prep plan ready"
-            else -> "Prep plan failed"
-        }
-        val text = when {
-            !ok -> error?.takeIf(String::isNotBlank) ?: "Open Meal Prep to try again."
-            draft -> "Week of ${Weeks.shortDate(week)}: check the picks, then Send to Loblaws."
-            else -> "Week of ${Weeks.shortDate(week)}: your Sunday checklist and cook cards are in."
-        }
-        post("$kind-$id", CH_JOBS, title, text, if (draft) Nav.draft(id) else Nav.prep(week))
+        val title = if (ok) "Cart ready to review" else "Cart couldn't be built"
+        val text = if (!ok) error?.takeIf(String::isNotBlank) ?: "Open Meal Prep to try again."
+            else "Week of ${Weeks.shortDate(week)}: check the picks, then Send to Loblaws."
+        post("$kind-$id", CH_JOBS, title, text, Nav.draft(id))
     }
 
     /** A recipe import finished (JobWatchWorker, app closed): what happened; tap opens the result. */
@@ -129,7 +120,7 @@ class Notifier(private val context: Context) {
     fun staplesReminder() = post("staples-reminder", CH_REMINDERS, "Time to check the staples",
         "Untick what you don't need this week, then build the cart.", Nav.list())
 
-    /** A planned reminder (thaw, how was dinner, tonight; ReminderWorker). One per id: a newer one replaces it. */
+    /** A planned reminder (how was dinner, tonight; ReminderWorker). One per id: a newer one replaces it. */
     fun reminder(id: String, title: String, text: String, nav: String?) = post("reminder-$id", CH_REMINDERS, title, text, nav)
 
     /** Takes a shown "How was …?" away once that dinner is rated (or its rating removed) on this phone. */

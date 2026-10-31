@@ -83,19 +83,17 @@ internal fun samples(planned: List<PlannedReminder>, n: NotifPrefs): List<Sample
         Sample("sample-${k.name.lowercase()}", Notifier.CH_REMINDERS, it.title, "Sample. ${it.text}", it.nav)
     } ?: Sample("sample-${k.name.lowercase()}", Notifier.CH_REMINDERS, title, "Sample. $text", nav)
     return listOf(
-        sample(ReminderKind.THAW, "Thaw for tomorrow's dinner",
-            "When Sunday's prep froze a kit, this comes at ${time(n.thawAt)} the evening before, saying what to move to the fridge.", Nav.home(null)),
         sample(ReminderKind.RATE, "How was last night's dinner?",
             "This comes at ${time(n.rateAt)} the morning after each dinner on the plan; tap it to rate.", Nav.home(null)),
         sample(ReminderKind.TONIGHT, "Tonight: dinner",
-            "This comes at ${time(n.tonightAt)} on the day, opening the cook card" + if (n.tonight) "." else " (it's off on this phone).",
+            "This comes at ${time(n.tonightAt)} on the day, opening the recipe" + if (n.tonight) "." else " (it's off on this phone).",
             Nav.home(null)),
         Sample("sample-cart", Notifier.CH_JOBS, "Cart ready to review",
             "Sample. This comes when a cart built on either phone is ready: check the picks, then Send to Loblaws.", Nav.list()),
     )
 }
 
-/** Settings section: this phone's notifications (thaw, how was dinner, tonight, cart ready, weekly staples). */
+/** Settings section: this phone's notifications (how was dinner, tonight, cart ready, weekly staples). */
 @Composable
 fun NotifSettings(graph: AppGraph) {
     val s by graph.settings.collectAsStateWithLifecycle()
@@ -143,11 +141,9 @@ fun NotifSettingsContent(
             Text("Notifications are off for Meal Prep, so none of these can show.", color = MaterialTheme.colorScheme.error, style = small)
             Button(onAllow) { Text("Allow notifications") }
         }
-        ReminderToggle("Thaw reminder", "The evening before a dinner whose kit was frozen on Sunday: what to move to the fridge.",
-            n.thaw, { onChange(n.copy(thaw = it)) }, n.thawAt) { onChange(n.copy(thawAt = it)) }
         ReminderToggle("How was dinner?", "The morning after each dinner, to rate it.",
             n.rate, { onChange(n.copy(rate = it)) }, n.rateAt) { onChange(n.copy(rateAt = it)) }
-        ReminderToggle("Tonight's dinner", "On the day, with its cook card.",
+        ReminderToggle("Tonight's dinner", "On the day, with its recipe.",
             n.tonight, { onChange(n.copy(tonight = it)) }, n.tonightAt) { onChange(n.copy(tonightAt = it)) }
         ReminderToggle("Cart ready to review", "When a cart built on either phone is ready (checked about every hour).",
             n.cartReady, { onChange(n.copy(cartReady = it)) })
@@ -162,7 +158,7 @@ fun NotifSettingsContent(
         }
         Text("Coming up on this phone", style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(top = 8.dp).semantics { heading() })
-        if (upcoming.isEmpty()) Text("Nothing yet. Reminders follow the dinners on This week (and a ready prep plan for thaws).",
+        if (upcoming.isEmpty()) Text("Nothing yet. Reminders follow the dinners on This week.",
             style = small, color = muted)
         upcoming.take(6).forEach { Text(upcomingLine(it), style = small) }
         OutlinedButton(onSamples, enabled = granted, modifier = Modifier.padding(top = 4.dp)) { Text("Show a sample of each now") }

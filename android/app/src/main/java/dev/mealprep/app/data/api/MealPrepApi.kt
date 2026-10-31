@@ -82,11 +82,6 @@ interface MealPrepApi {
     @DELETE("extras/{id}") suspend fun deleteExtra(@Path("id") id: Int)
     @POST("drafts/{id}/send") suspend fun sendDraft(@Path("id") id: Int): SentCart
 
-    @POST("prep-plans") suspend fun startPrep(@Body body: PrepIn): JobStarted
-    @GET("prep-plans/{id}") suspend fun prepPlan(@Path("id") id: Int): PrepPlan
-    @GET("weeks/{week}/prep-plan") suspend fun weekPrepPlan(@Path("week") week: String): PrepPlan
-    @PATCH("prep-plans/{id}/tasks/{task}") suspend fun tickTask(@Path("id") id: Int, @Path("task") task: String, @Body body: TaskDone): PrepTask
-    @GET("plan/{id}/card") suspend fun card(@Path("id") id: Int): CookCard
 
     /** schema.org JSON-LD files (ratings and notes always included); the name comes in Content-Disposition. */
     @Streaming @GET("recipes/{id}/export") suspend fun exportRecipe(@Path("id") id: Int): Response<ResponseBody>

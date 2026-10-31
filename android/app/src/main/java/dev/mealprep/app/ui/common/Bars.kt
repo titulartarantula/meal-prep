@@ -49,7 +49,7 @@ fun BackTopBar(
 }
 
 /**
- * The screen's main action, docked at the bottom (in thumb reach) across the whole width: Start Sunday prep, Add to
+ * The screen's main action, docked at the bottom (in thumb reach) across the whole width: Review cart, Add to
  * a week, Build cart, Send to Loblaws, Add a staple. [above] goes over the button (the cart's total).
  */
 @Composable

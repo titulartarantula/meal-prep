@@ -42,7 +42,7 @@ class HomeScreenTest {
     @get:Rule val compose = createComposeRule()
     private val wk = LocalDate.parse("2026-10-11")
     private val entries = listOf(PlanEntry(21, "2026-10-11", 5, 2, title = "Chili"), PlanEntry(23, "2026-10-11", 1, null, title = "Cookies"))
-    private val ui = WeekUi(wk, weekView(wk, entries), statusStrip(entries, false, null), ContextAction.BuildCart(wk), loading = false)
+    private val ui = WeekUi(wk, weekView(wk, entries), statusStrip(entries, false), ContextAction.BuildCart(wk), loading = false)
 
     @Test fun `shows nights, tray and the context button`() {
         var action: ContextAction? = null
@@ -116,7 +116,7 @@ class HomeScreenTest {
 
     @Test fun `a sent cart can be reopened from the status strip`() {
         var opened: Any? = null
-        val sent = ui.copy(strip = statusStrip(entries, true, null), sentDraftId = 9)
+        val sent = ui.copy(strip = statusStrip(entries, true), sentDraftId = 9)
         compose.setContent { WeekContent(sent, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, { opened = it }, {}) }
         compose.onNodeWithText("✓ Cart sent").performClick()
         assertEquals(dev.mealprep.app.ui.nav.DraftRoute(9), opened)
@@ -157,7 +157,7 @@ class HomeScreenTest {
 
     @Test fun `an empty week points to Recipes instead of a share hint`() {
         var action: ContextAction? = null
-        val empty = WeekUi(wk, weekView(wk, emptyList()), statusStrip(emptyList(), false, null), ContextAction.AddRecipes, loading = false)
+        val empty = WeekUi(wk, weekView(wk, emptyList()), statusStrip(emptyList(), false), ContextAction.AddRecipes, loading = false)
         compose.setContent { WeekContent(empty, LocalDate.parse("2026-10-07"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
         compose.onNodeWithText(EMPTY_WEEK).assertExists()
         compose.onNodeWithText("○ Planned").assertExists()                                  // the status line stays
@@ -172,13 +172,13 @@ class HomeScreenTest {
 
     @Test fun `the week's next step is docked at the bottom, full width`() {
         var action: ContextAction? = null
-        val prep = ui.copy(action = ContextAction.StartPrep(wk))
-        compose.setContent { WeekContent(prep, LocalDate.parse("2026-10-07"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
+        val tonight = ui.copy(action = ContextAction.Tonight(21, 5, "Chili"))
+        compose.setContent { WeekContent(tonight, LocalDate.parse("2026-10-07"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
         val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
-        val button = compose.onNodeWithText("Start Sunday prep").fetchSemanticsNode().boundsInRoot
+        val button = compose.onNodeWithText("Tonight: Chili").fetchSemanticsNode().boundsInRoot
         assertTrue(button.bottom > root.bottom - 100f)                       // at the bottom of the screen
-        compose.onNodeWithText("Start Sunday prep").performClick()
-        assertEquals(ContextAction.StartPrep(wk), action)
+        compose.onNodeWithText("Tonight: Chili").performClick()
+        assertEquals(ContextAction.Tonight(21, 5, "Chili"), action)
         compose.onNodeWithText("Refresh").assertDoesNotExist()              // the week reloads on its own
     }
 
@@ -229,7 +229,8 @@ class HomeScreenTest {
     @Test fun `the status strip says done or not yet`() {
         compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
         compose.onNodeWithContentDescription("Planned").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "done"))
-        compose.onNodeWithContentDescription("Prep done").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not yet"))
+        compose.onNodeWithContentDescription("Cart sent").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not yet"))
+        compose.onNodeWithContentDescription("Prep done").assertDoesNotExist()             // Sunday prep was retired (0.16.0)
     }
 
     @Test fun `the entry dialog's amounts are words, one choice`() {

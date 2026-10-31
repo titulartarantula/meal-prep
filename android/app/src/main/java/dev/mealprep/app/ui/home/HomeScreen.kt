@@ -103,8 +103,6 @@ import dev.mealprep.app.core.RatingText
 import dev.mealprep.app.ui.common.OfflineBanner
 import dev.mealprep.app.ui.common.OverflowMenu
 import dev.mealprep.app.ui.common.graphViewModel
-import dev.mealprep.app.ui.nav.CardRoute
-import dev.mealprep.app.ui.nav.PrepRoute
 import dev.mealprep.app.ui.nav.RatingRoute
 import dev.mealprep.app.ui.nav.RecipeRoute
 import dev.mealprep.app.ui.camera.RefPrompt
@@ -371,10 +369,9 @@ fun WeekContent(
                 return@LazyColumn
             }
             item {
-                StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } },
-                    onPrep = if (ui.hasPrep) { { onOpen(PrepRoute(ui.week.toString())) } } else null)
+                StatusStripRow(ui.strip, onCart = ui.sentDraftId?.let { id -> { onOpen(DraftRoute(id)) } })
             }
-            // Not the context button: the cart → prep → tonight flow stays as it is.
+            // Not the context button: the cart → tonight flow stays as it is.
             if (ui.view != null) useUpFridge(ui.week, today, all, fridgeCount)?.let { label ->
                 item {
                     TextButton({ onOpen(FridgeSuggestRoute(ui.week.toString())) }, Modifier.heightIn(min = 48.dp)) { Text(label) }
@@ -452,19 +449,18 @@ const val NO_NIGHT = "No night yet"
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?, onPrep: (() -> Unit)? = null) {
-    // Wraps whole steps onto a new line with large text, never "Prep" / "done" split across lines.
+private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?) {
+    // Wraps whole steps onto a new line with large text, never "Cart" / "sent" split across lines.
     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-        listOf("Planned" to s.planned, "Cart sent" to s.cartSent, "Prep done" to s.prepDone).forEach { (label, done) ->
+        listOf("Planned" to s.planned, "Cart sent" to s.cartSent).forEach { (label, done) ->
             val text = (if (done) "✓ " else "○ ") + label
             val color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-            // A sent cart can be reopened (to open it in Loblaws again); the week's prep plan too.
-            val open = when (label) { "Cart sent" -> onCart; "Prep done" -> onPrep; else -> null }
-            // TalkBack: "Prep done, not yet", not "white circle Prep done".
+            // A sent cart can be reopened (to open it in Loblaws again).
+            val open = if (label == "Cart sent") onCart else null
+            // TalkBack: "Cart sent, not yet", not "white circle Cart sent".
             val said = Modifier.semantics { contentDescription = label; stateDescription = if (done) "done" else "not yet" }
             if (open != null) {
-                val what = if (label == "Cart sent") "Open the cart" else "Open the prep plan"
-                TextButton(onClick = open, modifier = said.semantics { onClick(label = what) { open(); true } }) {
+                TextButton(onClick = open, modifier = said.semantics { onClick(label = "Open the cart") { open(); true } }) {
                     Text(text, color = color, softWrap = false)
                 }
             } else Text(text, said, color = color, softWrap = false)
@@ -578,7 +574,7 @@ private fun EntryDialog(e: PlanEntry, ref: RefPrompt?, onDismiss: () -> Unit, on
                         description = if (m == 1.5) "One and a half" else null) }
                 }
                 if (e.day != null) FlowRow {
-                    TextButton({ onOpen(CardRoute(e.id)) }) { Text("Cook card") }
+                    TextButton({ onOpen(RecipeRoute(e.recipeId)) }) { Text("Recipe") }
                     val rate = if (e.rating != null) "Rating: ${e.rating.family}/5" else "Rate"
                     TextButton({ onOpen(RatingRoute(e.id, e.week)) }, Modifier.semantics { contentDescription = RatingText.spoken(rate) }) {
                         Text(rate)

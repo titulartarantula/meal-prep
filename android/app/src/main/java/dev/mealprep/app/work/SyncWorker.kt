@@ -25,9 +25,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 
 /**
- * Hourly, on app start and after a change on this phone (a dinner placed, moved, removed or rated; a prep plan
- * written; notification settings): refreshes the saved copies of last / this / next week, their prep plans' cook
- * cards, the library and the fridge list; tells this phone about a cart that is ready to review (built on either phone); and
+ * Hourly, on app start and after a change on this phone (a dinner placed, moved, removed or rated; notification
+ * settings): refreshes the saved copies of last / this / next week, the library and the fridge list; tells this phone about a cart that is ready to review (built on either phone); and
  * re-plans this phone's reminders. Away from home it plans from the saved copies.
  */
 class SyncWorker(
@@ -60,18 +59,17 @@ class SyncWorker(
         if (!s.configured) return Result.success()
         val t = now()
         val cur = Weeks.weekStart(t.toLocalDate())
-        val weeks = listOf(cur.minusWeeks(1), cur, cur.plusWeeks(1)).map { w -> Triple(w, repo.week(w), repo.weekPrepPlan(w)) }
-        val live = weeks.all { (_, e, p) -> e.error == null && p.error == null }
+        val weeks = listOf(cur.minusWeeks(1), cur, cur.plusWeeks(1)).map { w -> w to repo.week(w) }
+        val live = weeks.all { (_, e) -> e.error == null }
         if (live) {
-            weeks.forEach { (_, _, p) -> p.value?.let { repo.saveCards(it) } }   // cook cards readable away from home
             repo.recipes()
             repo.fridge()
             if (s.notif.cartReady) cartReady(t)
         }
         // A week that couldn't be read and has no saved copy: keep the reminders already queued rather than drop them.
         fun unknown(l: Loaded<*>) = l.value == null && l.error != null && l.fetchedAt == null
-        if (weeks.none { (_, e, p) -> unknown(e) || unknown(p) }) {
-            val planned = Reminders.plan(weeks.map { (w, e, p) -> WeekData(w, e.value.orEmpty(), p.value) }, s.notif, t.toLocalDateTime())
+        if (weeks.none { (_, e) -> unknown(e) }) {
+            val planned = Reminders.plan(weeks.map { (w, e) -> WeekData(w, e.value.orEmpty()) }, s.notif, t.toLocalDateTime())
             withContext(Dispatchers.IO) { scheduler.reconcile(planned, t) }
             repo.putLocal(PLANNED, plannedSerializer, planned.map { PlannedReminder(it.id, it.kind.name, it.at.toString(), it.title, it.text, it.nav) })
         }

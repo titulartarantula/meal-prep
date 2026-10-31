@@ -35,12 +35,10 @@ import kotlinx.serialization.builtins.serializer
 data class WeekUi(
     val week: LocalDate,
     val view: WeekView? = null,
-    val strip: StatusStrip = StatusStrip(false, false, false),
+    val strip: StatusStrip = StatusStrip(false, false),
     val action: ContextAction = ContextAction.AddRecipes,
     /** The week's sent cart draft, so "Cart sent" can reopen it (Open in Loblaws again); not a stale one. */
     val sentDraftId: Int? = null,
-    /** The week has a prep plan (any status), so "Prep done" opens it — also after Sunday, when the button shows tonight. */
-    val hasPrep: Boolean = false,
     val loading: Boolean = true,
     val offlineSince: Instant? = null,
     val error: String? = null,
@@ -169,18 +167,15 @@ class HomeViewModel(
         val entries = async { repo.week(w) }
         val summary = async { repo.weeks(w, 1) }
         val draft = async { repo.weekDraft(w) }
-        val prep = async { repo.weekPrepPlan(w) }
         val e = entries.await()
         val list = e.value
         val carted = summary.await().value?.firstOrNull()?.carted == true
         val d = draft.await().value
-        val p = prep.await().value
         val r: (WeekUi) -> WeekUi = { prev -> prev.copy(
             view = list?.let { weekView(w, it) } ?: prev.view,
-            strip = statusStrip(list.orEmpty(), carted, p),
-            action = contextAction(w, today(), list.orEmpty(), carted, d, p),
+            strip = statusStrip(list.orEmpty(), carted),
+            action = contextAction(w, today(), list.orEmpty(), carted, d),
             sentDraftId = d?.takeIf { it.status == "sent" && !it.stale }?.id,
-            hasPrep = p != null,
             loading = false,
             offlineSince = e.offlineSince,
             error = if (list == null) e.error?.userMessage() else e.errorMessage,

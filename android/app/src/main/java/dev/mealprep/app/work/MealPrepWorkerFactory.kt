@@ -14,8 +14,7 @@ import dev.mealprep.app.notify.Reminders
 class MealPrepWorkerFactory(private val g: AppGraph) : WorkerFactory() {
     override fun createWorker(ctx: Context, name: String, params: WorkerParameters): ListenableWorker? = when (name) {
         ImportWorker::class.java.name -> ImportWorker(ctx, params, g.repo, g.notifier, onFridgeRead = { id -> g.jobs.watchFridge(id) })
-        JobWatchWorker::class.java.name -> JobWatchWorker(ctx, params, g.repo, g.notifier, ::inForeground,
-            afterDone = { kind -> if (kind == JobWatchWorker.PREP) SyncWorker.now(g.workManager) })
+        JobWatchWorker::class.java.name -> JobWatchWorker(ctx, params, g.repo, g.notifier, ::inForeground)
         ReminderWorker::class.java.name -> ReminderWorker(ctx, params, g.notifier) { r -> Reminders.stillWanted(r, g.repo, g.settings.value.notif) }
         SyncWorker::class.java.name -> SyncWorker(ctx, params, g.repo, { g.settings.value }, g.reminders, g.notifier, ::inForeground)
         StaplesReminderWorker::class.java.name -> StaplesReminderWorker(ctx, params, g.notifier, g.workManager, prefs = { g.settings.value.notif })

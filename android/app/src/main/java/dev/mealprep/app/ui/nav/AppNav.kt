@@ -20,7 +20,6 @@ import androidx.navigation.toRoute
 import dev.mealprep.app.AppGraph
 import dev.mealprep.app.core.ShareInput
 import dev.mealprep.app.ui.camera.CameraScreen
-import dev.mealprep.app.ui.card.CardScreen
 import dev.mealprep.app.ui.camera.CameraViewModel
 import dev.mealprep.app.ui.cart.ChooserMode
 import dev.mealprep.app.ui.cart.ChooserScreen
@@ -41,7 +40,6 @@ import dev.mealprep.app.ui.home.ContextAction
 import dev.mealprep.app.ui.loblaws.LoblawsScreen
 import dev.mealprep.app.ui.loblaws.LoblawsSettings
 import dev.mealprep.app.ui.home.HomeScreen
-import dev.mealprep.app.ui.prep.PrepScreen
 import dev.mealprep.app.ui.setup.SettingsScreen
 import dev.mealprep.app.ui.exchange.ImportScreen
 import dev.mealprep.app.ui.share.ShareScreen
@@ -143,10 +141,6 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
             LoblawsScreen(back.toRoute<LoblawsRoute>().cartId, prefs,
                 onDone = { nav.navigate(HomeRoute()) { popUpTo<HomeRoute> { inclusive = true } } })
         }
-        composable<PrepRoute> { back ->
-            PrepScreen(LocalDate.parse(back.toRoute<PrepRoute>().week), onCard = { nav.navigate(CardRoute(it)) }, onBack = up)
-        }
-        composable<CardRoute> { back -> CardScreen(back.toRoute<CardRoute>().entryId, onOpen = open, onBack = up) }
         composable<RatingRoute> { back ->
             val r = back.toRoute<RatingRoute>()
             RatingScreen(r.entryId, LocalDate.parse(r.week),
@@ -210,9 +204,7 @@ fun contextRoute(a: ContextAction): Any? = when (a) {
     ContextAction.AddRecipes -> LibraryRoute
     is ContextAction.BuildCart -> ListRoute(a.week.toString())
     is ContextAction.ReviewCart -> DraftRoute(a.draftId)
-    is ContextAction.StartPrep -> PrepRoute(a.week.toString())
-    is ContextAction.ContinuePrep -> PrepRoute(a.week.toString())
-    is ContextAction.Tonight -> CardRoute(a.entryId)
+    is ContextAction.Tonight -> RecipeRoute(a.recipeId)
     ContextAction.AllSet -> null
 }
 

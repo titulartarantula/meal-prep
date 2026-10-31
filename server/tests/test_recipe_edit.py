@@ -1,5 +1,5 @@
 """Editing a recipe (2026-10-11): PATCH /recipes/{id} with title, servings, ingredient lines, steps, notes … and what an
-edit means for carts, prep plans and cook cards. Invented recipes only."""
+edit means for carts. Invented recipes only."""
 from datetime import date
 
 import pytest

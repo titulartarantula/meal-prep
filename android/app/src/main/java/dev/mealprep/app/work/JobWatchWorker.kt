@@ -17,7 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-/** Polls a server job (cart draft, prep plan, or a recipe import) until it leaves "building" / "running", then
+/** Polls a server job (cart draft, fridge photo read, or a recipe import) until it leaves "building" / "running", then
  *  notifies — if the app isn't open. An import's progress is published for the Recipes tab's card, and each poll
  *  keeps the job's copy for offline (the result stays readable away from home). */
 class JobWatchWorker(
@@ -26,17 +26,15 @@ class JobWatchWorker(
     private val repo: Repository,
     private val notifier: Notifier,
     private val inForeground: () -> Boolean,
-    /** A job left "building" (a ready prep plan brings thaw reminders: the phone's reminders are re-planned). */
-    private val afterDone: (kind: String) -> Unit = {},
 ) : CoroutineWorker(ctx, params) {
 
     companion object {
-        const val KIND = "kind"; const val DRAFT = "draft"; const val PREP = "prep"; const val IMPORT = "import"
+        const val KIND = "kind"; const val DRAFT = "draft"; const val IMPORT = "import"
         /** A fridge photo read (0.14.0): polled every 5 s while it reads. */
         const val FRIDGE = "fridge"
         const val ID = "id"; const val WEEK = "week"; const val POLL_MS = "poll_ms"; const val MAX_POLLS = "max_polls"
         const val OUT_STATUS = "status"
-        /** 3 × ~9 min of polling (WorkManager stops a worker after 10 min). The prep plan takes ~4 min. */
+        /** 3 × ~9 min of polling (WorkManager stops a worker after 10 min). */
         const val MAX_ATTEMPTS = 3
         const val GAVE_UP = "Still working after half an hour — open Meal Prep to check."
         /** A big library takes a while (the AI tidies ~2 recipes a minute per worker): up to about an hour. */
@@ -47,7 +45,7 @@ class JobWatchWorker(
     }
 
     override suspend fun doWork(): Result {
-        val kind = inputData.getString(KIND)?.takeIf { it == DRAFT || it == PREP || it == IMPORT || it == FRIDGE } ?: return Result.failure()
+        val kind = inputData.getString(KIND)?.takeIf { it == DRAFT || it == IMPORT || it == FRIDGE } ?: return Result.failure()
         val id = inputData.getInt(ID, 0)
         val week = runCatching { LocalDate.parse(inputData.getString(WEEK)) }.getOrNull()
         if (week == null && kind != IMPORT && kind != FRIDGE) return Result.failure()
@@ -56,7 +54,6 @@ class JobWatchWorker(
             if (i > 0) delay(pollMs)
             when (val r = status(kind, id)) {
                 is ApiResult.Ok -> if (r.value.first != "building" && r.value.first != "running" && r.value.first != "reading") {
-                    afterDone(kind)
                     when (kind) {
                         IMPORT -> announceImport(id)
                         FRIDGE -> announceFridge(id)
@@ -101,8 +98,7 @@ class JobWatchWorker(
             if (l.error != null || read == null) ApiResult.Err(l.error ?: ApiError.Other("no read"))
             else { lastRead = read; ApiResult.Ok(read.status to read.error) }
         }
-        DRAFT -> when (val r = repo.draft(id)) { is ApiResult.Ok -> ApiResult.Ok(r.value.status to r.value.error); is ApiResult.Err -> r }
-        else -> when (val r = repo.prepPlan(id)) { is ApiResult.Ok -> ApiResult.Ok(r.value.status to r.value.error); is ApiResult.Err -> r }
+        else -> when (val r = repo.draft(id)) { is ApiResult.Ok -> ApiResult.Ok(r.value.status to r.value.error); is ApiResult.Err -> r }
     }
 
     private suspend fun announceImport(id: Int) {
@@ -141,7 +137,6 @@ class JobWatcher(private val wm: WorkManager) {
                     JobWatchWorker.POLL_MS to 5_000L, JobWatchWorker.MAX_POLLS to 108))
                 .build())
     }
-    fun watchPrep(id: Int, week: LocalDate) = watch(JobWatchWorker.PREP, id, week)
 
     /** A recipe import: polled every 5 s (progress for the Recipes tab), a notification when done if the app is closed. */
     fun watchImport(id: Int) {

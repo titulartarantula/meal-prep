@@ -16,8 +16,6 @@ import kotlinx.serialization.Serializable
 /** The chooser to add an item by search: to the week [week] of the shopping list, or to the cart [draftId] (> 0). */
 @Serializable data class AddItemRoute(val week: String = "", val draftId: Int = 0)
 @Serializable data class LoblawsRoute(val cartId: String)
-@Serializable data class PrepRoute(val week: String)
-@Serializable data class CardRoute(val entryId: Int)
 @Serializable data class RatingRoute(val entryId: Int, val week: String)
 @Serializable object StaplesRoute
 /** Fridge cleaner (0.14.0): the fridge list, dinner suggestions that use it for [FridgeSuggestRoute.week], and the review
@@ -44,9 +42,7 @@ object Nav {
     fun home(week: LocalDate?) = "home/${week ?: ""}"
     fun ref(recipeId: Int, line: Int, page: Int = 0) = "ref/$recipeId/$line" + if (page > 0) "/$page" else ""
     fun rating(entryId: Int, week: LocalDate) = "rating/$entryId/$week"
-    fun card(entryId: Int) = "card/$entryId"
     fun draft(id: Int) = "draft/$id"
-    fun prep(week: LocalDate) = "prep/$week"
     fun list() = "list"
     fun recipe(id: Int, addToWeek: Boolean = false) = "recipe/$id" + if (addToWeek) "/week" else ""
     fun importJob(id: Int) = "import/$id"
@@ -60,9 +56,10 @@ object Nav {
                 "home" -> HomeRoute(p.getOrNull(1)?.ifBlank { null }?.also(LocalDate::parse))
                 "ref" -> CameraRoute("ref", p[1].toInt(), p[2].toInt(), p.getOrNull(3)?.toInt() ?: 0)
                 "rating" -> RatingRoute(p[1].toInt(), LocalDate.parse(p[2]).toString())
-                "card" -> CardRoute(p[1].toInt())
+                // Sunday prep and cook cards were retired (0.16.0): a notification from before opens the week.
+                "card" -> HomeRoute()
                 "draft" -> DraftRoute(p[1].toInt())
-                "prep" -> PrepRoute(LocalDate.parse(p[1]).toString())
+                "prep" -> HomeRoute(LocalDate.parse(p[1]).toString())
                 "list" -> ListRoute("")
                 "recipe" -> RecipeRoute(p[1].toInt(), p.getOrNull(2) == "week")
                 "import" -> ImportRoute(jobId = p[1].toInt())

@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.map
 
 /** Per-phone notification settings (defaults on, Tonight optional, times adjustable). */
 data class NotifPrefs(
-    val thaw: Boolean = true, val thawAt: LocalTime = LocalTime.of(20, 0),
     val rate: Boolean = true, val rateAt: LocalTime = LocalTime.of(9, 0),
     val tonight: Boolean = false, val tonightAt: LocalTime = LocalTime.of(16, 0),
     val cartReady: Boolean = true,
@@ -58,7 +57,6 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
 
     private object K {
         val url = stringPreferencesKey("server_url"); val token = stringPreferencesKey("token")
-        val thaw = booleanPreferencesKey("n_thaw"); val thawAt = intPreferencesKey("n_thaw_at")
         val rate = booleanPreferencesKey("n_rate"); val rateAt = intPreferencesKey("n_rate_at")
         val tonight = booleanPreferencesKey("n_tonight"); val tonightAt = intPreferencesKey("n_tonight_at")
         val cartReady = booleanPreferencesKey("n_cart_ready")
@@ -81,7 +79,6 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
         return Settings(
             serverUrl = p[K.url] ?: d.serverUrl, token = p[K.token] ?: "",
             notif = NotifPrefs(
-                thaw = p[K.thaw] ?: n.thaw, thawAt = t(p[K.thawAt], n.thawAt),
                 rate = p[K.rate] ?: n.rate, rateAt = t(p[K.rateAt], n.rateAt),
                 tonight = p[K.tonight] ?: n.tonight, tonightAt = t(p[K.tonightAt], n.tonightAt),
                 cartReady = p[K.cartReady] ?: n.cartReady,
@@ -98,7 +95,6 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
 
     private fun write(p: MutablePreferences, s: Settings) {
         p[K.url] = s.serverUrl; p[K.token] = s.token
-        p[K.thaw] = s.notif.thaw; p[K.thawAt] = m(s.notif.thawAt)
         p[K.rate] = s.notif.rate; p[K.rateAt] = m(s.notif.rateAt)
         p[K.tonight] = s.notif.tonight; p[K.tonightAt] = m(s.notif.tonightAt)
         p[K.cartReady] = s.notif.cartReady

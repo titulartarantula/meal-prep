@@ -28,8 +28,8 @@ class SettingsStoreTest {
         val d = store.settings.first()
         assertEquals("http://192.168.1.101:8790", d.serverUrl)
         assertFalse(d.configured)
-        assertTrue(d.notif.thaw && d.notif.rate && d.notif.cartReady && !d.notif.tonight)
-        assertEquals(LocalTime.of(20, 0), d.notif.thawAt)
+        assertTrue(d.notif.rate && d.notif.cartReady && !d.notif.tonight)
+        assertEquals(LocalTime.of(9, 0), d.notif.rateAt)
         store.update { it.copy(token = "abc", notif = it.notif.copy(tonight = true, tonightAt = LocalTime.of(16, 30))) }
         val s = store.settings.first()
         assertTrue(s.configured)
