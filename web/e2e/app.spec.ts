@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 const SHOTS = process.env.SHOTS ? "e2e/screens" : null;
@@ -6,7 +6,41 @@ const SHOTS = process.env.SHOTS ? "e2e/screens" : null;
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
   await page.waitForTimeout(300);
-  await page.screenshot({ path: `${SHOTS}/${name}.png` });
+  await page.screenshot({ path: `${SHOTS}/${test.info().project.name}-${name}.png` });
+}
+
+/** Phone projects get the phone layout (bottom tab bar, cart rows with a ⋮ menu). */
+const phone = () => test.info().project.name !== "desktop";
+
+/** Phone layout checks on the current screen: nothing wider than the screen, every control at least 48 px. */
+async function phoneChecks(page: Page) {
+  if (!phone()) return;
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  const small = await page.evaluate(() => {
+    const out: string[] = [];
+    // Inline text links and the rating pills keep their look and get a bigger touch area from ::after (app.css).
+    const grown = ".rate-cta, .rated, .link-btn";
+    for (const el of document.querySelectorAll<HTMLElement>("button, select, input:not([type=checkbox]), [role=menuitem], .tabbar a")) {
+      if (el.closest(grown) || el.closest("[hidden], dialog:not([open])")) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      if (Math.min(r.width, r.height) < 47.5) out.push(`${el.tagName.toLowerCase()} "${(el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 30)}" ${Math.round(r.width)}×${Math.round(r.height)}`);
+    }
+    return out;
+  });
+  expect(small).toEqual([]);
+}
+
+/** A cart line: a table row on a laptop, a list item on a phone. */
+function cartLine(page: Page, name: RegExp): Locator {
+  return phone() ? page.getByRole("list", { name: "Cart lines" }).getByRole("listitem").filter({ hasText: name }) : page.getByRole("row", { name });
+}
+
+/** A line action: its own button on a laptop, an entry of the line's ⋮ menu on a phone. */
+async function lineAction(page: Page, line: Locator, item: string, desktopButton: string) {
+  if (!phone()) return line.getByRole("button", { name: desktopButton }).click();
+  await line.getByRole("button", { name: /^Options for / }).click();
+  await page.getByRole("menu").getByRole("menuitem", { name: item }).click();
 }
 
 /** WCAG 2.x A/AA rules on the current page (dialogs included when open). */
@@ -23,6 +57,7 @@ test("sign-in page, then Google sign-in lands on the week", async ({ page }) => 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Meal Prep" })).toBeVisible();
   await axe(page);
+  await phoneChecks(page);
   await shot(page, "01-sign-in");
   await page.getByRole("link", { name: "Sign in with Google" }).click();
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
@@ -38,6 +73,7 @@ test.describe("signed in", () => {
     await expect(page.getByRole("article", { name: /^Sunday/ })).toContainText("Sheet-pan gnocchi");
     await expect(page.getByRole("article", { name: "No night yet" })).toContainText("Mushroom bourguignon");
     await axe(page);
+    await phoneChecks(page);
     await shot(page, "02-week");
 
     // Place the bourguignon on Saturday from its menu.
@@ -51,6 +87,7 @@ test.describe("signed in", () => {
     const dlg = page.getByRole("dialog");
     await expect(dlg).toContainText("How was Lemon orzo");
     await axe(page);
+    await phoneChecks(page);
     await dlg.getByRole("radio", { name: "4 stars" }).click();
     await dlg.getByLabel(/Note/).fill("Needs more lemon");
     await dlg.getByRole("button", { name: "Save rating" }).click();
@@ -59,6 +96,7 @@ test.describe("signed in", () => {
   });
 
   test("this week: drag a recipe from the tray onto a night", async ({ page }) => {
+    test.skip(phone(), "Touch layouts place dinners with the menu (HTML drag-and-drop doesn't start from a finger).");
     const chip = page.locator(".chip", { hasText: "Halloumi grain bowls" });
     await chip.dragTo(page.getByRole("article", { name: /^Saturday/ }));
     await expect(page.getByRole("article", { name: /^Saturday/ })).toContainText("Halloumi grain bowls");
@@ -69,6 +107,7 @@ test.describe("signed in", () => {
     const dlg = page.getByRole("dialog");
     await dlg.getByRole("searchbox", { name: "Search recipes" }).fill("shrimp");
     await axe(page);
+    await phoneChecks(page);
     await shot(page, "03-add-dinner");
     await dlg.getByRole("button", { name: /Shrimp fried rice/ }).click();
     await expect(page.getByRole("article", { name: /^Saturday/ })).toContainText("Shrimp fried rice");
@@ -82,8 +121,10 @@ test.describe("signed in", () => {
     await page.getByRole("button", { name: "Account and settings" }).click();
     await page.getByRole("menuitem", { name: "Dark mode" }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator('meta[name="theme-color"]').first()).toHaveAttribute("content", "#171615");
     await page.getByRole("button", { name: "Previous week" }).click();
     await axe(page);
+    await phoneChecks(page);
     await shot(page, "04-week-dark");
   });
 
@@ -98,6 +139,7 @@ test.describe("signed in", () => {
     await expect(tile("Lemon orzo with peas, feta & mint").locator("img")).toHaveCount(0);
     await expect(tile("Halloumi grain bowls").locator(".photo.placeholder")).toBeVisible();
     await axe(page);
+    await phoneChecks(page);
     await shot(page, "05-recipes");
     await page.getByRole("button", { name: /Miso-glazed salmon/ }).click();
     await expect(page.getByRole("dialog", { name: "Miso-glazed salmon with sesame greens" })
@@ -108,6 +150,7 @@ test.describe("signed in", () => {
     const drawer = page.getByRole("dialog", { name: "Roast chicken with lemon potatoes" });
     await expect(drawer.getByRole("heading", { name: "Ingredients" })).toBeVisible();
     await axe(page);
+    await phoneChecks(page);
     await shot(page, "06-recipe");
     await drawer.getByRole("button", { name: "Add to week" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Added to next week" })).toBeVisible();
@@ -122,6 +165,7 @@ test.describe("signed in", () => {
     await dlg.locator("input[type=file]").setInputFiles({ name: "recipes.json", mimeType: "application/json", buffer: Buffer.from("[]") });
     await expect(dlg).toContainText("Spiced carrot soup");
     await axe(page);
+    await phoneChecks(page);
     await shot(page, "07-import-preview");
     await dlg.getByRole("button", { name: "Import 2" }).click();
     await expect(dlg).toContainText("Done: 2 added", { timeout: 10_000 });
@@ -134,6 +178,7 @@ test.describe("signed in", () => {
     await expect(page.getByRole("region", { name: "Probably have" })).toContainText("Rice noodles");
     await expect(page.getByRole("region", { name: "Probably have" })).toBeVisible();
     await axe(page);
+    await phoneChecks(page);
     await shot(page, "08-shopping");
     await page.getByRole("button", { name: "Build cart" }).click();
 
@@ -142,35 +187,76 @@ test.describe("signed in", () => {
     await shot(page, "09-building");
     await expect(page.getByRole("heading", { name: "Review your cart" })).toBeVisible({ timeout: 10_000 });
     await axe(page);
+    await phoneChecks(page);
     await shot(page, "10-cart");
 
-    const row = page.getByRole("row", { name: /Thai Kitchen Rice Stick Noodles/ });
+    const row = cartLine(page, /Thai Kitchen Rice Stick Noodles/);
     await row.getByRole("button", { name: "More Rice noodles" }).click();
     await expect(row.getByRole("group", { name: /Quantity/ })).toContainText("2");
     await expect(row).toContainText("$7.98");
 
-    await page.getByRole("row", { name: /Green Onions/ }).getByRole("button", { name: "Remove Green onions" }).click();
-    await expect(page.getByRole("row", { name: /Green Onions/ }).getByRole("button", { name: "Put back" })).toBeVisible();
+    await lineAction(page, cartLine(page, /Green Onions/), "Remove from cart", "Remove Green onions");
+    await expect(cartLine(page, /Green Onions/).getByRole("button", { name: "Put back" })).toBeVisible();
 
-    await page.getByRole("row", { name: /Extra Firm Tofu/ }).getByRole("button", { name: "Swap Extra-firm tofu" }).click();
+    await lineAction(page, cartLine(page, /Extra Firm Tofu/), "Swap product", "Swap Extra-firm tofu");
     const chooser = page.getByRole("dialog", { name: "Choose: Extra-firm tofu" });
     await expect(chooser.getByRole("heading", { name: "In your cart" })).toBeVisible();
     await axe(page);
+    await phoneChecks(page);
     await shot(page, "11-chooser");
     await chooser.getByRole("button", { name: /Soyganic Organic Firm Tofu/ }).click();
-    await expect(page.getByRole("row", { name: /Soyganic Organic Firm Tofu/ })).toBeVisible();
+    await expect(cartLine(page, /Soyganic Organic Firm Tofu/)).toBeVisible();
 
     await page.getByRole("searchbox", { name: "Add an item" }).fill("strawberries");
     await page.getByRole("searchbox", { name: "Add an item" }).press("Enter");
     await page.getByRole("dialog", { name: "Add: strawberries" }).getByRole("button", { name: /^Strawberries/ }).click();
-    await expect(page.getByRole("row", { name: /Strawberries/ })).toContainText("Added");
+    await expect(cartLine(page, /Strawberries/)).toContainText("Added");
 
     await page.getByRole("button", { name: "Send to Loblaws" }).click();
     await expect(page.getByRole("heading", { name: "Cart sent to Loblaws" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Load it on loblaws.ca" })).toBeVisible();
     await expect(page.locator(".bookmarklet")).toHaveAttribute("href", /^javascript:/);
     await axe(page);
+    await phoneChecks(page);
     await shot(page, "12-sent");
     await expect(page.getByRole("button", { name: "More Rice noodles" })).toBeDisabled();
+  });
+
+  test("layout: sidebar on a laptop, top bar + bottom tabs on a phone; the tabs switch screens", async ({ page }) => {
+    const tabs = page.getByRole("navigation", { name: "Main" });
+    if (!phone()) {
+      await expect(page.getByRole("complementary", { name: "Main" })).toBeVisible();
+      await expect(page.locator(".tabbar")).toHaveCount(0);
+      return;
+    }
+    await expect(page.getByRole("complementary", { name: "Main" })).toHaveCount(0);
+    const box = await tabs.boundingBox();
+    const vp = page.viewportSize()!;
+    expect(Math.round(box!.y + box!.height)).toBe(vp.height);   // docked to the bottom
+    await expect(tabs.getByRole("link", { name: "This week" })).toHaveAttribute("aria-current", "page");
+    // the menu opens as a sheet and closes with Esc, giving focus back to its button
+    await page.getByRole("button", { name: "Account and settings" }).click();
+    await expect(page.getByRole("menu")).toBeVisible();
+    await phoneChecks(page);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Account and settings" })).toBeFocused();
+    await tabs.getByRole("link", { name: "Recipes" }).click();
+    await expect(page.getByRole("heading", { name: "Recipes" })).toBeVisible();
+    await phoneChecks(page);
+    await tabs.getByRole("link", { name: "Shopping" }).click();
+    await expect(page.getByRole("heading", { name: "Shopping list" })).toBeVisible();
+    await expect(tabs.getByRole("link", { name: "Shopping" })).toHaveAttribute("aria-current", "page");
+    // full-screen sheet for a dialog
+    await tabs.getByRole("link", { name: "This week" }).click();
+    await page.getByRole("button", { name: /No dinner yet/ }).click();
+    const dlg = await page.getByRole("dialog").boundingBox();
+    expect([Math.round(dlg!.width), Math.round(dlg!.height)]).toEqual([vp.width, vp.height]);
+  });
+
+  test("the web app manifest and icons", async ({ request }) => {
+    const m = await (await request.get("/manifest.json")).json();
+    expect(m).toMatchObject({ name: "Meal Prep", start_url: "/week", display: "standalone" });
+    for (const i of m.icons) expect((await request.get(i.src)).ok()).toBe(true);
   });
 });

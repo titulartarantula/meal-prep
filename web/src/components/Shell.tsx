@@ -1,10 +1,11 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useMe, useSignOut, useSwitchHousehold, useWeeks } from "../api/queries";
 import { initials } from "../lib/format";
 import { weekName, weekOf, weekRange } from "../lib/weeks";
 import { Icon } from "./Icon";
 import { Menu, MenuItem } from "./ui";
 import { useTheme } from "../lib/theme";
+import { useCompact } from "../lib/media";
 
 export function Shell() {
   const me = useMe().data!;
@@ -14,8 +15,54 @@ export function Shell() {
   const switchHousehold = useSwitchHousehold();
   const [theme, setTheme] = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const name = me.user?.name ?? me.user?.email ?? "Home network";
   const roleText = me.roles.length ? me.roles.filter((r) => r !== "contributor").map(roleName).join(" · ") : "Shared token";
+
+  const compact = useCompact();
+
+  const account = (align: "left" | "right") => (
+    <Menu label="Account and settings" icon="gear" align={align}>
+      {(close) => (
+        <>
+          {compact && <div className="menu-label">{name}{me.household ? ` · ${me.household.name}` : ""}</div>}
+          {me.households.length > 1 && me.households.map((h) => (
+            <MenuItem key={h.id} icon={h.id === me.household?.id ? "check" : undefined}
+              onSelect={() => { close(); switchHousehold.mutate(h.id); navigate("/week"); }}>{h.name}</MenuItem>
+          ))}
+          <MenuItem icon={theme === "dark" ? "sun" : "moon"} onSelect={() => { close(); setTheme(theme === "dark" ? "light" : "dark"); }}>
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </MenuItem>
+          {theme !== "system" && <MenuItem icon="gear" onSelect={() => { close(); setTheme("system"); }}>Match the system</MenuItem>}
+          {me.via !== "legacy" && <MenuItem icon="logout" onSelect={() => { close(); signOut.mutate(); }}>Sign out</MenuItem>}
+        </>
+      )}
+    </Menu>
+  );
+
+  // Phones and portrait tablets: a slim top bar (brand, account menu) and a bottom tab bar like the Android app's.
+  if (compact) {
+    return (
+      <div className="app compact">
+        <a className="skip" href="#main">Skip to content</a>
+        <header className="appbar">
+          <span className="brand-mark"><Icon name="leaf" size={16} /></span>
+          <b>Meal Prep</b>
+          {me.household && <small>{me.household.name}</small>}
+          <span className="spacer" />
+          {account("right")}
+        </header>
+        <Outlet />
+        <nav className="tabbar" aria-label="Main">
+          <NavLink to="/week"><span className="tab-ic"><Icon name="week" size={22} /></span><span>This week</span></NavLink>
+          <NavLink to="/recipes"><span className="tab-ic"><Icon name="book" size={22} /></span><span>Recipes</span></NavLink>
+          <NavLink to="/shopping" className={({ isActive }) => isActive || /^\/cart\//.test(location.pathname) ? "active" : ""}>
+            <span className="tab-ic"><Icon name="bag" size={22} /></span><span>Shopping</span>
+          </NavLink>
+        </nav>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -44,21 +91,7 @@ export function Shell() {
         <div className="me">
           <span className="av">{initials(me.user?.name ?? "Home")}</span>
           <div className="me-text"><b>{name}</b><small>{roleText}</small></div>
-          <Menu label="Account and settings" icon="gear" align="left">
-            {(close) => (
-              <>
-                {me.households.length > 1 && me.households.map((h) => (
-                  <MenuItem key={h.id} icon={h.id === me.household?.id ? "check" : undefined}
-                    onSelect={() => { close(); switchHousehold.mutate(h.id); navigate("/week"); }}>{h.name}</MenuItem>
-                ))}
-                <MenuItem icon={theme === "dark" ? "sun" : "moon"} onSelect={() => { close(); setTheme(theme === "dark" ? "light" : "dark"); }}>
-                  {theme === "dark" ? "Light mode" : "Dark mode"}
-                </MenuItem>
-                {theme !== "system" && <MenuItem icon="gear" onSelect={() => { close(); setTheme("system"); }}>Match the system</MenuItem>}
-                {me.via !== "legacy" && <MenuItem icon="logout" onSelect={() => { close(); signOut.mutate(); }}>Sign out</MenuItem>}
-              </>
-            )}
-          </Menu>
+          {account("left")}
         </div>
       </aside>
       <Outlet />

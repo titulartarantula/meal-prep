@@ -15,10 +15,10 @@ export function Button({ kind = "quiet", size, icon, iconAfter, children, classN
   );
 }
 
-export function IconButton({ icon, label, size = 18, className, ...rest }:
-  React.ButtonHTMLAttributes<HTMLButtonElement> & { icon: IconName; label: string; size?: number }) {
+export function IconButton({ icon, label, size = 18, className, ref, ...rest }:
+  React.ButtonHTMLAttributes<HTMLButtonElement> & { icon: IconName; label: string; size?: number; ref?: React.Ref<HTMLButtonElement> }) {
   return (
-    <button type="button" className={["iconbtn", className].filter(Boolean).join(" ")} aria-label={label} title={label} {...rest}>
+    <button ref={ref} type="button" className={["iconbtn", className].filter(Boolean).join(" ")} aria-label={label} title={label} {...rest}>
       <Icon name={icon} size={size} />
     </button>
   );
@@ -157,23 +157,29 @@ export function ToastHost({ children }: { children: ReactNode }) {
   );
 }
 
-/** A small popover menu anchored to a button (closes on outside click / Esc). */
+/** A small popover menu anchored to a button (closes on outside press / Esc, focus moves into it and back). On phones
+ *  (app.css, compact) it is a sheet at the bottom of the screen over a scrim, with 48 px rows. */
 export function Menu({ label, icon = "more", children, align = "right" }:
   { label: string; icon?: IconName; children: (close: () => void) => ReactNode; align?: "left" | "right" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const close = useCallback((refocus = true) => { setOpen(false); if (refocus) btnRef.current?.focus(); }, []);
   useEffect(() => {
     if (!open) return;
-    const off = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", off);
+    menuRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus({ preventScroll: true });
+    const off = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) close(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("pointerdown", off);
     document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("mousedown", off); document.removeEventListener("keydown", esc); };
-  }, [open]);
+    return () => { document.removeEventListener("pointerdown", off); document.removeEventListener("keydown", esc); };
+  }, [open, close]);
   return (
     <div className="menu-wrap" ref={ref}>
-      <IconButton icon={icon} label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="sm" />
-      {open && <div className={`menu ${align}`} role="menu">{children(() => setOpen(false))}</div>}
+      <IconButton ref={btnRef} icon={icon} label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="sm" />
+      {open && <div className="menu-scrim" aria-hidden="true" onClick={() => close(false)} />}
+      {open && <div ref={menuRef} className={`menu ${align}`} role="menu" aria-label={label}>{children(() => close())}</div>}
     </div>
   );
 }

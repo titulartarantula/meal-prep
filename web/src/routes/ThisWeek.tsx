@@ -8,6 +8,7 @@ import { Icon, Star } from "../components/Icon";
 import { AddRecipeDialog } from "../components/AddRecipeDialog";
 import { Button, ErrorNote, IconButton, Loading, Menu, MenuItem, Modal, Photo, StarsInput, useToast } from "../components/ui";
 import { formatAvg, formatMinutes } from "../lib/format";
+import { useCompact } from "../lib/media";
 import { DAYS, DAYS_LONG, isSameDay, nightDate, shiftWeek, shortDate, weekName, weekOf, weekRange } from "../lib/weeks";
 
 const DRAG = "application/x-mealprep-entry";
@@ -36,6 +37,9 @@ export function ThisWeek() {
   const tray = list.filter((e) => e.day == null);
   const today = new Date();
   const editable = can("plan.edit");
+  // Touch layouts place dinners with the ⋮ menu: HTML drag-and-drop doesn't start from a finger.
+  const compact = useCompact();
+  const drag = editable && !compact;
 
   const go = (w: string) => navigate(w === thisWeek ? "/week" : `/week/${w}`);
 
@@ -47,7 +51,7 @@ export function ThisWeek() {
     if (!entry || entry.day === day) return;
     move.mutate({ id, day }, { onError: (err) => toast({ text: `Couldn't move it: ${err.message}` }) });
   }
-  const dropProps = (day: number | null) => editable ? {
+  const dropProps = (day: number | null) => drag ? {
     onDragOver: (e: DragEvent) => { if (e.dataTransfer.types.includes(DRAG)) { e.preventDefault(); setDragOver(day ?? "tray"); } },
     onDragLeave: () => setDragOver(null),
     onDrop: (e: DragEvent) => onDrop(e, day),
@@ -115,13 +119,13 @@ export function ThisWeek() {
                   <button type="button" className="empty" onClick={() => setAdding(d)} disabled={!editable}>
                     <span className="plus"><Icon name="plus" size={18} /></span>
                     <b>No dinner yet</b>
-                    <small>{editable ? "Add a recipe, or drag one from the tray" : "Nothing planned"}</small>
+                    <small>{!editable ? "Nothing planned" : drag ? "Add a recipe, or drag one from the tray" : "Add a recipe"}</small>
                   </button>
                 ) : (
                   <div className={es.length > 1 ? "stack" : "single"}>
                     {es.map((e) => (
                       <NightCard key={e.id} entry={e} recipe={byId.get(e.recipe_id)} compact={es.length > 1} past={past || tonight}
-                        editable={editable} onRate={() => setRating(e)} onRemove={() => removeEntry(e)}
+                        editable={editable} draggable={drag} onRate={() => setRating(e)} onRemove={() => removeEntry(e)}
                         onMove={(day) => move.mutate({ id: e.id, day })} />
                     ))}
                   </div>
@@ -139,7 +143,7 @@ export function ThisWeek() {
               {tray.map((e) => {
                 const r = byId.get(e.recipe_id);
                 return (
-                  <div key={e.id} className="chip" draggable={editable}
+                  <div key={e.id} className="chip" draggable={drag}
                     onDragStart={(ev) => { ev.dataTransfer.setData(DRAG, String(e.id)); ev.dataTransfer.effectAllowed = "move"; }}>
                     <Photo src={r?.image} title={e.title ?? ""} className="th" />
                     <div className="chip-text">
@@ -166,7 +170,7 @@ export function ThisWeek() {
                 );
               })}
               {tray.length === 0 && <p className="tray-empty">Recipes added without a night wait here.</p>}
-              {editable && tray.length > 0 && <div className="hint"><Icon name="arrow" size={14} />Drag onto a night to place it</div>}
+              {drag && tray.length > 0 && <div className="hint"><Icon name="arrow" size={14} />Drag onto a night to place it</div>}
             </div>
           </article>
         </section>
@@ -179,14 +183,14 @@ export function ThisWeek() {
   );
 }
 
-function NightCard({ entry, recipe, compact, past, editable, onRate, onRemove, onMove }: {
-  entry: PlanEntry; recipe?: Recipe; compact: boolean; past: boolean; editable: boolean;
+function NightCard({ entry, recipe, compact, past, editable, draggable, onRate, onRemove, onMove }: {
+  entry: PlanEntry; recipe?: Recipe; compact: boolean; past: boolean; editable: boolean; draggable: boolean;
   onRate: () => void; onRemove: () => void; onMove: (day: number | null) => void;
 }) {
   const title = entry.title ?? recipe?.title ?? "Recipe";
   const avg = formatAvg(recipe?.ratings.avg_family);
   return (
-    <div className="card" draggable={editable}
+    <div className="card" draggable={draggable}
       onDragStart={(ev) => { ev.dataTransfer.setData(DRAG, String(entry.id)); ev.dataTransfer.effectAllowed = "move"; }}>
       {!compact && <Link to={`/recipes/${entry.recipe_id}`} tabIndex={-1} aria-hidden="true" className="photo-link"><Photo src={recipe?.image} title={title} /></Link>}
       <div className="card-body">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useCan, useDraft, useDraftWrite } from "../api/queries";
@@ -6,9 +6,10 @@ import { lineCost, qtyRule, type Draft, type DraftLine } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Handoff } from "../components/Handoff";
 import { ProductChooser } from "../components/ProductChooser";
-import { Button, ErrorNote, IconButton, Loading, Stepper, useToast } from "../components/ui";
+import { Button, ErrorNote, IconButton, Loading, Menu, MenuItem, Stepper, useToast } from "../components/ui";
 import { amount, agoInline, formatMoney } from "../lib/format";
 import { weekName } from "../lib/weeks";
+import { useCompact, useMedia } from "../lib/media";
 
 type Filter = "all" | "new" | "added" | "removed" | "check";
 
@@ -69,6 +70,11 @@ function Review({ d }: { d: Draft }) {
   const [chooser, setChooser] = useState<{ line: DraftLine | null; term?: string } | null>(null);
   const [adding, setAdding] = useState("");
   const editable = d.status === "ready" && !d.stale && can("cart.build");
+  const compact = useCompact();
+  // Below ~1100 px the table's product column is too narrow to read (tablets in landscape, small laptops): rows instead.
+  const rows = useMedia("(max-width: 1099px)");
+  // On a phone Send is docked at the bottom of a long page: once sent, show the handoff steps (now at the top).
+  useEffect(() => { if (compact && d.status === "sent") window.scrollTo({ top: 0 }); }, [compact, d.status]);
 
   const counts = {
     all: d.lines.length,
@@ -85,6 +91,12 @@ function Review({ d }: { d: Draft }) {
 
   const onErr = (e: Error) => toast({ text: e instanceof ApiError && e.status === 409 ? "This cart changed on the server; reloaded." : `Couldn't save: ${e.message}` });
   const doSend = () => send.mutate(undefined, { onError: (e) => toast({ text: e.message }) });
+
+  const sendButton = can("cart.send") ? (
+    <Button kind="primary" size="lg" iconAfter="external" onClick={doSend} disabled={!editable || !live.length || send.isPending}>
+      {send.isPending ? "Sending…" : "Send to Loblaws"}
+    </Button>
+  ) : <p className="fine">Only the household's purchaser can send the cart.</p>;
 
   return (
     <div className="cart-body">
@@ -107,24 +119,36 @@ function Review({ d }: { d: Draft }) {
             </form>
           )}
         </div>
-        <div className="table-wrap" tabIndex={0} role="region" aria-label="Cart lines">
-          <table>
-            <colgroup><col className="c-thumb" /><col /><col className="c-size" /><col className="c-qty" /><col className="c-price" /><col className="c-acts" /></colgroup>
-            <thead><tr><th colSpan={2}>Product</th><th>Size</th><th>Qty</th><th className="num">Price</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
-            <tbody>
-              {shown.map((l) => (
-                <Row key={l.id} l={l} editable={editable}
-                  onQty={(q) => patchLine.mutate({ line: l.id, quantity: q }, { onError: onErr })}
-                  onRemove={(removed) => patchLine.mutate({ line: l.id, removed }, { onError: onErr })}
-                  onSwap={() => setChooser({ line: l })} />
-              ))}
-              {shown.length === 0 && <tr><td colSpan={6} className="none">Nothing here.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        {rows ? (
+          <ul className="lines" aria-label="Cart lines">
+            {shown.map((l) => (
+              <LineItem key={l.id} l={l} editable={editable}
+                onQty={(q) => patchLine.mutate({ line: l.id, quantity: q }, { onError: onErr })}
+                onRemove={(removed) => patchLine.mutate({ line: l.id, removed }, { onError: onErr })}
+                onSwap={() => setChooser({ line: l })} />
+            ))}
+            {shown.length === 0 && <li className="none">Nothing here.</li>}
+          </ul>
+        ) : (
+          <div className="table-wrap" tabIndex={0} role="region" aria-label="Cart lines">
+            <table>
+              <colgroup><col className="c-thumb" /><col /><col className="c-size" /><col className="c-qty" /><col className="c-price" /><col className="c-acts" /></colgroup>
+              <thead><tr><th colSpan={2}>Product</th><th>Size</th><th>Qty</th><th className="num">Price</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
+              <tbody>
+                {shown.map((l) => (
+                  <Row key={l.id} l={l} editable={editable}
+                    onQty={(q) => patchLine.mutate({ line: l.id, quantity: q }, { onError: onErr })}
+                    onRemove={(removed) => patchLine.mutate({ line: l.id, removed }, { onError: onErr })}
+                    onSwap={() => setChooser({ line: l })} />
+                ))}
+                {shown.length === 0 && <tr><td colSpan={6} className="none">Nothing here.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      <aside className="summary" aria-label="Order summary">
+      <aside className={`summary${d.status === "sent" && d.pcx_cart_id ? " sent" : ""}`} aria-label="Order summary">
         {d.status === "sent" && d.pcx_cart_id ? <Handoff cartId={d.pcx_cart_id} /> : (
           <>
             <h2>Order summary</h2>
@@ -135,11 +159,7 @@ function Review({ d }: { d: Draft }) {
               {counts.check > 0 && <div><span>To check</span><b>{counts.check}</b></div>}
             </div>
             <div className="total"><span>Estimated total</span><b>{formatMoney(subtotal)}</b></div>
-            {can("cart.send") ? (
-              <Button kind="primary" size="lg" iconAfter="external" onClick={doSend} disabled={!editable || !live.length || send.isPending}>
-                {send.isPending ? "Sending…" : "Send to Loblaws"}
-              </Button>
-            ) : <p className="fine">Only the household's purchaser can send the cart.</p>}
+            {!compact && sendButton}
             <p className="fine">Before tax. Prices can change at pickup. Nothing is ordered until you check out on loblaws.ca.</p>
             <ErrorNote error={send.error} />
             <div className="next">
@@ -153,6 +173,12 @@ function Review({ d }: { d: Draft }) {
           </>
         )}
       </aside>
+      {compact && !(d.status === "sent" && d.pcx_cart_id) && (
+        <div className="dock">
+          <span className="dock-text"><b>{formatMoney(subtotal)}</b> {live.length} lines</span>
+          {sendButton}
+        </div>
+      )}
 
       {chooser && (
         <ProductChooser draftId={d.id} line={chooser.line} term={chooser.term} onClose={() => setChooser(null)}
@@ -198,5 +224,54 @@ function Row({ l, editable, onQty, onRemove, onSwap }: { l: DraftLine; editable:
         </>)}
       </td>
     </tr>
+  );
+}
+
+/** A cart line on a phone: photo, product, what it's for and the price; quantity and a ⋮ menu (swap, remove) below. */
+function LineItem({ l, editable, onQty, onRemove, onSwap }: { l: DraftLine; editable: boolean; onQty: (q: number) => void; onRemove: (r: boolean) => void; onSwap: () => void }) {
+  const p = l.product;
+  const need = amount(l.qty, l.unit);
+  const title = p ? [p.brand, p.name].filter(Boolean).join(" ") : l.name;
+  return (
+    <li className={`line${l.removed ? " removed" : ""}`}>
+      <div className="line-top">
+        {p?.image ? <img className="pth" src={p.image} alt="" loading="lazy" /> : <div className="pth empty-th"><Icon name="bag" size={18} /></div>}
+        <div className="line-text">
+          <div className="pname">{title}</div>
+          <div className="pmeta">
+            <span className="pm-text">{[p?.package_size, need && `need ${need}`, l.recipes.filter((r) => r !== "Staples").join(", ")].filter(Boolean).join(" · ") || l.name}</span>
+          </div>
+          <div className="c-tags">
+            {l.staple && <span className="tag staple">Staple</span>}
+            {l.source === "ai" && !l.removed && <span className="tag neutral">New pick</span>}
+            {l.extra_id != null && <span className="tag neutral">Added</span>}
+            {l.pinned && <span className="tag neutral"><Icon name="pin2" size={12} />Always</span>}
+            {p?.deal_text && <span className="tag deal">{p.deal_text}</span>}
+          </div>
+          {!p && <div className="pnote warn"><Icon name="alert" size={14} />No match found at Loblaws.</div>}
+          {(l.note || (l.needs_check && l.why)) && <div className={`pnote${l.needs_check ? " warn" : ""}`}>{l.needs_check && <Icon name="alert" size={14} />}{l.note ?? l.why}</div>}
+        </div>
+        <div className="price">
+          {!l.removed && p && <><b>{formatMoney(lineCost(l))}</b><small>{p.unit_price != null ? `${formatMoney(p.unit_price)}/${p.unit_price_unit}` : formatMoney(p.price)}</small></>}
+        </div>
+      </div>
+      <div className="line-acts">
+        {l.removed ? <span className="muted small">Removed</span> : p
+          ? <Stepper value={l.quantity ?? 1} onChange={onQty} label={l.name} disabled={!editable} {...qtyRule(p)} />
+          : <span className="muted small">Not in the cart</span>}
+        <span className="spacer" />
+        {editable && (l.removed ? <Button kind="outline" size="sm" onClick={() => onRemove(false)}>Put back</Button> : (
+          <Menu label={`Options for ${l.name}`}>
+            {(close) => (
+              <>
+                <div className="menu-label">{title}</div>
+                <MenuItem icon="swap" onSelect={() => { close(); onSwap(); }}>{p ? "Swap product" : "Choose a product"}</MenuItem>
+                <MenuItem icon="trash" danger onSelect={() => { close(); onRemove(true); }}>Remove from cart</MenuItem>
+              </>
+            )}
+          </Menu>
+        ))}
+      </div>
+    </li>
   );
 }

@@ -390,3 +390,183 @@ tr.removed .pth { opacity: .45; }
 @media (max-height: 760px) {
   .grid { grid-template-rows: repeat(2, minmax(250px, 1fr)); overflow-y: auto; }
 }
+
+/* ── Phones and portrait tablets (≤ 899 px; keep in step with src/lib/media.ts COMPACT) ─────────────────────────
+   Same URLs as the laptop layout: a slim top bar and a bottom tab bar instead of the sidebar, one column, the page
+   itself scrolls (so mobile browsers can hide their toolbars), dialogs and drawers fill the screen, menus open as
+   bottom sheets, the main action is docked above the tab bar. Safe-area insets need viewport-fit=cover (index.html). */
+.menu-scrim, .appbar, .tabbar, .dock { display: none; }
+@media (max-width: 899px) {
+  html, body, #root { height: auto; }
+  body { font-size: 15px; }
+  .app.compact { display: block; height: auto; min-height: 100vh; min-height: 100dvh;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .appbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; min-width: 0;
+    height: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(4px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+    background: var(--bg); border-bottom: 1px solid var(--hair); }
+  .appbar .brand-mark { width: 28px; height: 28px; border-radius: 8px; }
+  .appbar b { font-size: 15px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; }
+  .appbar small { color: var(--text2); font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; background: var(--surface);
+    border-top: 1px solid var(--hair); padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  .tabbar a { flex: 1; min-width: 0; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    color: var(--text2); text-decoration: none; font-size: 12.5px; font-weight: 550; }
+  .tab-ic { width: 60px; height: 30px; border-radius: 15px; display: grid; place-items: center; }
+  .tabbar a.active { color: var(--text); font-weight: 700; }
+  .tabbar a.active .tab-ic { background: var(--primarysoft); color: var(--onprimarysoft); }
+  .tabbar a:focus-visible { outline-offset: -4px; }
+
+  .main, .main.scroll { overflow: visible; min-height: 0;
+    padding: 18px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left)); }
+  .top { margin-bottom: 16px; gap: 14px; align-items: flex-start; }
+  .top > div:first-child { min-width: 0; }
+  h1 { font-size: 25px; }
+  .top-right { width: 100%; flex-direction: column; align-items: stretch; gap: 12px; }
+  .top-right .btn { width: 100%; }
+  .steps { display: flex; flex-wrap: wrap; row-gap: 4px; }
+  .dock { position: sticky; bottom: calc(64px + env(safe-area-inset-bottom)); z-index: 10; display: flex; align-items: center; gap: 14px;
+    margin: 16px calc(-1 * max(16px, env(safe-area-inset-right))) -24px calc(-1 * max(16px, env(safe-area-inset-left)));
+    padding: 10px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+    background: var(--surface); border-top: 1px solid var(--hair); }
+  .dock .btn.lg { width: auto; flex: 1; }
+  .dock-text { color: var(--text2); font-size: 13.5px; white-space: nowrap; }
+  .dock-text b { color: var(--text); font-size: 17px; font-weight: 680; display: block; }
+  .dock .fine { flex: 1; }
+  .toasts { bottom: calc(76px + env(safe-area-inset-bottom)); width: calc(100% - 32px); }
+  .toast { justify-content: space-between; }
+  .search { min-width: 0; }
+
+  /* week: a list of nights (two columns on wider tablets) */
+  .grid { display: flex; flex-direction: column; gap: 0; overflow: visible; grid-template-rows: none; }
+  .night { border-radius: 0; border-top: 1px solid var(--hair); padding: 12px 0 14px; }
+  .night:first-child { border-top: 0; padding-top: 0; }
+  .night.over { box-shadow: none; }
+  .night-head { margin-bottom: 8px; height: auto; min-height: 24px; }
+  .single, .stack { gap: 12px; }
+  .card { flex-direction: row; align-items: flex-start; gap: 14px; cursor: default; }
+  .stack .card { border-top: 0; padding-top: 0; }
+  .photo-link { flex: none; width: 96px; height: 72px; min-height: 0; }
+  .night.tonight .photo { outline-offset: 2px; }
+  .card-body { flex: 1; min-width: 0; padding: 0; gap: 4px; }
+  .card h3 { font-size: 15.5px; }
+  .card-title-row .menu-wrap { margin: -10px -12px 0 auto; }
+  .empty { flex: none; flex-direction: row; justify-content: flex-start; text-align: left; min-height: 56px; padding: 8px 12px; gap: 12px; }
+  .empty small { max-width: none; }
+  .empty .plus { width: 36px; height: 36px; flex: none; }
+  .tray { flex: none; overflow: visible; }
+  .tray-empty { margin: 8px auto; }
+  .chip { cursor: default; }
+
+  /* recipes */
+  .recipe-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 22px 14px; }
+  .tile-body > b { font-size: 15px; }
+  .toolbar .search, .toolbar .search:first-child { margin-left: 0; flex: 1 1 100%; }
+  .toolbar .seg { flex: 1 1 auto; }
+  .seg button { flex: 1 1 auto; justify-content: center; }
+  .toolbar .select-wrap { flex: 1 1 auto; }
+  .toolbar .select-wrap select { width: 100%; }
+  .picker-bar { flex-wrap: wrap; }
+  .picker-bar .search { flex: 1 1 100%; }
+  .add-week { flex-direction: column; align-items: stretch; }
+  .add-week .select-wrap select { width: 100%; }
+  .ings li { grid-template-columns: 72px minmax(0, 1fr); }
+
+  /* shopping */
+  .summary { max-height: none; overflow: visible; padding: 16px; align-self: stretch; }
+  .meta { row-gap: 2px; }
+  .pick-list button { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; }
+  .pick-list .tag { grid-column: 2 / 4; justify-self: start; margin-top: -4px; }
+  .week-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .staples-fold > summary { cursor: pointer; font-weight: 600; min-height: 48px; display: flex; align-items: center; gap: 4px; list-style: none; }
+  .staples-fold > summary::-webkit-details-marker { display: none; }
+  .staples-fold > summary::before { content: ""; width: 7px; height: 7px; margin: 0 8px 0 2px; border: solid var(--text2); border-width: 0 2px 2px 0;
+    transform: rotate(-45deg); transition: transform .15s; }
+  .staples-fold[open] > summary::before { transform: rotate(45deg); }
+  .staples-fold .section-h { display: none; }
+  .list-body { margin-top: 22px; }
+  .list-body > .note { margin-bottom: 14px; }
+  .list label { grid-template-columns: 24px minmax(0, 1fr) auto; grid-template-areas: "cb name amt" ". rec rec"; row-gap: 2px;
+    column-gap: 12px; min-height: 52px; padding: 10px 2px; }
+  .list label input { grid-area: cb; }
+  .list .li-name { grid-area: name; }
+  .list .li-amt { grid-area: amt; }
+  .list .li-recipes { grid-area: rec; white-space: normal; }
+  .list .li-recipes:empty { display: none; }
+
+  /* cart: a list of compact rows with a ⋮ menu; the summary under it, Send docked */
+  .cart-body { display: flex; flex-direction: column; gap: 20px; }
+  .cart-body > .summary.sent { order: -1; }
+  .cart-main > .toolbar { margin-bottom: 8px; }
+  .building { padding: 16px 0; }
+  .cart-id code { white-space: normal; word-break: break-all; }
+
+  /* dialogs and drawers fill the screen */
+  dialog.modal, dialog.modal.wide, dialog.modal.drawer { margin: 0; width: 100%; max-width: 100%; height: 100vh; height: 100dvh;
+    max-height: 100vh; max-height: 100dvh; border-radius: 0; box-shadow: none; }
+  dialog.modal .modal-box, dialog.modal:not(.drawer) .modal-box { height: 100%; max-height: 100%; }
+  .modal-head { padding: calc(4px + env(safe-area-inset-top)) max(4px, env(safe-area-inset-right)) 4px max(16px, env(safe-area-inset-left));
+    min-height: calc(56px + env(safe-area-inset-top)); border-bottom: 1px solid var(--hair); }
+  .modal-head h2 { font-size: 17px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .modal-body { padding: 16px max(16px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .modal-foot { flex-wrap: wrap; padding: 10px max(16px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .modal-foot .muted { flex: 1 1 100%; }
+  .dropzone { padding: 28px 16px; }
+
+  /* menus are bottom sheets */
+  .menu-scrim { display: block; position: fixed; inset: 0; z-index: 30; background: var(--scrim); }
+  .menu, .menu.left, .menu.right { position: fixed; left: 0; right: 0; top: auto; bottom: 0; z-index: 31; min-width: 0; max-height: 80vh; overflow-y: auto;
+    border-radius: 16px 16px 0 0; padding: 8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+  .menu > button { font-size: 15px; gap: 14px; padding: 0 14px; }
+  .menu-label { padding: 10px 14px 6px; }
+  .menu-days { gap: 4px; padding: 0 6px 6px; }
+  .menu-days button { font-size: 13.5px; }
+
+  .signin-foot a { padding: 12px 4px; }
+}
+@media (min-width: 600px) and (max-width: 899px) {
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
+  .night:nth-child(2) { border-top: 0; padding-top: 0; }
+}
+
+/* Cart lines as rows with a ⋮ menu (Cart.tsx uses them below 1100 px wide, where the table gets too narrow). */
+.lines { border-top: 1px solid var(--hair); }
+.line { border-bottom: 1px solid var(--hair); padding: 12px 0 6px; }
+.line-top { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.line .pth { width: 48px; height: 48px; }
+.line .pname { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.line .pmeta .pm-text { white-space: normal; min-width: 0; }
+.line .c-tags { margin-top: 4px; }
+.line .c-tags:empty { display: none; }
+.line .price { text-align: right; }
+.line-acts { display: flex; align-items: center; gap: 8px; padding-left: 60px; margin-top: 4px; }
+.line.removed .pname { text-decoration: line-through; color: var(--text2); font-weight: 500; }
+.line.removed .pth { opacity: .45; }
+.cart-main .lines { overflow-y: auto; min-height: 0; }
+
+/* Touch screens (phones, tablets, touch laptops' primary pointer) and the phone layout: 48 px targets. */
+@media (max-width: 899px), (pointer: coarse) {
+  .btn, .btn.sm { height: auto; min-height: 48px; }
+  .btn.sm { padding: 0 14px; }
+  .iconbtn, .iconbtn.sm { width: 48px; height: 48px; }
+  .weeknav { gap: 0; }
+  .qty { height: 48px; }
+  .qty button { width: 48px; height: 48px; }
+  .search { height: 48px; }
+  .select-wrap select { height: 48px; }
+  .seg { padding: 2px; }
+  .seg button { min-height: 48px; }
+  .stars-input button { padding: 11px; }
+  .chip-btn { min-height: 52px; }
+  .nav a { height: 48px; }
+  .menu > button { min-height: 48px; }
+  .menu-days button { height: 48px; }
+  .field input, .field textarea { min-height: 48px; padding: 12px; }
+  .staples label { min-height: 48px; align-items: center; }
+  .import-items label { min-height: 48px; }
+  input[type="checkbox"] { width: 22px; height: 22px; margin-top: 0; }
+  .pick-list button, .choices button { min-height: 56px; }
+  /* small inline controls keep their look; the touch area grows around them */
+  .rate-cta, .rated, .link-btn, .bookmarklet { position: relative; min-height: 32px; }
+  .rate-cta::after, .rated::after, .link-btn::after { content: ""; position: absolute; inset: -8px -6px; }
+  .rated { min-width: 120px; }
+}

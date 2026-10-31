@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { Button } from "./ui";
+import { useMedia } from "../lib/media";
 
 /** The bookmarklet (installed once): on loblaws.ca it asks for the cart ID, stores it where loblaws.ca keeps its
  *  anonymous cart (as the Android handoff does: DESIGN "Spike results", option a), and reloads. */
@@ -12,6 +13,7 @@ export const BOOKMARKLET = "javascript:(()=>{if(!/(^|\\.)loblaws\\.ca$/.test(loc
 export function Handoff({ cartId }: { cartId: string }) {
   const link = useRef<HTMLAnchorElement>(null);
   const [copied, setCopied] = useState(false);
+  const touch = useMedia("(pointer: coarse)");
   // React refuses javascript: URLs in href, so the bookmarklet's link is set on the element directly.
   useEffect(() => { link.current?.setAttribute("href", BOOKMARKLET); }, []);
   const copy = async () => {
@@ -28,6 +30,10 @@ export function Handoff({ cartId }: { cartId: string }) {
         <li><i>3</i><div><b>Click “Load Meal Prep cart” in your bookmarks</b><small>Paste the ID when it asks. The page reloads with your cart.</small></div></li>
         <li><i>4</i><div><b>Sign in with PC id</b><small>The cart moves into your account. Pick a pickup time and check out.</small></div></li>
       </ol>
+      {touch && (
+        <p className="note"><Icon name="alert" size={17} /><span>Bookmarks like this are hard to add and run in a phone browser.
+          Load the cart from a laptop, or open the sent cart in the Meal Prep Android app.</span></p>
+      )}
       <div className="bookmarklet-box">
         <span className="fine">First time? Drag this to your bookmarks bar:</span>
         <a ref={link} className="bookmarklet" onClick={(e) => e.preventDefault()} draggable title="Drag me to the bookmarks bar">

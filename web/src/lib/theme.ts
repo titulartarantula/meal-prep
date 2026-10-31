@@ -3,9 +3,16 @@ import { useEffect, useState } from "react";
 export type ThemeChoice = "light" | "dark" | "system";
 const KEY = "mealprep.theme";
 
+// The browser bar / installed app's status bar colour (index.html has one per system scheme): a chosen theme wins.
+const BAR = { light: "#F3F1ED", dark: "#171615" };
+
 function apply(t: ThemeChoice) {
   if (t === "system") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.setAttribute("data-theme", t);
+  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => {
+    const scheme = m.media.includes("dark") ? "dark" : "light";
+    m.content = BAR[t === "system" ? scheme : t];
+  });
 }
 
 export function initTheme() {
