@@ -229,15 +229,16 @@ class FakeSearch:
         return self.result
 
 
-def api(book_search):
+def api(book_search, conn):
+    # every route needs a household now (the shared token's), so a real test connection
     s = Settings(dsn="unused", token="secret", provider="fake")
-    return TestClient(create_app(s, provider=object(), pcx=object(), conn=object(), book_search=book_search))
+    return TestClient(create_app(s, provider=object(), pcx=object(), conn=conn, book_search=book_search))
 
 
-def test_endpoint_returns_results_and_needs_auth():
+def test_endpoint_returns_results_and_needs_auth(conn):
     fs = FakeSearch([{"title": "Invented Pantry", "subtitle": None, "authors": ["Ada Pepper"], "year": 2010,
                       "isbn": None, "publisher": None, "source": "openlibrary"}])
-    c = api(fs)
+    c = api(fs, conn)
     r = c.get("/books/search", headers=H, params={"q": "invented pantry"})
     assert r.status_code == 200 and r.json()[0]["title"] == "Invented Pantry"
     assert fs.calls == [("invented pantry", 8)]
@@ -249,17 +250,17 @@ def test_endpoint_returns_results_and_needs_auth():
     assert c.get("/books/search", headers=H, params={"q": "ok", "limit": 21}).status_code == 422
 
 
-def test_endpoint_never_5xx():
-    c = api(FakeSearch(boom=True))
+def test_endpoint_never_5xx(conn):
+    c = api(FakeSearch(boom=True), conn)
     r = c.get("/books/search", headers=H, params={"q": "anything"})
     assert r.status_code == 200 and r.json() == []
 
 
-def test_endpoint_with_real_searcher_and_dead_upstreams():
+def test_endpoint_with_real_searcher_and_dead_upstreams(conn):
     up = Upstream(ol=httpx.ConnectError("down"), google=503)
-    r = api(searcher(up)).get("/books/search", headers=H, params={"q": "a"})
+    r = api(searcher(up), conn).get("/books/search", headers=H, params={"q": "a"})
     assert r.json() == [] and up.calls == []          # too short: nobody asked
-    r = api(searcher(up)).get("/books/search", headers=H, params={"q": "carrot cake"})
+    r = api(searcher(up), conn).get("/books/search", headers=H, params={"q": "carrot cake"})
     assert r.status_code == 200 and r.json() == []
     assert json.dumps(r.json()) == "[]"
 

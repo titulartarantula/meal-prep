@@ -202,7 +202,13 @@ CREATE TABLE IF NOT EXISTS seeds(
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM seeds WHERE name = 'staples') THEN
     IF NOT EXISTS (SELECT 1 FROM staples) THEN
-      INSERT INTO staples(name, qty, position) VALUES ('2% milk', 1, 0), ('eggs', 1, 1), ('lemonade', 1, 2);
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
+                 AND table_name = 'staples' AND column_name = 'household_id') THEN   -- since households: the first one
+        EXECUTE 'INSERT INTO staples(household_id, name, qty, position) SELECT (SELECT min(id) FROM households), n, 1, p '
+                'FROM (VALUES (''2% milk'', 0), (''eggs'', 1), (''lemonade'', 2)) v(n, p)';
+      ELSE
+        INSERT INTO staples(name, qty, position) VALUES ('2% milk', 1, 0), ('eggs', 1, 1), ('lemonade', 1, 2);
+      END IF;
     END IF;
     INSERT INTO seeds(name) VALUES ('staples') ON CONFLICT DO NOTHING;
   END IF;
@@ -370,3 +376,219 @@ CREATE TABLE IF NOT EXISTS pack_contents(
   reason text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Web + households (2026-10-30, server tasks 1–2). Everything a household owns carries household_id, and Postgres
+-- row-level security keeps each household's rows to itself: a request runs as the role mealprep_app with
+-- mealprep.household_id set (db.scope), so every existing query sees only that household and an insert takes the
+-- household from the column default. The login role (superuser/owner) bypasses RLS: schema migrations, the startup
+-- clean-up of interrupted jobs, backups. Shared caches stay global: products, price_observations, pack_contents,
+-- document_reads (and seeds). Identity tables (users, sessions, members, roles, invites …) are not household-filtered:
+-- the code reads them with explicit household ids.
+CREATE TABLE IF NOT EXISTS users(
+  id serial PRIMARY KEY,
+  google_sub text NOT NULL UNIQUE,
+  email text,
+  email_verified boolean NOT NULL DEFAULT false,
+  name text,
+  picture text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_login_at timestamptz
+);
+CREATE TABLE IF NOT EXISTS households(
+  id serial PRIMARY KEY,
+  name text NOT NULL,
+  store_id text NOT NULL DEFAULT '1092',
+  plan text NOT NULL DEFAULT 'free',
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','closed')),
+  ai_daily_budget int CHECK (ai_daily_budget >= 0),      -- AI calls per rolling 24 h; null = no limit
+  created_by int REFERENCES users,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS members(
+  id serial PRIMARY KEY,
+  household_id int NOT NULL REFERENCES households ON DELETE CASCADE,
+  user_id int REFERENCES users,
+  display_name text NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('account','child')),
+  birth_year int CHECK (birth_year BETWEEN 1900 AND 2200),
+  email text,                                            -- an unlinked account is claimed by this (verified) address
+  joined_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (kind = 'account' OR (user_id IS NULL AND email IS NULL)),
+  UNIQUE(household_id, user_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS members_email_idx ON members(household_id, lower(email)) WHERE email IS NOT NULL;
+CREATE INDEX IF NOT EXISTS members_user_idx ON members(user_id);
+-- The member the shared (legacy) bearer token acts as; null = the household's first Owner.
+ALTER TABLE households ADD COLUMN IF NOT EXISTS legacy_member_id int REFERENCES members ON DELETE SET NULL;
+CREATE TABLE IF NOT EXISTS roles(
+  id serial PRIMARY KEY,
+  key text NOT NULL UNIQUE,
+  name text NOT NULL,
+  for_kind text NOT NULL CHECK (for_kind IN ('account','child'))   -- who can hold it (child = only, exclusive)
+);
+CREATE TABLE IF NOT EXISTS role_permissions(
+  role_id int NOT NULL REFERENCES roles ON DELETE CASCADE,
+  permission text NOT NULL,
+  PRIMARY KEY(role_id, permission)
+);
+CREATE TABLE IF NOT EXISTS member_roles(
+  member_id int NOT NULL REFERENCES members ON DELETE CASCADE,
+  role_id int NOT NULL REFERENCES roles,
+  PRIMARY KEY(member_id, role_id)
+);
+-- Roles and their permissions are data (a new role needs no code); these are the starting set. The seed only adds
+-- what is missing, so a permission removed by hand stays removed until its seed name changes.
+INSERT INTO roles(key, name, for_kind) VALUES ('owner','Owner / Admin','account'),
+  ('approver','Approver / Purchaser','account'), ('planner','Planner','account'),
+  ('contributor','Contributor','account'), ('child','Child','child') ON CONFLICT (key) DO NOTHING;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM seeds WHERE name = 'role_permissions-1') THEN
+    INSERT INTO role_permissions(role_id, permission)
+      SELECT r.id, p FROM roles r, LATERAL unnest(CASE r.key
+        WHEN 'owner' THEN ARRAY['members.manage','roles.assign','household.settings']
+        WHEN 'approver' THEN ARRAY['request.approve','cart.build','cart.send']
+        WHEN 'planner' THEN ARRAY['plan.edit','recipe.edit','fridge.edit','rate.for_children']
+        WHEN 'contributor' THEN ARRAY['recipe.read','plan.read','rate.self','request.create']
+        ELSE ARRAY[]::text[] END) p
+      ON CONFLICT DO NOTHING;
+    INSERT INTO seeds(name) VALUES ('role_permissions-1');
+  END IF;
+END $$;
+-- Child is a child profile's only role and only a child profile's (owner/approver minimums are checked in code).
+CREATE OR REPLACE FUNCTION member_roles_kind_check() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE mkind text; rkind text;
+BEGIN
+  SELECT kind INTO mkind FROM members WHERE id = NEW.member_id;
+  SELECT for_kind INTO rkind FROM roles WHERE id = NEW.role_id;
+  IF mkind IS DISTINCT FROM rkind THEN
+    RAISE EXCEPTION 'role % can''t be held by a % member', NEW.role_id, mkind USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS member_roles_kind ON member_roles;
+CREATE TRIGGER member_roles_kind BEFORE INSERT OR UPDATE ON member_roles
+  FOR EACH ROW EXECUTE FUNCTION member_roles_kind_check();
+
+CREATE TABLE IF NOT EXISTS invites(
+  id serial PRIMARY KEY,
+  household_id int NOT NULL REFERENCES households ON DELETE CASCADE,
+  email text,                                            -- null = a link anyone signed in can use once
+  roles text[] NOT NULL DEFAULT '{contributor}',
+  member_id int REFERENCES members ON DELETE CASCADE,    -- claims this unlinked member (a seeded account, a child turning 13)
+  token_hash text NOT NULL UNIQUE,
+  created_by int REFERENCES members ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  used_by int REFERENCES users,
+  used_at timestamptz,
+  revoked_at timestamptz
+);
+CREATE TABLE IF NOT EXISTS sessions(
+  id_hash text PRIMARY KEY,                              -- sha256 of the token; the token itself is never stored
+  user_id int NOT NULL REFERENCES users ON DELETE CASCADE,
+  household_id int REFERENCES households ON DELETE SET NULL,   -- the household picked last
+  kind text NOT NULL CHECK (kind IN ('web','app')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_seen timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  user_agent text
+);
+CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
+-- An OAuth login in progress (GET /auth/login → Google → GET /auth/callback): single use, 10 minutes.
+CREATE TABLE IF NOT EXISTS login_states(
+  state_hash text PRIMARY KEY,
+  code_verifier text NOT NULL,
+  nonce text NOT NULL,
+  next text,
+  invite_hash text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL
+);
+CREATE TABLE IF NOT EXISTS audit_log(
+  id bigserial PRIMARY KEY,
+  household_id int REFERENCES households ON DELETE CASCADE,
+  member_id int,
+  user_id int,
+  action text NOT NULL,
+  target text,
+  detail jsonb,
+  at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS audit_log_household_idx ON audit_log(household_id, at);
+-- One row per AI call (metering for a later paid plan): household, feature, tokens when the provider reports them.
+CREATE TABLE IF NOT EXISTS ai_usage(
+  id bigserial PRIMARY KEY,
+  household_id int REFERENCES households ON DELETE CASCADE,
+  member_id int,
+  feature text NOT NULL,
+  provider text,
+  model text,
+  input_tokens int,
+  output_tokens int,
+  cost_usd numeric(10,4),
+  ok boolean NOT NULL,
+  seconds real,
+  at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ai_usage_household_idx ON ai_usage(household_id, at);
+
+-- The first household: every row from before households belongs to it (renamed by the seed CLI, mealprep.seed).
+INSERT INTO households(name, ai_daily_budget) SELECT 'Household', NULL WHERE NOT EXISTS (SELECT 1 FROM households);
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mealprep_app') THEN
+    CREATE ROLE mealprep_app NOLOGIN;
+  END IF;
+  IF NOT pg_has_role(current_user, 'mealprep_app', 'MEMBER') THEN
+    EXECUTE format('GRANT mealprep_app TO %I', current_user);
+  END IF;
+END $$;
+
+DO $$
+DECLARE
+  t text;
+  first_id int := (SELECT min(id) FROM households);
+  owned text[] := ARRAY['recipes','plan','picks','pick_history','carts','cart_weeks','cart_lines','ratings',
+                        'rating_history','prep_plans','prep_tasks','prep_task_events','cook_cards','staples',
+                        'imported_ratings','import_jobs','extras','fridge_items','fridge_reads','fridge_nudges'];
+BEGIN
+  FOREACH t IN ARRAY owned LOOP
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
+                   AND table_name = t AND column_name = 'household_id') THEN
+      EXECUTE format('ALTER TABLE %I ADD COLUMN household_id int REFERENCES households', t);
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = t
+               AND column_name = 'household_id' AND is_nullable = 'YES') THEN
+      EXECUTE format('UPDATE %I SET household_id = %s WHERE household_id IS NULL', t, first_id);
+      EXECUTE format('ALTER TABLE %I ALTER COLUMN household_id SET NOT NULL', t);
+      EXECUTE format('ALTER TABLE %I ALTER COLUMN household_id SET DEFAULT '
+                     'current_setting(''mealprep.household_id'')::int', t);
+      EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I(household_id)', t || '_household_idx', t);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = t AND policyname = 'household') THEN
+      EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+      EXECUTE format('CREATE POLICY household ON %I USING (household_id = '
+                     'NULLIF(current_setting(''mealprep.household_id'', true), '''')::int) '
+                     'WITH CHECK (household_id = NULLIF(current_setting(''mealprep.household_id'', true), '''')::int)', t);
+    END IF;
+  END LOOP;
+END $$;
+
+-- Per-household uniques (they were global with one household).
+ALTER TABLE recipes DROP CONSTRAINT IF EXISTS recipes_source_url_key;
+CREATE UNIQUE INDEX IF NOT EXISTS recipes_household_source_url_idx ON recipes(household_id, source_url);
+DROP INDEX IF EXISTS recipes_uid_idx;
+CREATE UNIQUE INDEX IF NOT EXISTS recipes_household_uid_idx ON recipes(household_id, uid);
+DROP INDEX IF EXISTS fridge_items_key_unit_idx;
+CREATE UNIQUE INDEX IF NOT EXISTS fridge_items_household_key_unit_idx ON fridge_items(household_id, key, coalesce(unit, ''));
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'picks_pkey'
+             AND pg_get_constraintdef(oid) = 'PRIMARY KEY (key)') THEN
+    ALTER TABLE picks DROP CONSTRAINT picks_pkey;
+    ALTER TABLE picks ADD PRIMARY KEY (household_id, key);
+  END IF;
+END $$;
+
+GRANT USAGE ON SCHEMA public TO mealprep_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mealprep_app;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO mealprep_app;

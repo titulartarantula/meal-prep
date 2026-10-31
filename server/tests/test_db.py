@@ -89,15 +89,16 @@ CREATE TABLE cart_lines(id serial PRIMARY KEY, cart_id int REFERENCES carts ON D
 
 def test_schema_migrates_legacy_carts_idempotently(conn):
     """The live DB predates drafts: existing carts must become 'sent' drafts, data kept, rerunnable."""
-    conn.execute(LEGACY_CART_DDL)
-    conn.execute("INSERT INTO products(code, name) VALUES('A', 'Thighs')")
-    cid = conn.execute("INSERT INTO carts(pcx_cart_id, store_id, ai_provider) VALUES('old-1','1092','claude-cli') "
-                       "RETURNING id").fetchone()[0]
-    conn.execute("INSERT INTO cart_weeks VALUES(%s, '2026-10-11')", (cid,))
-    conn.execute("INSERT INTO cart_lines(cart_id, item_key, item_name, product_code, quantity, price_at_add, status, source) "
-                 "VALUES(%s, 'chicken thigh|each', 'chicken thigh', 'A', 1, 15, 'added', 'ai')", (cid,))
+    with db.unscoped(conn):     # DDL and pre-household rows: as the login role
+        conn.execute(LEGACY_CART_DDL)
+        conn.execute("INSERT INTO products(code, name) VALUES('A', 'Thighs')")
+        cid = conn.execute("INSERT INTO carts(pcx_cart_id, store_id, ai_provider) VALUES('old-1','1092','claude-cli') "
+                           "RETURNING id").fetchone()[0]
+        conn.execute("INSERT INTO cart_weeks VALUES(%s, '2026-10-11')", (cid,))
+        conn.execute("INSERT INTO cart_lines(cart_id, item_key, item_name, product_code, quantity, price_at_add, status, "
+                     "source) VALUES(%s, 'chicken thigh|each', 'chicken thigh', 'A', 1, 15, 'added', 'ai')", (cid,))
     for _ in range(2):
-        conn.execute(db.SCHEMA)
+        db.migrate(conn)
     assert conn.execute("SELECT status, pcx_cart_id, weeks FROM carts").fetchone() == ("sent", "old-1", [date(2026, 10, 11)])
     assert conn.execute("SELECT removed, alternatives, price_at_add::float FROM cart_lines").fetchone() == (False, [], 15.0)
     # new drafts default to building, and the 'user' source is now allowed
@@ -133,19 +134,21 @@ def test_uid_kept_when_given(conn):
 
 def test_backfill_is_idempotent(conn):
     try:
-        conn.execute("ALTER TABLE recipes ALTER COLUMN uid DROP NOT NULL")   # a row from before the migration
+        with db.unscoped(conn):
+            conn.execute("ALTER TABLE recipes ALTER COLUMN uid DROP NOT NULL")   # a row from before the migration
         conn.execute("INSERT INTO recipes(source, title, data, uid) VALUES('photo', 'Old', '{\"title\": \"Old\", "
                      "\"source\": \"photo\", \"ingredients\": [], \"steps\": []}', NULL)")
-        conn.execute(db.SCHEMA)
+        db.migrate(conn)
         [(uid,)] = conn.execute("SELECT uid::text FROM recipes WHERE title='Old'").fetchall()
         assert uid is not None
-        conn.execute(db.SCHEMA)
+        db.migrate(conn)
         assert conn.execute("SELECT uid::text FROM recipes WHERE title='Old'").fetchone()[0] == uid
         assert conn.execute("SELECT is_nullable FROM information_schema.columns WHERE table_name='recipes' "
                             "AND column_name='uid'").fetchone()[0] == "NO"
         assert db.list_recipes(conn)[0].uid == uid
     finally:
-        conn.execute("ALTER TABLE recipes ALTER COLUMN uid SET NOT NULL")
+        with db.unscoped(conn):
+            conn.execute("ALTER TABLE recipes ALTER COLUMN uid SET NOT NULL")
 
 
 def test_extra_fields_round_trip_via_data(conn):

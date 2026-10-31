@@ -198,8 +198,8 @@ def test_delete_is_idempotent_and_unknown_ids_are_not_found(conn):
 
 def test_migration_rerun_is_a_no_op(conn):
     add(conn, "Eggs", 6)
-    conn.execute(db.SCHEMA)
-    conn.execute(db.SCHEMA)
+    db.migrate(conn)
+    db.migrate(conn)
     assert [i.name for i in fridge.list_items(conn, TODAY)] == ["Eggs"]
 
 

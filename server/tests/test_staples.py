@@ -19,21 +19,21 @@ def R(title, *ings, servings=4):
 
 def test_seed_runs_once_and_migration_is_idempotent(conn):
     conn.execute("DELETE FROM seeds WHERE name='staples'")
-    conn.execute(db.SCHEMA)
+    db.migrate(conn)
     names = lambda: [n for (n,) in conn.execute("SELECT name FROM staples ORDER BY position")]
     assert names() == ["2% milk", "eggs", "lemonade"]
     assert conn.execute("SELECT qty::float, unit, weekly FROM staples WHERE name='eggs'").fetchone() == (1.0, None, True)
-    conn.execute(db.SCHEMA)                       # every startup re-applies the schema
+    db.migrate(conn)                       # every startup re-applies the schema
     assert names() == ["2% milk", "eggs", "lemonade"]
     conn.execute("DELETE FROM staples")
-    conn.execute(db.SCHEMA)                       # a household that removed them all keeps an empty list
+    db.migrate(conn)                       # a household that removed them all keeps an empty list
     assert names() == []
 
 
 def test_seed_skips_a_table_that_already_has_rows(conn):
     conn.execute("DELETE FROM seeds WHERE name='staples'")
     conn.execute("INSERT INTO staples(name, qty) VALUES('oat milk', 2)")
-    conn.execute(db.SCHEMA)
+    db.migrate(conn)
     assert [n for (n,) in conn.execute("SELECT name FROM staples")] == ["oat milk"]
 
 

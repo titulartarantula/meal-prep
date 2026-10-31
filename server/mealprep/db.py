@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import uuid
+from contextlib import contextmanager
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
@@ -13,10 +14,58 @@ from .models import COLUMN_FIELDS, PlanEntry, Rating, Recipe
 SCHEMA = (Path(__file__).parent / "schema.sql").read_text()
 
 
+APP_ROLE = "mealprep_app"
+
+
 def connect(dsn: str) -> psycopg.Connection:
+    """A connection as the login role with the schema applied (migrations, startup, tests). Unscoped: it sees every
+    household's rows; scope() it before using it for one household."""
     conn = psycopg.connect(dsn, autocommit=True)
     conn.execute(SCHEMA)
     return conn
+
+
+def scope(conn, household_id: int) -> None:
+    """From here on the connection acts for one household: it runs as mealprep_app, so row-level security shows it
+    only that household's rows, and inserts take the household from the column default."""
+    conn.execute(f"SET ROLE {APP_ROLE}")
+    conn.execute("SELECT set_config('mealprep.household_id', %s, false)", (str(int(household_id)),))
+
+
+def unscope(conn) -> None:
+    conn.execute("RESET ROLE")
+    conn.execute("SELECT set_config('mealprep.household_id', '', false)")
+
+
+@contextmanager
+def unscoped(conn):
+    """Act as the login role for a moment (DDL, migrations), then for the same household again."""
+    scoped, hid = conn.execute("SELECT current_user = %s, current_setting('mealprep.household_id', true)",
+                               (APP_ROLE,)).fetchone()
+    if scoped:
+        conn.execute("RESET ROLE")
+    try:
+        yield conn
+    finally:
+        if scoped:
+            scope(conn, int(hid))
+
+
+def migrate(conn) -> None:
+    """Apply the schema (idempotent; every startup does it) as the login role."""
+    with unscoped(conn):
+        conn.execute(SCHEMA)
+
+
+def scoped_connect(dsn: str, household_id: int) -> psycopg.Connection:
+    """A new connection for one household (background jobs)."""
+    conn = psycopg.connect(dsn, autocommit=True)
+    scope(conn, household_id)
+    return conn
+
+
+def first_household(conn) -> int:
+    return conn.execute("SELECT min(id) FROM households").fetchone()[0]
 
 
 def _data(r: Recipe) -> Jsonb:
@@ -151,7 +200,7 @@ def all_picks(conn) -> list[tuple[str, str, str]]:
 def copy_pick(conn, old_key: str, new_key: str) -> None:
     """Carry a remembered pick over to a list key renamed by better name clean-up (not a new choice: no history)."""
     conn.execute("INSERT INTO picks(key, product_code, chosen_by, updated_at, pinned) SELECT %s, product_code, "
-                 "chosen_by, updated_at, pinned FROM picks WHERE key=%s ON CONFLICT(key) DO NOTHING", (new_key, old_key))
+                 "chosen_by, updated_at, pinned FROM picks WHERE key=%s ON CONFLICT(household_id, key) DO NOTHING", (new_key, old_key))
 
 
 def pinned_code(conn, key: str) -> str | None:
@@ -194,7 +243,7 @@ def set_pick(conn, key: str, code: str, chosen_by: str = "ai") -> None:
     with conn.transaction():
         # A pin belongs to its product: another product for the key unpins.
         conn.execute(
-            "INSERT INTO picks(key, product_code, chosen_by) VALUES(%s,%s,%s) ON CONFLICT(key) DO UPDATE "
+            "INSERT INTO picks(key, product_code, chosen_by) VALUES(%s,%s,%s) ON CONFLICT(household_id, key) DO UPDATE "
             "SET product_code=excluded.product_code, chosen_by=excluded.chosen_by, updated_at=now(), "
             "pinned = picks.pinned AND picks.product_code = excluded.product_code",
             (key, code, chosen_by))

@@ -146,5 +146,5 @@ def test_ratings_schema_idempotent(conn):
     eid = entry(conn, recipe(conn), "2026-10-11", 2)
     db.set_rating(conn, eid, 4)
     for _ in range(2):
-        conn.execute(db.SCHEMA)
+        db.migrate(conn)
     assert conn.execute("SELECT family FROM ratings").fetchone() == (4,)

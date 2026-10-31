@@ -110,7 +110,7 @@ def test_two_phones_tapping_at_once_subtract_once(conn):
     go, out = threading.Barrier(2), []
 
     def tap():
-        with psycopg.connect(dsn, autocommit=True) as c:
+        with db.scoped_connect(dsn, db.first_household(conn)) as c:
             go.wait()
             out.append(fridge.answer_used(c, eid, True, TODAY))
     ts = [threading.Thread(target=tap) for _ in range(2)]

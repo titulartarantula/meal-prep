@@ -20,20 +20,21 @@ def nyt(title, n):
 
 def test_migration_backfills_once_and_is_idempotent(conn):
     # a database from before sources: no columns, recipes as 0.4.1 saved them
-    conn.execute("ALTER TABLE recipes DROP COLUMN source_kind, DROP COLUMN source_title, DROP COLUMN source_ref")
+    with db.unscoped(conn):
+        conn.execute("ALTER TABLE recipes DROP COLUMN source_kind, DROP COLUMN source_title, DROP COLUMN source_ref")
     old = [("nyt", "https://cooking.nytimes.com/recipes/1-soup", "Test Soup"), ("photo", None, "Test Stew"),
            ("photo", None, "Test Pie"), ("manual", None, "Test Toast")]
     for src, url, title in old:
         conn.execute("INSERT INTO recipes(source, source_url, title, data) VALUES(%s,%s,%s,%s)",
                      (src, url, title, Jsonb({"title": title, "source": src, "source_url": url, "ingredients": [], "steps": []})))
-    conn.execute(db.SCHEMA)
+    db.migrate(conn)
     got = conn.execute("SELECT title, source_kind, source_title, source_ref FROM recipes ORDER BY id").fetchall()
     assert got == [("Test Soup", "nyt", None, None), ("Test Stew", "book", None, None), ("Test Pie", "book", None, None),
                    ("Test Toast", "other", None, None)]
     # a book filled in later survives the migration running again at the next start
     rid = conn.execute("SELECT id FROM recipes WHERE title='Test Pie'").fetchone()[0]
     db.update_source(conn, rid, "book", "Invented Bakes", "p. 12")
-    conn.execute(db.SCHEMA)
+    db.migrate(conn)
     assert db.get_recipe(conn, rid).source_title == "Invented Bakes"
     assert conn.execute("SELECT count(*) FROM recipes WHERE source_kind IS NULL").fetchone()[0] == 0
     # the constraint is in place
@@ -177,12 +178,13 @@ def test_share_nyt_sets_kind(conn, monkeypatch):
 
 def test_author_isbn_migration_is_additive_and_idempotent(conn):
     rid = db.save_recipe(conn, book("Test Tart", "Invented Bakes", "p. 40"))
-    conn.execute("ALTER TABLE recipes DROP COLUMN source_author, DROP COLUMN source_isbn")   # a 0.4.2 database
-    conn.execute(db.SCHEMA)
+    with db.unscoped(conn):
+        conn.execute("ALTER TABLE recipes DROP COLUMN source_author, DROP COLUMN source_isbn")   # a 0.4.2 database
+    db.migrate(conn)
     got = db.get_recipe(conn, rid)
     assert (got.source_title, got.source_ref, got.source_author, got.source_isbn) == ("Invented Bakes", "p. 40", None, None)
     db.update_source(conn, rid, "book", "Invented Bakes", "p. 40", "Ada Pepper", "9780000000017")
-    conn.execute(db.SCHEMA)
+    db.migrate(conn)
     assert db.get_recipe(conn, rid).source_author == "Ada Pepper"
 
 
