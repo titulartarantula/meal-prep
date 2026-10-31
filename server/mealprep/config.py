@@ -9,7 +9,7 @@ def _env(name: str, default: str = ""):
 @dataclass(frozen=True)
 class Settings:
     dsn: str = _env("MEALPREP_DSN")
-    token: str = _env("MEALPREP_TOKEN")
+    token: str = field(default_factory=lambda: os.environ.get("MEALPREP_TOKEN", ""), repr=False)
     provider: str = _env("MEALPREP_PROVIDER", "claude-cli")
     claude_bin: str = _env("MEALPREP_CLAUDE_BIN", "claude")
     claude_model: str = _env("MEALPREP_CLAUDE_MODEL", "sonnet")
@@ -45,5 +45,17 @@ class Settings:
     fridge_max_photos: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_FRIDGE_MAX_PHOTOS", "6")))
     fridge_photo_max_mb: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_FRIDGE_PHOTO_MAX_MB", "7")))
     fridge_photos_max_mb: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_FRIDGE_PHOTOS_MAX_MB", "20")))
+    # Web + households (server tasks 1–2). Google sign-in is off (login routes answer 503) until the client id and
+    # secret are set. The redirect URI must be registered on the Google OAuth client exactly as sent.
+    google_client_id: str = _env("MEALPREP_GOOGLE_CLIENT_ID")
+    google_client_secret: str = field(default_factory=lambda: os.environ.get("MEALPREP_GOOGLE_CLIENT_SECRET", ""),
+                                      repr=False)
+    public_url: str = _env("MEALPREP_PUBLIC_URL", "https://mealprep.drwhom.ca")
+    google_redirect_uri: str = _env("MEALPREP_GOOGLE_REDIRECT_URI")   # default: public_url + /api/auth/callback
+    session_days: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_SESSION_DAYS", "30")))
+    # The shared bearer token (until the Android release with sign-in) is only accepted from these source networks.
+    legacy_networks: str = _env("MEALPREP_LEGACY_NETWORKS", "127.0.0.1/32,192.168.1.0/24,10.8.0.0/24")
+    # AI calls a new household may make per rolling 24 h (the first household has no limit).
+    ai_daily_budget: int = field(default_factory=lambda: int(os.environ.get("MEALPREP_AI_DAILY_BUDGET", "400")))
     store_id: str = "1092"
     default_people: int = 4

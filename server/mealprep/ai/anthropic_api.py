@@ -1,4 +1,4 @@
-import base64, mimetypes, time
+import base64, mimetypes, threading, time
 import anthropic
 from .base import AIError, parse_json
 
@@ -16,11 +16,21 @@ class AnthropicApi:
     def __init__(self, api_key: str, model: str, timeout: int = 180, max_tokens: int = MAX_TOKENS,
                  client: anthropic.Anthropic | None = None):
         self.model, self.timeout, self.max_tokens = model, timeout, max_tokens
-        self.last_usage = None                       # the last answer's token counts (for logs and cost checks)
+        self._local = threading.local()              # one provider serves parallel workers: usage is per thread
+        self.last_usage = None                       # the last answer's token counts (for logs, cost checks, metering)
         # The SDK retries connection errors, 408/409/429 and 5xx (incl. 529 overloaded) itself.
         self.client = client or anthropic.Anthropic(api_key=api_key, max_retries=3)
 
+    @property
+    def last_usage(self):
+        return getattr(self._local, "usage", None)
+
+    @last_usage.setter
+    def last_usage(self, usage):
+        self._local.usage = usage
+
     def complete_json(self, prompt: str, images: list[str] | None = None):
+        self.last_usage = None
         content = []
         for path in images or []:
             mime = mimetypes.guess_type(path)[0] or "image/jpeg"

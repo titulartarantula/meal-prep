@@ -1,15 +1,19 @@
-import logging, re, tempfile, threading
+import hmac, html, logging, re, tempfile, threading
+from urllib.parse import urlencode
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Callable, Literal
 
 import httpx
 import psycopg
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import books, db, drafts, extras, fridge, prepplan, recipe_edit, staples, subrecipe
+from . import auth, books, db, drafts, extras, fridge, households, prepplan, rbac, recipe_edit, staples, subrecipe
 from .ai import AIError, get_provider
+from .ai.metered import Meter, Metered
 from .exchange import importer, jsonld, safe
 from .config import Settings
 from .importers.nyt import BASE as NYT_BASE, extract_nyt_url, fetch_nyt_recipe, parse_nyt_html, recipe_id as nyt_id
@@ -358,6 +362,80 @@ class TaskPatch(BaseModel):
     done: Annotated[bool, Field(strict=True)]
 
 
+class GoogleIn(BaseModel):        # Android: Credential Manager's Google ID token
+    id_token: Annotated[str, Field(min_length=20, max_length=8000)]
+    invite: Annotated[str, Field(max_length=200)] | None = None
+
+
+class HouseholdPick(BaseModel):
+    household_id: int
+
+
+class InviteAccept(BaseModel):
+    token: Annotated[str, Field(min_length=10, max_length=200)]
+
+
+class HouseholdPatch(BaseModel):
+    name: Annotated[str, Field(max_length=200)] | None = None
+    store_id: Annotated[str, Field(max_length=10)] | None = None
+
+
+class MemberIn(BaseModel):
+    name: Annotated[str, Field(max_length=200)]
+    kind: Literal["account", "child"]
+    birth_year: Annotated[int, Field(ge=1900, le=2200)] | None = None
+    email: Annotated[str, Field(max_length=320)] | None = None
+    roles: list[str] | None = None
+
+
+class MemberPatch(BaseModel):
+    name: Annotated[str, Field(max_length=200)] | None = None
+    birth_year: Annotated[int, Field(ge=1900, le=2200)] | None = None
+    email: Annotated[str, Field(max_length=320)] | None = None
+
+
+class RolesIn(BaseModel):
+    roles: Annotated[list[str], Field(max_length=10)]
+
+
+class InviteIn(BaseModel):
+    email: Annotated[str, Field(max_length=320)] | None = None
+    roles: Annotated[list[str], Field(min_length=1, max_length=10)] = ["contributor"]
+    member_id: int | None = None
+    days: Annotated[int, Field(ge=1, le=60)] = households.INVITE_DAYS
+
+
+@dataclass(frozen=True)
+class Principal:
+    """Who is calling: the shared token from the home network (legacy), or a session (bearer = app, cookie = web)."""
+    via: Literal["legacy", "bearer", "cookie"]
+    user_id: int | None = None
+    session_hash: str | None = None
+    session_household: int | None = None
+    session_token: str | None = None
+
+
+@dataclass(frozen=True)
+class Scope:
+    """The household a request acts for, as whom, and what that member may do."""
+    household_id: int
+    member_id: int | None
+    user_id: int | None
+    permissions: frozenset
+    via: str
+
+    def require(self, permission: str) -> None:
+        if permission not in self.permissions:
+            raise HTTPException(403, f"You need the {permission} permission for this.")
+
+
+def _page(title: str, message: str, status: int) -> HTMLResponse:
+    """A bare page for the browser sign-in round trip (the web app shows its own once it exists)."""
+    return HTMLResponse(f"<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+                        f"<title>{html.escape(title)}</title><h1>{html.escape(title)}</h1><p>{html.escape(message)}</p>"
+                        f"<p><a href='/'>Meal Prep</a></p>", status_code=status)
+
+
 log = logging.getLogger(__name__)
 
 
@@ -380,8 +458,12 @@ def _save_pages(d: str, files: list[UploadFile]) -> list[str]:
 
 
 def create_app(settings: Settings, provider=None, pcx=None, conn=None,
-               today: Callable[[], date] = date.today, book_search=None) -> FastAPI:
+               today: Callable[[], date] = date.today, book_search=None, google=None) -> FastAPI:
     app = FastAPI(title="mealprep")
+    if google is None and settings.google_client_id and settings.google_client_secret:
+        google = auth.Google(settings.google_client_id, settings.google_client_secret,
+                             settings.google_redirect_uri or settings.public_url.rstrip("/") + "/api/auth/callback")
+    legacy_nets = auth.networks(settings.legacy_networks)
     ai = provider or get_provider(settings)
     prep_ai = provider or get_provider(settings, timeout=settings.prep_timeout)
     import_ai = provider or get_provider(settings, timeout=settings.import_ai_timeout)
@@ -399,6 +481,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             prepplan.fail_interrupted(c)
             importer.fail_interrupted(c)
             fridge.fail_interrupted(c)
+            auth.clean_expired(c)
 
     def get_conn():
         # injected connection (tests) or one connection per request (thread-safe transactions)
@@ -411,11 +494,77 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         finally:
             c.close()
 
-    def auth(authorization: str = Header(default="")):
-        if not settings.token or authorization != f"Bearer {settings.token}":
-            raise HTTPException(401)
+    @contextmanager
+    def meter_conn():
+        # the injected test connection, else a short connection of its own (never a request's or a job's)
+        if conn is not None:
+            yield conn
+        else:
+            with psycopg.connect(settings.dsn, autocommit=True) as mc:
+                yield mc
 
-    A = [Depends(auth)]
+    meter = Meter(meter_conn, settings.provider)
+
+    def metered(p, s: "Scope", feature: str):
+        return Metered(p, meter, s.household_id, s.member_id, feature)
+
+    def scoped_conn(hid: int):
+        # background jobs: their own connection, acting for the household that started them
+        return db.scoped_connect(settings.dsn, hid)
+
+    def principal(request: Request, c=Depends(get_conn)) -> Principal:
+        authz = request.headers.get("authorization", "")
+        if authz[:7].lower() == "bearer ":
+            token = authz[7:].strip()
+            if settings.token and hmac.compare_digest(token.encode(), settings.token.encode()):
+                if not auth.address_in(request.client.host if request.client else None, legacy_nets):
+                    raise HTTPException(401, "The shared token only works on the home network; sign in instead.")
+                return Principal("legacy")
+            s = auth.get_session(c, token, settings.session_days)
+            if s is None:
+                raise HTTPException(401)
+            return Principal("bearer", s["user_id"], s["hash"], s["household_id"], token)
+        cookie = request.cookies.get(auth.COOKIE)
+        s = auth.get_session(c, cookie, settings.session_days) if cookie else None
+        if s is None:
+            raise HTTPException(401)
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not hmac.compare_digest(
+                request.headers.get(auth.CSRF_HEADER, "").encode(), auth.csrf_token(cookie).encode()):
+            raise HTTPException(403, "Missing or wrong X-CSRF-Token header.")
+        return Principal("cookie", s["user_id"], s["hash"], s["household_id"], cookie)
+
+    def household_scope(request: Request, p: Principal = Depends(principal), c=Depends(get_conn)) -> Scope:
+        """Every household route: which household (X-Household header, else the session's last one, else the
+        first), membership (none = 404, as if the household didn't exist), the route's permission (rbac.ROUTES;
+        403 without it) — then the connection is scoped to that household (db.scope)."""
+        route = request.scope.get("route")
+        need = rbac.ROUTES.get((request.method, getattr(route, "path", None)))
+        if need is None:   # a route missing from rbac.ROUTES: refused (the route sweep test catches it first)
+            log.error("no permission mapped for %s %s", request.method, getattr(route, "path", request.url.path))
+            raise HTTPException(403, "This route has no permission set.")
+        if p.via == "legacy":
+            hid = households.legacy_household(c)
+            mid = households.legacy_member(c, hid)
+            perms = households.permissions(c, mid) if mid is not None else households.all_permissions(c)
+        else:
+            want = request.headers.get("x-household", "").strip()
+            if want and not want.isdigit():
+                raise HTTPException(404, "household")
+            hid = int(want) if want else p.session_household
+            mid = households.membership(c, p.user_id, hid) if hid is not None else None
+            if mid is None and not want:
+                mine = households.user_households(c, p.user_id)
+                if mine:
+                    hid, mid = mine[0]["id"], mine[0]["member_id"]
+            if mid is None:
+                raise HTTPException(404, "household")
+            perms = households.permissions(c, mid)
+        if need != rbac.MEMBER and need not in perms:
+            raise HTTPException(403, f"You need the {need} permission for this.")
+        db.scope(c, hid)
+        return Scope(hid, mid, p.user_id, perms, p.via)
+
+    A = [Depends(household_scope)]
 
     @app.middleware("http")
     async def import_size_guard(request, call_next):
@@ -445,7 +594,9 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         return {"recipe": _recipe_out(c, r.id), "entry": entry, "existing": existing}
 
     @app.post("/recipes/share", dependencies=A)
-    def share(body: ShareIn, c=Depends(get_conn)):
+    def share(body: ShareIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        if body.week is not None:
+            s.require("plan.edit")
         url = extract_nyt_url(body.text)
         if not url:
             raise HTTPException(422, "no NYT Cooking link found")
@@ -460,7 +611,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         try:
             html, url = fetch_nyt_recipe(url)   # a wrong slug or id-only link resolves to the canonical one
             title, servings, lines, steps = parse_nyt_html(html, url)
-            ings = structure_ingredients(ai, lines)
+            ings = structure_ingredients(metered(ai, s, "share"), lines)
         except Exception as e:   # NytFetchError, NotARecipe, AIError
             log.warning("share import of %s failed: %s: %s", url, type(e).__name__, str(e)[:300])
             raise HTTPException(502, f"import failed: {type(e).__name__}: {str(e)[:200]}")
@@ -471,7 +622,10 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     def photo(files: list[UploadFile] = File(...), week: date | None = Form(None),
               title: str | None = Form(None), source_kind: SourceKind = Form("book"),
               source_title: str | None = Form(None), source_ref: str | None = Form(None),
-              source_author: str | None = Form(None), source_isbn: str | None = Form(None), c=Depends(get_conn)):
+              source_author: str | None = Form(None), source_isbn: str | None = Form(None), c=Depends(get_conn),
+              s: Scope = Depends(household_scope)):
+        if week is not None:
+            s.require("plan.edit")
         # sync def on purpose: FastAPI runs it in the threadpool, so the minutes-long Claude call
         # doesn't block the event loop
         if not 1 <= len(files) <= 10:
@@ -483,7 +637,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             raise HTTPException(422, str(e))
         with tempfile.TemporaryDirectory(prefix="mealprep-") as d:
             try:
-                r = import_photo(ai, _save_pages(d, files), title_hint=title)
+                r = import_photo(metered(ai, s, "photo"), _save_pages(d, files), title_hint=title)
             except AIError as e:
                 raise HTTPException(502, f"couldn't read recipe: {e}")
         r.source_kind, r.source_title, r.source_ref = src.source_kind, src.source_title, src.source_ref
@@ -496,7 +650,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                          planned_weeks=db.planned_weeks(c, today(), [rid]).get(rid, []))
 
     @app.patch("/recipes/{recipe_id}", dependencies=A)
-    def patch_recipe(recipe_id: int, body: RecipePatch, c=Depends(get_conn)) -> RecipeOut:
+    def patch_recipe(recipe_id: int, body: RecipePatch, c=Depends(get_conn),
+                     s: Scope = Depends(household_scope)) -> RecipeOut:
         """Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it
         comes from. An NYT recipe has no book title or page. A different book title sent without an author/ISBN clears
         them (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else
@@ -518,7 +673,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         before = check(db.get_recipe(c, recipe_id))
         content = {k: v for k, v in fields.items() if k in EDITABLE_FIELDS}
         if "ingredients" in content:   # the AI may take seconds: outside the row lock, re-checked under it
-            content["ingredients"] = recipe_edit.edit_ingredients(edit_ai, before.ingredients, content["ingredients"])
+            content["ingredients"] = recipe_edit.edit_ingredients(metered(edit_ai, s, "edit"), before.ingredients, content["ingredients"])
         with c.transaction():
             r = check(db.get_recipe(c, recipe_id, for_update=True))
             if "ingredients" in content and r.ingredients != before.ingredients:
@@ -555,7 +710,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.post("/recipes/{recipe_id}/pages", dependencies=A)
     def attach_pages(recipe_id: int, files: list[UploadFile] = File(...), for_line: int | None = Form(None),
-                     c=Depends(get_conn)) -> RecipeOut:
+                     c=Depends(get_conn), s: Scope = Depends(household_scope)) -> RecipeOut:
         """Read a cross-referenced sub-recipe page and add its ingredients. Sync like /recipes/photo (~25–30 s)."""
         r = db.get_recipe(c, recipe_id)
         if r is None:
@@ -571,7 +726,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         ref = r.ingredients[line]
         with tempfile.TemporaryDirectory(prefix="mealprep-") as d:
             try:
-                name, ings, steps = import_subrecipe(ai, _save_pages(d, files), ref.raw, ref.ref_page)
+                name, ings, steps = import_subrecipe(metered(ai, s, "pages"), _save_pages(d, files), ref.raw, ref.ref_page)
             except AIError as e:
                 raise HTTPException(502, f"couldn't read the sub-recipe: {e}")
         with c.transaction():   # re-check under a row lock: the recipe may have changed during the AI call
@@ -614,25 +769,27 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         return _ld(jsonld.bundle(_export_nodes(c, rs, standalone=False), datetime.now(timezone.utc)),
                    f"meal-prep-recipes-{day.isoformat()}.json")
 
-    def run_import(jid: int, items: list[dict], work: list):
+    def run_import(jid: int, items: list[dict], work: list, s: Scope):
         # background thread with its own connection, like draft builds
         try:
-            with psycopg.connect(settings.dsn, autocommit=True) as bc:
-                importer.run_job(bc, jid, items, work, import_ai, settings.import_workers, settings.provider)
+            with scoped_conn(s.household_id) as bc:
+                importer.run_job(bc, jid, items, work, metered(import_ai, s, "import"), settings.import_workers,
+                                 settings.provider)
         except Exception:
             log.exception("import job %s: background run crashed", jid)
 
-    def run_read(jid: int, doc, name: str | None):
+    def run_read(jid: int, doc, name: str | None, s: Scope):
         # a document's first preview: the AI finds its recipes in the background (own connection, like imports)
         try:
-            with psycopg.connect(settings.dsn, autocommit=True) as bc:
-                importer.run_read(bc, jid, doc, name, document_ai)
+            with scoped_conn(s.household_id) as bc:
+                importer.run_read(bc, jid, doc, name, metered(document_ai, s, "document"))
         except Exception:
             log.exception("read job %s: background run crashed", jid)
 
     @app.post("/recipes/import", dependencies=A)
     def import_recipes(file: UploadFile = File(...), dry_run: bool = Form(True), choices: str | None = Form(None),
-                       name: str | None = Form(None, max_length=500), c=Depends(get_conn)):
+                       name: str | None = Form(None, max_length=500), c=Depends(get_conn),
+                       s: Scope = Depends(household_scope)):
         """Import schema.org JSON-LD (one recipe, a list, an @graph, our export), a saved web page's JSON-LD, or a
         recipe document (PDF, Word .docx, plain text) with one or more recipes, told apart by content.
         dry_run (default) = preview: per-item new / duplicate / failed with default actions, nothing written. A
@@ -654,7 +811,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                 except importer.NeedsReading as e:
                     jid, doc = importer.start_read(c, data, e.kind)
                 if doc is not None:
-                    threading.Thread(target=run_read, args=(jid, doc, name), name=f"read-{jid}", daemon=True).start()
+                    threading.Thread(target=run_read, args=(jid, doc, name, s), name=f"read-{jid}", daemon=True).start()
                 return JSONResponse({**importer.get_job(c, jid), "existing": doc is None}, status_code=202)
             jid, items, work, existing = importer.start(c, data, importer.parse_choices(choices), name)
         except importer.NeedsReading:
@@ -665,7 +822,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             log.exception("import: couldn't read the file")
             raise HTTPException(422, "Couldn't read this file.")
         if work:
-            threading.Thread(target=run_import, args=(jid, items, work), name=f"import-{jid}", daemon=True).start()
+            threading.Thread(target=run_import, args=(jid, items, work, s), name=f"import-{jid}", daemon=True).start()
         return JSONResponse({**importer.get_job(c, jid), "existing": existing}, status_code=202)
 
     @app.get("/imports/{job_id}", dependencies=A)
@@ -814,19 +971,20 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         return fridge.suggest_names(c, q)
 
     @app.post("/fridge", status_code=201, dependencies=A)
-    def add_fridge(body: FridgeIn, c=Depends(get_conn)) -> FridgeItem:
+    def add_fridge(body: FridgeIn, c=Depends(get_conn), s: Scope = Depends(household_scope)) -> FridgeItem:
         _use_by(body.use_by)
-        return _fridge_call(fridge.create_item, c, fridge_ai, body.name, body.qty, body.unit, today=today(),
+        return _fridge_call(fridge.create_item, c, metered(fridge_ai, s, "fridge"), body.name, body.qty, body.unit, today=today(),
                             use_soon=body.use_soon, use_by=body.use_by, from_list=body.from_list)
 
     @app.patch("/fridge/{item_id}", dependencies=A)
-    def patch_fridge(item_id: int, body: FridgePatch, c=Depends(get_conn)) -> FridgeItem:
+    def patch_fridge(item_id: int, body: FridgePatch, c=Depends(get_conn),
+                     s: Scope = Depends(household_scope)) -> FridgeItem:
         fields = body.model_dump(include=body.model_fields_set)   # only what the client sent
         for f in ("name", "use_soon"):
             if f in fields and fields[f] is None:
                 raise HTTPException(422, f"{f} can't be null")
         _use_by(fields.get("use_by"))
-        return _fridge_call(fridge.update_item, c, fridge_ai, item_id, today=today(), **fields)
+        return _fridge_call(fridge.update_item, c, metered(fridge_ai, s, "fridge"), item_id, today=today(), **fields)
 
     @app.post("/fridge/suggest", dependencies=A)
     def fridge_suggest(body: SuggestIn, c=Depends(get_conn)):
@@ -834,18 +992,19 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         (fridge.select): {picks, fridge_left, stale, thin_library}. Read-only, no AI."""
         return fridge.suggest(c, today(), body.nights, body.people, body.week, body.exclude)
 
-    def run_fridge_read(rid: int, td: tempfile.TemporaryDirectory, paths: list[str]):
+    def run_fridge_read(rid: int, td: tempfile.TemporaryDirectory, paths: list[str], s: Scope):
         # background thread with its own connection, like draft builds; the photos are deleted whatever happens
         try:
-            with psycopg.connect(settings.dsn, autocommit=True) as bc:
-                fridge.run_read(bc, rid, fridge_photo_ai, fridge_ai, paths, today())
+            with scoped_conn(s.household_id) as bc:
+                fridge.run_read(bc, rid, metered(fridge_photo_ai, s, "fridge_photo"), metered(fridge_ai, s, "fridge"),
+                                paths, today())
         except Exception:
             log.exception("fridge read %s: background run crashed", rid)
         finally:
             td.cleanup()
 
     @app.post("/fridge/photos", status_code=202, dependencies=A)
-    def fridge_photos(files: list[UploadFile] = File(...), c=Depends(get_conn)):
+    def fridge_photos(files: list[UploadFile] = File(...), c=Depends(get_conn), s: Scope = Depends(household_scope)):
         """Read 1–6 fridge photos in the background (GET /fridge/reads/{id}): the read proposes changes to the list,
         nothing is saved until POST /fridge/reads/{id}/apply. The same photos again → the same read (existing)."""
         if not 1 <= len(files) <= settings.fridge_max_photos:
@@ -873,7 +1032,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                     with open(path, "wb") as out:
                         out.write(data)
                     paths.append(path)
-                threading.Thread(target=run_fridge_read, args=(rid, td, paths), name=f"fridge-{rid}", daemon=True).start()
+                threading.Thread(target=run_fridge_read, args=(rid, td, paths, s), name=f"fridge-{rid}", daemon=True).start()
             except Exception:
                 td.cleanup()
                 c.execute("UPDATE fridge_reads SET status='failed', error=%s WHERE id=%s", ("Couldn't start the read.", rid))
@@ -898,9 +1057,9 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         return _read_call(fridge.get_read, c, read_id)
 
     @app.post("/fridge/reads/{read_id}/apply", dependencies=A)
-    def fridge_apply(read_id: int, body: ApplyIn, c=Depends(get_conn)):
+    def fridge_apply(read_id: int, body: ApplyIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
         lines = [ln.model_dump(include=ln.model_fields_set) for ln in body.lines]
-        return _read_call(fridge.apply_read, c, fridge_ai, read_id, lines, today())
+        return _read_call(fridge.apply_read, c, metered(fridge_ai, s, "fridge"), read_id, lines, today())
 
     @app.post("/fridge/reads/{read_id}/dismiss", dependencies=A)
     def fridge_dismiss(read_id: int, c=Depends(get_conn)):
@@ -930,28 +1089,28 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         return {"week": wk.isoformat() if wk else None}
 
     @app.post("/cart", dependencies=A)
-    def cart(body: CartIn, c=Depends(get_conn)):
+    def cart(body: CartIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
         """Draft + build + send synchronously (smoke scripts). The app uses /drafts."""
         try:
-            return fill_cart(body.items, shop, ai, c, weeks=body.weeks, provider_name=settings.provider,
+            return fill_cart(body.items, shop, metered(ai, s, "cart"), c, weeks=body.weeks, provider_name=settings.provider,
                              store_id=settings.store_id, workers=settings.match_workers)
         except Exception as e:   # PC Express create/add failures
             raise HTTPException(502, f"cart failed: {type(e).__name__}: {str(e)[:200]}")
 
-    def run_build(did: int):
+    def run_build(did: int, s: Scope):
         # background thread with its own connection; the request connection is closed by then
         try:
-            with psycopg.connect(settings.dsn, autocommit=True) as bc:
-                drafts.build_draft(bc, did, shop, ai, store_id=settings.store_id, workers=settings.match_workers)
+            with scoped_conn(s.household_id) as bc:
+                drafts.build_draft(bc, did, shop, metered(ai, s, "cart"), store_id=settings.store_id, workers=settings.match_workers)
         except Exception:
             log.exception("draft %s: background build crashed", did)
 
     @app.post("/drafts", status_code=202, dependencies=A)
-    def create_draft(body: DraftIn, c=Depends(get_conn)):
+    def create_draft(body: DraftIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
         # The weeks' items added by search come after the list's lines (the app doesn't send them).
         items = [it for it in body.items if it.extra_id is None] + extras.items_for(c, body.weeks)
         did = drafts.create_draft(c, items, body.weeks, store_id=settings.store_id, ai_provider=settings.provider)
-        threading.Thread(target=run_build, args=(did,), name=f"draft-{did}", daemon=True).start()
+        threading.Thread(target=run_build, args=(did, s), name=f"draft-{did}", daemon=True).start()
         return {"id": did, "status": "building"}
 
     @app.get("/drafts/{draft_id}", dependencies=A)
@@ -1055,22 +1214,22 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
         except httpx.HTTPError as e:   # nothing recorded; draft stays ready so the user can retry
             raise HTTPException(502, f"PC Express cart failed: {type(e).__name__}: {str(e)[:200]}")
 
-    def run_prep(pid: int):
+    def run_prep(pid: int, s: Scope):
         # background thread with its own connection, like draft builds
         try:
-            with psycopg.connect(settings.dsn, autocommit=True) as bc:
-                prepplan.build_prep_plan(bc, pid, prep_ai, workers=settings.prep_workers)
+            with scoped_conn(s.household_id) as bc:
+                prepplan.build_prep_plan(bc, pid, metered(prep_ai, s, "prep"), workers=settings.prep_workers)
         except Exception:
             log.exception("prep plan %s: background build crashed", pid)
 
     @app.post("/prep-plans", status_code=202, dependencies=A)
-    def create_prep_plan(body: PrepPlanIn, c=Depends(get_conn)):
+    def create_prep_plan(body: PrepPlanIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
         try:
             pid = prepplan.create_prep_plan(c, body.weeks, today(), ai_provider=settings.provider,
                                             people=settings.default_people)
         except prepplan.NothingPlanned as e:
             raise HTTPException(422, str(e))
-        threading.Thread(target=run_prep, args=(pid,), name=f"prep-{pid}", daemon=True).start()
+        threading.Thread(target=run_prep, args=(pid, s), name=f"prep-{pid}", daemon=True).start()
         return {"id": pid, "status": "building"}
 
     @app.get("/prep-plans/{plan_id}", dependencies=A)
@@ -1106,6 +1265,193 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     @app.put("/picks/{key:path}", status_code=204, dependencies=A)
     def put_pick(key: str, body: PickIn, c=Depends(get_conn)):
         db.set_pick(c, key, body.product_code, chosen_by="user")
+
+    # --- sign-in (task 1): Google OIDC, sessions, invites ---
+
+    def _need_google():
+        if google is None:
+            raise HTTPException(503, "Google sign-in isn't set up on this server.")
+
+    def _session_cookie(resp: Response, token: str) -> None:
+        resp.set_cookie(auth.COOKIE, token, max_age=settings.session_days * 86400, path="/", secure=True,
+                        httponly=True, samesite="lax")
+
+    @app.get("/auth/login")
+    def login(next: str | None = Query(None, max_length=500), invite: str | None = Query(None, max_length=200),
+              c=Depends(get_conn)):
+        """Start a browser sign-in: off to Google (authorization code + PKCE), back at /auth/callback."""
+        _need_google()
+        state, verifier, nonce = auth.start_login(c, next, invite)
+        return RedirectResponse(google.authorize_url(state, auth.pkce_challenge(verifier), nonce), status_code=302,
+                                headers={"Cache-Control": "no-store"})
+
+    @app.get("/auth/callback")
+    def callback(request: Request, code: str | None = Query(None, max_length=2000),
+                 state: str | None = Query(None, max_length=200), error: str | None = Query(None, max_length=200),
+                 c=Depends(get_conn)):
+        _need_google()
+        if error or not code or not state:
+            return _page("Not signed in", "The Google sign-in was cancelled or didn't finish. Try again.", 400)
+        try:
+            verifier, nonce, nxt, invite_hash = auth.finish_login(c, state)
+            claims = google.verify(google.exchange(code, verifier), nonce=nonce)
+            uid, hid = households.sign_in(c, claims, invite_hash)
+        except households.NotInvited as e:
+            return _page("No household yet", str(e), 403)
+        except (auth.AuthError, households.InviteError) as e:
+            return _page("Not signed in", str(e), 400)
+        token, _ = auth.create_session(c, uid, hid, "web", settings.session_days, request.headers.get("user-agent"))
+        resp = RedirectResponse(auth.safe_next(nxt), status_code=303, headers={"Cache-Control": "no-store"})
+        _session_cookie(resp, token)
+        return resp
+
+    @app.post("/auth/google")
+    def google_sign_in(body: GoogleIn, request: Request, c=Depends(get_conn)):
+        """Android: a Google ID token (Credential Manager, audience = this server's web client id) → an app session
+        token for `Authorization: Bearer`. 403 = not in a household and no invite."""
+        _need_google()
+        try:
+            claims = google.verify(body.id_token)
+            uid, hid = households.sign_in(c, claims, auth.hash_token(body.invite) if body.invite else None)
+        except households.NotInvited as e:
+            raise HTTPException(403, str(e))
+        except (auth.AuthError, households.InviteError) as e:
+            raise HTTPException(401 if isinstance(e, auth.AuthError) else 400, str(e))
+        token, expires = auth.create_session(c, uid, hid, "app", settings.session_days, request.headers.get("user-agent"))
+        return {"token": token, "expires_at": expires.isoformat(), "household_id": hid}
+
+    def _signed_in(p: Principal) -> Principal:
+        if p.via == "legacy":
+            raise HTTPException(403, "Sign in for this (the shared token has no account).")
+        return p
+
+    @app.get("/auth/me")
+    def me(p: Principal = Depends(principal), c=Depends(get_conn),
+           x_household: str | None = Header(None, max_length=20)):
+        """Who is signed in, their households, the current one (X-Household, else the session's) with their roles
+        and permissions; csrf_token for a cookie session (send it as X-CSRF-Token on writes)."""
+        if p.via == "legacy":
+            hid = households.legacy_household(c)
+            mid = households.legacy_member(c, hid)
+            perms = households.permissions(c, mid) if mid is not None else households.all_permissions(c)
+            return {"via": "legacy", "user": None, "households": [], "household": households.get_household(c, hid),
+                    "member_id": mid, "roles": households.member_roles(c, mid) if mid else [],
+                    "permissions": sorted(perms)}
+        mine = households.user_households(c, p.user_id)
+        want = int(x_household) if x_household and x_household.isdigit() else p.session_household
+        cur = next((h for h in mine if h["id"] == want), mine[0] if mine else None)
+        u = c.execute("SELECT id, email, name, picture FROM users WHERE id=%s", (p.user_id,)).fetchone()
+        out = {"via": p.via, "user": dict(zip(("id", "email", "name", "picture"), u)), "households": mine,
+               "household": households.get_household(c, cur["id"]) if cur else None,
+               "member_id": cur["member_id"] if cur else None,
+               "roles": households.member_roles(c, cur["member_id"]) if cur else [],
+               "permissions": sorted(households.permissions(c, cur["member_id"])) if cur else []}
+        if p.via == "cookie":
+            out["csrf_token"] = auth.csrf_token(p.session_token)
+        return out
+
+    @app.post("/auth/logout", status_code=204)
+    def logout(response: Response, p: Principal = Depends(principal), c=Depends(get_conn)):
+        if p.session_hash:
+            auth.delete_session(c, p.session_hash)
+        response.delete_cookie(auth.COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+
+    @app.put("/auth/household")
+    def pick_household(body: HouseholdPick, p: Principal = Depends(principal), c=Depends(get_conn)):
+        """The household switcher: later requests without X-Household act for this one."""
+        _signed_in(p)
+        if households.membership(c, p.user_id, body.household_id) is None:
+            raise HTTPException(404, "household")
+        auth.set_session_household(c, p.session_hash, body.household_id)
+        return {"household_id": body.household_id}
+
+    @app.post("/invites/accept")
+    def accept_invite(body: InviteAccept, p: Principal = Depends(principal), c=Depends(get_conn)):
+        """A signed-in user joins another household with an invite (it becomes the session's household)."""
+        _signed_in(p)
+        try:
+            hid = households.accept_invite(c, p.user_id, auth.hash_token(body.token))
+        except households.InviteError as e:
+            raise HTTPException(400, str(e))
+        auth.set_session_household(c, p.session_hash, hid)
+        return {"household_id": hid}
+
+    # --- the household (task 2): settings, members, roles, invites ---
+
+    def _rules(fn, *args, **kw):
+        try:
+            return fn(*args, **kw)
+        except households.NotFound as e:
+            raise HTTPException(404, str(e))
+        except households.RuleError as e:
+            raise HTTPException(409, str(e))
+
+    @app.get("/household", dependencies=A)
+    def get_household(c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        return households.get_household(c, s.household_id)
+
+    @app.patch("/household", dependencies=A)
+    def patch_household(body: HouseholdPatch, c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        _rules(households.update_household, c, s.household_id, s.member_id,
+               **body.model_dump(include=body.model_fields_set))
+        return households.get_household(c, s.household_id)
+
+    @app.get("/household/ai-usage", dependencies=A)
+    def ai_usage(days: int = Query(30, ge=1, le=366), c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        """AI calls per day and feature (metering for a later paid plan) and the daily budget."""
+        rows = c.execute("SELECT at::date, feature, count(*), count(*) FILTER (WHERE NOT ok), sum(input_tokens), "
+                         "sum(output_tokens) FROM ai_usage WHERE household_id=%s AND at > now() - %s * interval '1 day' "
+                         "GROUP BY 1, 2 ORDER BY 1 DESC, 2", (s.household_id, days))
+        return {"budget": households.get_household(c, s.household_id)["ai_daily_budget"],
+                "days": [{"date": d.isoformat(), "feature": f, "calls": n, "failed": bad, "input_tokens": ti,
+                          "output_tokens": to} for d, f, n, bad, ti, to in rows]}
+
+    @app.get("/household/members", dependencies=A)
+    def get_members(c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        return households.list_members(c, s.household_id)
+
+    @app.post("/household/members", status_code=201, dependencies=A)
+    def add_member(body: MemberIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        """A child profile, or an account member nobody signs in as yet (claimed by its email or an invite)."""
+        if body.roles is not None and body.roles != (["child"] if body.kind == "child" else ["contributor"]):
+            s.require("roles.assign")
+        mid = _rules(households.add_member, c, s.household_id, body.name, body.kind, body.birth_year, body.email,
+                     body.roles, s.member_id)
+        return next(m for m in households.list_members(c, s.household_id) if m["id"] == mid)
+
+    @app.patch("/household/members/{member_id}", dependencies=A)
+    def patch_member(member_id: int, body: MemberPatch, c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        fields = body.model_dump(include=body.model_fields_set)
+        if "name" in fields:
+            fields["display_name"] = fields.pop("name")
+        _rules(households.update_member, c, s.household_id, member_id, s.member_id, **fields)
+        return next(m for m in households.list_members(c, s.household_id) if m["id"] == member_id)
+
+    @app.delete("/household/members/{member_id}", status_code=204, dependencies=A)
+    def delete_member(member_id: int, c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        _rules(households.remove_member, c, s.household_id, member_id, s.member_id)
+
+    @app.put("/household/members/{member_id}/roles", dependencies=A)
+    def put_roles(member_id: int, body: RolesIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        """Replace a member's roles (Child only on child profiles, alone; the last Owner / Approver stays)."""
+        return {"roles": _rules(households.set_roles, c, s.household_id, member_id, body.roles, s.member_id)}
+
+    @app.get("/household/invites", dependencies=A)
+    def get_invites(c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        return households.list_invites(c, s.household_id)
+
+    @app.post("/household/invites", status_code=201, dependencies=A)
+    def create_invite(body: InviteIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        """A one-use invite link (token shown once). email = only that Google account; member_id = claims that
+        member (a seeded account, or a child profile turning 13)."""
+        iid, token, expires = _rules(households.create_invite, c, s.household_id, s.member_id, body.email, body.roles,
+                                     body.member_id, body.days, may_assign="roles.assign" in s.permissions)
+        url = settings.public_url.rstrip("/") + "/api/auth/login?" + urlencode({"invite": token})
+        return {"id": iid, "token": token, "url": url, "expires_at": expires.isoformat()}
+
+    @app.delete("/household/invites/{invite_id}", status_code=204, dependencies=A)
+    def delete_invite(invite_id: int, c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        _rules(households.revoke_invite, c, s.household_id, invite_id, s.member_id)
 
     return app
 
