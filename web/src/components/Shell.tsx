@@ -13,7 +13,7 @@ export function Shell() {
   const weeks = useWeeks(thisWeek, 4).data ?? [];
   const signOut = useSignOut();
   const switchHousehold = useSwitchHousehold();
-  const [theme, setTheme] = useTheme();
+  const [theme, setTheme, themeChoice] = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const name = me.user?.name ?? me.user?.email ?? "Home network";
@@ -33,7 +33,7 @@ export function Shell() {
           <MenuItem icon={theme === "dark" ? "sun" : "moon"} onSelect={() => { close(); setTheme(theme === "dark" ? "light" : "dark"); }}>
             {theme === "dark" ? "Light mode" : "Dark mode"}
           </MenuItem>
-          {theme !== "system" && <MenuItem icon="gear" onSelect={() => { close(); setTheme("system"); }}>Match the system</MenuItem>}
+          {themeChoice !== "system" && <MenuItem icon="gear" onSelect={() => { close(); setTheme("system"); }}>Match the system</MenuItem>}
           {me.via !== "legacy" && <MenuItem icon="logout" onSelect={() => { close(); signOut.mutate(); }}>Sign out</MenuItem>}
         </>
       )}

@@ -158,11 +158,57 @@ export interface ImportReport {
   existing?: boolean;
 }
 
-export interface PrepPlanSummary {
-  id: number;
-  status: string;
-  checklist?: { done: number; total: number };
-  stale?: boolean;
+/** GET /ratings/pending: placed nights before today (last 14 days) with no rating yet, newest first. */
+export interface PendingRating {
+  entry_id: number;
+  week: string;
+  day: number;
+  date: string;
+  recipe_id: number;
+  title: string;
+  multiplier: number;
+}
+
+/** GET /recipes/sources: NYT Cooking, each book and named other source, Unknown book, Other. */
+export interface RecipeSource {
+  key: string;
+  kind: "nyt" | "book" | "other";
+  title: string | null;
+  label: string;
+  count: number;
+  author?: string | null;
+  isbn?: string | null;
+}
+
+/** GET /books/search ("Which book?"): Open Library, then Google Books. */
+export interface BookHit {
+  title: string;
+  subtitle?: string | null;
+  authors: string[];
+  year?: number | null;
+  isbn?: string | null;
+  publisher?: string | null;
+  source?: string;
+}
+
+/** PATCH /recipes/{id}: only the fields that changed, and the revision the edit began from (409 if it moved on). */
+export interface RecipePatch {
+  title?: string;
+  servings?: number | null;
+  ingredients?: string[];
+  steps?: string[];
+  notes?: string | null;
+  description?: string | null;
+  prep_minutes?: number | null;
+  cook_minutes?: number | null;
+  total_minutes?: number | null;
+  yield_text?: string | null;
+  source_kind?: "book" | "other";
+  source_title?: string | null;
+  source_ref?: string | null;
+  source_author?: string | null;
+  source_isbn?: string | null;
+  expected_revision?: string | null;
 }
 
 /** Grams as "300 g" or "1.25 kg". */

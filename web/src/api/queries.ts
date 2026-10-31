@@ -2,8 +2,8 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ApiError, del, get, patch, post, put, setSession } from "./client";
 import type {
-  Choices, Draft, ImportReport, ListItem, Me, Permission, PlanEntry, PrepPlanSummary, Recipe, RecipeDetail, RatingIn,
-  ShareResult, Staple, WeekSummary,
+  BookHit, Choices, Draft, ImportReport, ListItem, Me, PendingRating, Permission, PlanEntry, Recipe, RecipeDetail, RecipePatch,
+  RecipeSource, RatingIn, ShareResult, Staple, WeekSummary,
 } from "./types";
 
 export const keys = {
@@ -13,7 +13,8 @@ export const keys = {
   weeks: ["weeks"] as const,
   week: (w: string) => ["week", w] as const,
   weekDraft: (w: string) => ["weekDraft", w] as const,
-  prep: (w: string) => ["prep", w] as const,
+  pending: ["pendingRatings"] as const,
+  sources: ["recipeSources"] as const,
   draft: (id: number) => ["draft", id] as const,
   staples: ["staples"] as const,
   defaultWeek: ["defaultWeek"] as const,
@@ -82,8 +83,9 @@ export function useWeekDraft(week: string | null) {
   });
 }
 
-export function usePrepPlan(week: string) {
-  return useQuery({ queryKey: keys.prep(week), queryFn: () => orNull(get<PrepPlanSummary>(`/weeks/${week}/prep-plan`)) });
+/** Dinners on a night before today (last 14 days) with no rating yet, newest first: the "How was …?" banner. */
+export function usePendingRatings(enabled = true) {
+  return useQuery({ queryKey: keys.pending, queryFn: () => get<PendingRating[]>("/ratings/pending"), enabled });
 }
 
 async function orNull<T>(p: Promise<T>): Promise<T | null> {
@@ -101,6 +103,7 @@ function invalidateWeek(qc: QueryClient, week: string) {
   qc.invalidateQueries({ queryKey: keys.weekDraft(week) });
   qc.invalidateQueries({ queryKey: keys.defaultWeek });
   qc.invalidateQueries({ queryKey: keys.recipes });
+  qc.invalidateQueries({ queryKey: keys.pending });
 }
 
 /** Move an entry to a night (0–6) or back to the tray (null). Optimistic: the card moves at once. */
@@ -150,6 +153,31 @@ export function useRate(week: string) {
       qc.invalidateQueries({ queryKey: ["recipe"] });
     },
   });
+}
+
+/** Edit recipe / Edit source: PATCH /recipes/{id} with what changed. 409 = changed elsewhere since the edit began. */
+export function useEditRecipe(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RecipePatch) => patch<Recipe>(`/recipes/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.recipe(id) });
+      qc.invalidateQueries({ queryKey: keys.recipes });
+      qc.invalidateQueries({ queryKey: keys.sources });
+      qc.invalidateQueries({ queryKey: keys.weeks });       // an edit of what a recipe buys makes its cart stale
+      qc.invalidateQueries({ queryKey: ["weekDraft"] });
+      qc.invalidateQueries({ queryKey: ["week"] });         // the week shows the recipe's title
+    },
+  });
+}
+
+export function useRecipeSources(enabled = true) {
+  return useQuery({ queryKey: keys.sources, queryFn: () => get<RecipeSource[]>("/recipes/sources"), enabled });
+}
+
+/** "Which book?" suggestions from the server's book search ([] for fewer than 2 characters; never an error there). */
+export function searchBooks(q: string, signal?: AbortSignal) {
+  return get<BookHit[]>(`/books/search?${new URLSearchParams({ q, limit: "8" })}`, signal);
 }
 
 export function useShareImport() {

@@ -19,8 +19,8 @@ export function initTheme() {
   apply((localStorage.getItem(KEY) as ThemeChoice) || "system");
 }
 
-/** [the effective theme or "system"'s current answer, setter]. */
-export function useTheme(): [ThemeChoice, (t: ThemeChoice) => void] {
+/** [the theme shown (a choice, or the system's current answer), setter, the choice itself ("system" = follows it)]. */
+export function useTheme(): ["light" | "dark", (t: ThemeChoice) => void, ThemeChoice] {
   const [choice, setChoice] = useState<ThemeChoice>(() => (localStorage.getItem(KEY) as ThemeChoice) || "system");
   const [sysDark, setSysDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
   useEffect(() => {
@@ -35,5 +35,5 @@ export function useTheme(): [ThemeChoice, (t: ThemeChoice) => void] {
     apply(t);
     setChoice(t);
   };
-  return [choice === "system" ? (sysDark ? "dark" : "light") : choice, set];
+  return [choice === "system" ? (sysDark ? "dark" : "light") : choice, set, choice];
 }

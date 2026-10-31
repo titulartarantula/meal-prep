@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-const SHOTS = process.env.SHOTS ? "e2e/screens" : null;
+const SHOTS = process.env.SHOTS_DIR ?? (process.env.SHOTS ? "e2e/screens" : null);
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
@@ -85,7 +85,7 @@ test.describe("signed in", () => {
     // Rate Thursday's dinner.
     await page.getByRole("article", { name: /^Thursday/ }).getByRole("button", { name: "How was it?" }).click();
     const dlg = page.getByRole("dialog");
-    await expect(dlg).toContainText("How was Lemon orzo");
+    await expect(dlg).toContainText("How was Thursday's Lemon orzo");
     await axe(page);
     await phoneChecks(page);
     await dlg.getByRole("radio", { name: "4 stars" }).click();
@@ -93,6 +93,177 @@ test.describe("signed in", () => {
     await dlg.getByRole("button", { name: "Save rating" }).click();
     await expect(dlg).toBeHidden();
     await expect(page.getByRole("article", { name: /^Thursday/ }).getByRole("button", { name: /Rated 4 of 5/ })).toBeVisible();
+  });
+
+  test("this week: the status strip has no prep step; the main action is docked at the bottom on a phone", async ({ page }) => {
+    const steps = page.getByRole("list", { name: "Week status" });
+    if (!phone()) {
+      await expect(steps).toContainText("Cart sent");
+      await expect(steps).not.toContainText("Prep");
+      await expect(page.locator(".dock")).toHaveCount(0);
+      await expect(page.locator(".top-right").getByRole("button", { name: "View cart" })).toBeVisible();
+      return;
+    }
+    await expect(steps).not.toContainText("Prep");
+    const dock = page.locator(".dock");
+    await expect(dock.getByRole("button", { name: "View cart" })).toBeVisible();
+    await expect(page.locator(".top-right").getByRole("button")).toHaveCount(0);
+    // docked: right above the tab bar while the nights scroll under it
+    const vp = page.viewportSize()!;
+    const [d, t] = [await dock.boundingBox(), await page.locator(".tabbar").boundingBox()];
+    expect(Math.abs(d!.y + d!.height - t!.y)).toBeLessThanOrEqual(1.5);   // the tab bar's 1 px top border
+    expect(Math.round(t!.y + t!.height)).toBe(vp.height);
+    await page.getByRole("button", { name: "Next week" }).click();
+    await expect(page.locator(".dock").getByRole("button", { name: "Build cart" })).toBeVisible();
+    await phoneChecks(page);
+    await shot(page, "13-week-docked");
+    await page.locator(".dock").getByRole("button", { name: "Build cart" }).click();
+    await expect(page.getByRole("heading", { name: "Shopping list" })).toBeVisible();
+  });
+
+  test("rating: the How was banner with Later, company answer, So far and earlier notes, Good for company", async ({ page }) => {
+    const banner = page.getByRole("region", { name: "Rate a dinner" });
+    await expect(banner).toContainText(/How was \w+day's /);
+    const first = (await banner.locator("b").textContent())!;
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "14-rate-banner");
+    // Later: the next unrated dinner asks instead, also after a reload (today only)
+    await banner.getByRole("button", { name: "Later" }).click();
+    await expect(banner.locator("b")).not.toHaveText(first);
+    const second = (await banner.locator("b").textContent())!;
+    await page.reload();
+    await expect(banner.locator("b")).toHaveText(second);
+    // Rate it opens the dialog for that dinner
+    await banner.getByRole("button", { name: "Rate it" }).click();
+    const dlg = page.getByRole("dialog");
+    await expect(dlg.getByRole("heading", { level: 2 })).toHaveText(second);
+    await dlg.getByRole("radio", { name: "5 stars" }).click();
+    await dlg.getByRole("button", { name: "Save rating" }).click();
+    await expect(dlg).toBeHidden();
+    await expect(banner.locator("b")).not.toHaveText(second);
+
+    // last week's chili: its ratings so far, earlier notes, and the company answer (choose it again to clear it)
+    await page.getByRole("button", { name: "Previous week" }).click();
+    await page.getByRole("article", { name: /^Wednesday/ }).getByRole("button", { name: "How was it?" }).click();
+    await expect(dlg.getByRole("heading", { level: 2 })).toHaveText("How was Wednesday's Turkey chili with cornbread?");
+    await expect(dlg).toContainText("So far: Family 4.1/5 · Company: maybe · “Kids wanted more cornbread”");
+    await expect(dlg.getByRole("heading", { name: "Earlier notes" })).toBeVisible();
+    await expect(dlg.getByRole("listitem").filter({ hasText: "A bit too spicy" })).toBeVisible();
+    const company = dlg.getByRole("radiogroup", { name: "Would you make it for company?" });
+    await company.getByRole("radio", { name: "Maybe" }).click();
+    await expect(company.getByRole("radio", { name: "Maybe" })).toHaveAttribute("aria-checked", "true");
+    await company.getByRole("radio", { name: "Maybe" }).click();
+    await expect(company.getByRole("radio", { name: "Maybe" })).toHaveAttribute("aria-checked", "false");
+    await company.getByRole("radio", { name: "Yes" }).click();
+    await dlg.getByRole("radio", { name: "4 stars" }).click();
+    await dlg.getByLabel(/^Note/).fill("Great with a crowd");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "15-rate-dialog");
+    await dlg.getByRole("button", { name: "Save rating" }).click();
+    await expect(dlg).toBeHidden();
+
+    // Recipes → Good for company: the chili is now one; the salmon (no answer) isn't
+    await page.getByRole("link", { name: "Recipes" }).click();
+    await page.getByRole("button", { name: "Good for company", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Good for company", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const grid = page.getByRole("list", { name: "Recipes" });
+    await expect(grid).toContainText("Turkey chili with cornbread");
+    await expect(grid).toContainText("Roast chicken with lemon potatoes");
+    await expect(grid).not.toContainText("Miso-glazed salmon");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "16-good-for-company");
+    await page.getByRole("searchbox", { name: "Search recipes" }).fill("salmon");
+    await expect(grid).toContainText("No recipes match.");
+  });
+
+  test("recipes: edit a recipe (409 when it changed meanwhile, discard), edit the source with the book search", async ({ page }) => {
+    await page.getByRole("link", { name: "Recipes" }).click();
+    await page.getByRole("button", { name: /Red lentil dal/ }).click();
+    const drawer = page.getByRole("dialog", { name: "Red lentil dal with spinach & garlic naan" });
+    await expect(drawer).toContainText("From: NYT Cooking");
+    await expect(drawer.getByRole("button", { name: "Edit source" })).toHaveCount(0);   // an NYT recipe has no book
+    await drawer.getByRole("button", { name: "Edit recipe" }).click();
+    const edit = page.getByRole("dialog", { name: "Edit recipe" });
+    await expect(edit.getByLabel("Ingredients")).toHaveValue(/1\.5 cup red lentils/);
+    await edit.getByLabel("Title").fill("");
+    await edit.getByRole("button", { name: "Save changes" }).click();
+    await expect(edit.getByText("The recipe needs a title.")).toBeVisible();
+    await edit.getByLabel("Title").fill("Red lentil dal with spinach");
+    await edit.getByLabel("Ingredients").fill("1.5 cup red lentils\n1 can coconut milk\nFor the tadka:\n2 tbsp ghee\n1 tsp cumin seeds");
+    await edit.getByLabel("Steps").fill("Simmer the lentils.\nFry the tadka and pour it over.");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "17-edit-recipe");
+    await edit.getByRole("button", { name: "Save changes" }).click();
+    await expect(edit).toBeHidden();
+    const renamed = page.getByRole("dialog", { name: "Red lentil dal with spinach" });
+    await expect(renamed).toContainText("cumin seeds");
+    await expect(renamed).toContainText("Fry the tadka and pour it over.");
+
+    // changed somewhere else after the edit began: 409, the edits stay
+    await renamed.getByRole("button", { name: "Edit recipe" }).click();
+    await edit.getByLabel("Steps").fill("Simmer.");
+    const r = await page.request.patch("/api/recipes/4", { data: { notes: "Changed on a phone" }, headers: { "X-CSRF-Token": "mock-csrf" } });
+    expect(r.status()).toBe(200);
+    await edit.getByRole("button", { name: "Save changes" }).click();
+    await expect(edit.getByRole("alert").filter({ hasText: "since you started editing it" })).toBeVisible();
+    await expect(edit.getByLabel("Steps")).toHaveValue("Simmer.");
+    await edit.getByRole("button", { name: "Cancel" }).click();
+    await expect(edit).toContainText("Discard your changes?");
+    await edit.getByRole("button", { name: "Discard" }).click();
+    await expect(edit).toBeHidden();
+    await renamed.getByRole("button", { name: "Close" }).click();
+
+    // a book recipe: Edit source → book search → pick a book, a page
+    await page.getByRole("button", { name: /Chicken tinga tacos/ }).click();
+    const tacos = page.getByRole("dialog", { name: "Chicken tinga tacos with pickled onions" });
+    await expect(tacos).toContainText("From: Weeknight Mexican · Ada Example, p. 88");
+    await tacos.getByRole("button", { name: "Edit source" }).click();
+    const src = page.getByRole("dialog", { name: "Where is it from?" });
+    await expect(src.getByRole("radio", { name: "Book" })).toHaveAttribute("aria-checked", "true");
+    await src.getByLabel("Book", { exact: true }).fill("pantry");
+    await expect(src.getByRole("region", { name: "Book search" })).toContainText("The Invented Pantry");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "18-edit-source");
+    await src.getByRole("button", { name: /^The Invented Pantry/ }).click();
+    await expect(src.getByLabel("Book", { exact: true })).toHaveValue("The Invented Pantry");
+    await expect(src.getByRole("region", { name: "Book search" })).toHaveCount(0);
+    await src.getByLabel(/^Page/).fill("12");
+    await src.getByRole("button", { name: "Save" }).click();
+    await expect(src).toBeHidden();
+    await expect(tacos).toContainText("From: The Invented Pantry · Di Placeholder, p. 12");
+    await tacos.getByRole("button", { name: "Close" }).click();
+
+    // to another source: a name is needed; "Used before" names fill it
+    await page.getByRole("button", { name: /Turkey chili/ }).click();
+    const chili = page.getByRole("dialog", { name: "Turkey chili with cornbread" });
+    await chili.getByRole("button", { name: "Edit source" }).click();
+    await src.getByRole("radio", { name: "Other" }).click();
+    await src.getByRole("button", { name: "Save" }).click();
+    await expect(src.getByText("Add a name to save")).toBeVisible();
+    await src.getByRole("group", { name: "Used before" }).getByRole("button", { name: "Grandma's cards" }).click();
+    await src.getByLabel(/^Note/).fill("blue binder");
+    await axe(page);
+    await src.getByRole("button", { name: "Save" }).click();
+    await expect(chili).toContainText("From: Grandma's cards, blue binder");
+  });
+
+  test("account menu: Match the system only when a theme was chosen", async ({ page }) => {
+    const menu = page.getByRole("button", { name: "Account and settings" });
+    await menu.click();
+    await expect(page.getByRole("menuitem", { name: /mode$/ })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Match the system" })).toHaveCount(0);
+    await page.getByRole("menuitem", { name: /mode$/ }).click();
+    await menu.click();
+    await page.getByRole("menuitem", { name: "Match the system" }).click();
+    await expect(page.locator("html")).not.toHaveAttribute("data-theme", /./);
+    await menu.click();
+    await expect(page.getByRole("menuitem", { name: /mode$/ })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Match the system" })).toHaveCount(0);
   });
 
   test("this week: drag a recipe from the tray onto a night", async ({ page }) => {

@@ -74,8 +74,8 @@ export interface paths {
          * @description Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it
          *     comes from. An NYT recipe has no book title or page. A different book title sent without an author/ISBN clears
          *     them (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else
-         *     the deterministic clean-up). The id, uid, plan entries and ratings stay; a cart or prep plan made from the old
-         *     lines goes stale (db.plan_fingerprint, prepplan._stale).
+         *     the deterministic clean-up). The id, uid, plan entries and ratings stay; a cart made from the old
+         *     lines goes stale (db.plan_fingerprint).
          */
         patch: operations["patch_recipe_recipes__recipe_id__patch"];
         trace?: never;
@@ -885,91 +885,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/prep-plans": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Prep Plan */
-        post: operations["create_prep_plan_prep_plans_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/prep-plans/{plan_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Prep Plan */
-        get: operations["get_prep_plan_prep_plans__plan_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/weeks/{week}/prep-plan": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Week Prep Plan */
-        get: operations["week_prep_plan_weeks__week__prep_plan_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/prep-plans/{plan_id}/tasks/{task_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Patch Prep Task */
-        patch: operations["patch_prep_task_prep_plans__plan_id__tasks__task_id__patch"];
-        trace?: never;
-    };
-    "/plan/{entry_id}/card": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Cook Card */
-        get: operations["cook_card_plan__entry_id__card_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/picks/{key}": {
         parameters: {
             query?: never;
@@ -1729,11 +1644,6 @@ export interface components {
             /** Title */
             title?: string | null;
         };
-        /** PrepPlanIn */
-        PrepPlanIn: {
-            /** Weeks */
-            weeks: string[];
-        };
         /** Rating */
         Rating: {
             /** Family */
@@ -2064,11 +1974,6 @@ export interface components {
              * @default []
              */
             exclude: number[];
-        };
-        /** TaskPatch */
-        TaskPatch: {
-            /** Done */
-            done: boolean;
         };
         /** UsedIn */
         UsedIn: {
@@ -3787,168 +3692,6 @@ export interface operations {
             header?: never;
             path: {
                 draft_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_prep_plan_prep_plans_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PrepPlanIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_prep_plan_prep_plans__plan_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                plan_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    week_prep_plan_weeks__week__prep_plan_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                week: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_prep_task_prep_plans__plan_id__tasks__task_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                plan_id: number;
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TaskPatch"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cook_card_plan__entry_id__card_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: number;
             };
             cookie?: never;
         };

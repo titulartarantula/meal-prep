@@ -570,3 +570,59 @@ tr.removed .pth { opacity: .45; }
   .rate-cta::after, .rated::after, .link-btn::after { content: ""; position: absolute; inset: -8px -6px; }
   .rated { min-width: 120px; }
 }
+
+/* ── Ratings: the "How was …?" banner, company answer, earlier notes ─────────────────────────────────────────── */
+.rate-banner { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 16px;
+  border-radius: var(--r-md); background: var(--primarysoft); color: var(--onprimarysoft); }
+.rate-banner-text { flex: 1 1 260px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rate-banner-text b { font-size: 15px; font-weight: 650; }
+.rate-banner-text small { font-size: 13px; }
+.rate-banner-actions { display: flex; gap: 8px; }
+.rate-banner .btn.ghost { color: var(--onprimarysoft); }
+.field-set { border: 0; padding: 0; margin: 0 0 14px; display: flex; flex-direction: column; gap: 8px; }
+.field-set legend { font-weight: 550; font-size: 13px; padding: 0; margin-bottom: 8px; }
+.field-set legend small { display: block; color: var(--text2); font-weight: 400; margin-top: 2px; }
+.seg.company button { min-width: 72px; justify-content: center; }
+.earlier-notes { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; margin-top: -2px; }
+.modal-body > .field + section { margin-top: 14px; }
+.modal-body > p.small:first-child { margin-bottom: 12px; }
+
+/* ── Recipes: Good for company, the source line, Edit recipe / Edit source ─────────────────────────────────── */
+.toggle { height: 36px; padding: 0 12px; border-radius: var(--r-sm); box-shadow: inset 0 0 0 1px var(--hair); background: var(--surface);
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 550; color: var(--text2); }
+.toggle.on { box-shadow: inset 0 0 0 1.5px var(--primary); color: var(--text); }
+.toggle.on .ic { color: var(--primary); }
+.source-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; color: var(--text2); }
+.source-line > span { margin-right: auto; }
+.pre-line { white-space: pre-line; }
+.edit-form { display: flex; flex-direction: column; gap: 14px; }
+.edit-form .field label { font-weight: 550; }
+.edit-form textarea { font-family: inherit; line-height: 1.45; }
+.field.invalid input, .field.invalid textarea { box-shadow: inset 0 0 0 1.5px var(--danger); }
+.field .field-problem { color: var(--danger); font-weight: 550; }
+.edit-more { border-top: 1px solid var(--hair); padding-top: 12px; }
+.edit-more summary { cursor: pointer; font-weight: 550; font-size: 13.5px; margin-bottom: 12px; }
+.edit-more[open] { display: flex; flex-direction: column; gap: 14px; }
+.edit-more[open] summary { margin-bottom: 0; }
+.edit-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.foot-ask { font-weight: 600; }
+.book-rows h3 { font-weight: 550; margin-bottom: 4px; }
+.book-rows ul { display: flex; flex-direction: column; border-radius: var(--r-sm); box-shadow: inset 0 0 0 1px var(--hair); }
+.book-rows li + li { border-top: 1px solid var(--hair); }
+.book-rows button { width: 100%; text-align: left; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; min-height: 44px; }
+.book-rows button:hover { background: var(--sunken); }
+.book-rows button small { color: var(--text2); font-size: 12.5px; }
+.used-before { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.used-before > span { flex: 1 1 100%; }
+
+@media (max-width: 899px), (pointer: coarse) {
+  .toggle { min-height: 48px; }
+  .book-rows button { min-height: 48px; }
+}
+@media (max-width: 899px) {
+  .toolbar .toggle { flex: 1 1 auto; justify-content: center; }
+  .edit-times { grid-template-columns: minmax(0, 1fr); }
+  .rate-banner-actions { flex: 1 1 100%; }
+  .rate-banner-actions .btn { flex: 1; }
+  .source-line > span { flex: 1 1 100%; }
+}

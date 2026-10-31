@@ -96,7 +96,7 @@
   "/recipes/{recipe_id}": {
    "patch": {
     "summary": "Patch Recipe",
-    "description": "Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it\ncomes from. An NYT recipe has no book title or page. A different book title sent without an author/ISBN clears\nthem (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else\nthe deterministic clean-up). The id, uid, plan entries and ratings stay; a cart or prep plan made from the old\nlines goes stale (db.plan_fingerprint, prepplan._stale).",
+    "description": "Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it\ncomes from. An NYT recipe has no book title or page. A different book title sent without an author/ISBN clears\nthem (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else\nthe deterministic clean-up). The id, uid, plan entries and ratings stay; a cart made from the old\nlines goes stale (db.plan_fingerprint).",
     "operationId": "patch_recipe_recipes__recipe_id__patch",
     "parameters": [
      {
@@ -2223,210 +2223,6 @@
       "schema": {
        "type": "integer",
        "title": "Draft Id"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
-  "/prep-plans": {
-   "post": {
-    "summary": "Create Prep Plan",
-    "operationId": "create_prep_plan_prep_plans_post",
-    "requestBody": {
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/PrepPlanIn"
-       }
-      }
-     },
-     "required": true
-    },
-    "responses": {
-     "202": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
-  "/prep-plans/{plan_id}": {
-   "get": {
-    "summary": "Get Prep Plan",
-    "operationId": "get_prep_plan_prep_plans__plan_id__get",
-    "parameters": [
-     {
-      "name": "plan_id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "integer",
-       "title": "Plan Id"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
-  "/weeks/{week}/prep-plan": {
-   "get": {
-    "summary": "Week Prep Plan",
-    "operationId": "week_prep_plan_weeks__week__prep_plan_get",
-    "parameters": [
-     {
-      "name": "week",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string",
-       "format": "date",
-       "title": "Week"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
-  "/prep-plans/{plan_id}/tasks/{task_id}": {
-   "patch": {
-    "summary": "Patch Prep Task",
-    "operationId": "patch_prep_task_prep_plans__plan_id__tasks__task_id__patch",
-    "parameters": [
-     {
-      "name": "plan_id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "integer",
-       "title": "Plan Id"
-      }
-     },
-     {
-      "name": "task_id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string",
-       "title": "Task Id"
-      }
-     }
-    ],
-    "requestBody": {
-     "required": true,
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/TaskPatch"
-       }
-      }
-     }
-    },
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
-  "/plan/{entry_id}/card": {
-   "get": {
-    "summary": "Cook Card",
-    "operationId": "cook_card_plan__entry_id__card_get",
-    "parameters": [
-     {
-      "name": "entry_id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "integer",
-       "title": "Entry Id"
       }
      }
     ],
@@ -4615,24 +4411,6 @@
     ],
     "title": "PlanEntry"
    },
-   "PrepPlanIn": {
-    "properties": {
-     "weeks": {
-      "items": {
-       "type": "string",
-       "format": "date"
-      },
-      "type": "array",
-      "minItems": 1,
-      "title": "Weeks"
-     }
-    },
-    "type": "object",
-    "required": [
-     "weeks"
-    ],
-    "title": "PrepPlanIn"
-   },
    "Rating": {
     "properties": {
      "family": {
@@ -5819,19 +5597,6 @@
      "nights"
     ],
     "title": "SuggestIn"
-   },
-   "TaskPatch": {
-    "properties": {
-     "done": {
-      "type": "boolean",
-      "title": "Done"
-     }
-    },
-    "type": "object",
-    "required": [
-     "done"
-    ],
-    "title": "TaskPatch"
    },
    "UsedIn": {
     "properties": {

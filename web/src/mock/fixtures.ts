@@ -9,6 +9,9 @@ export interface MockRecipe {
   source_kind: "nyt" | "book" | "other";
   source_title?: string;
   source_ref?: string;
+  source_author?: string;
+  company?: "yes" | "maybe" | "no"; // the latest "would you make it for company?" answer
+  notes?: string[];                 // earlier rating notes, newest first
   photo: string | null; // palette key for a generated SVG "photo"; "broken" = a link that 404s (shows the placeholder); null = no image
   avg: number | null;
   cooked: number;
@@ -19,7 +22,7 @@ export interface MockRecipe {
 
 export const RECIPES: MockRecipe[] = [
   { id: 1, title: "Sheet-pan gnocchi with sausage & peppers", minutes: 35, servings: 4, source: "nyt", source_kind: "nyt",
-    photo: "gnocchi", avg: 4.8, cooked: 6,
+    photo: "gnocchi", avg: 4.8, cooked: 6, company: "yes", notes: ["Double the peppers"],
     ingredients: [[500, "g", "potato gnocchi"], [500, "g", "mild Italian sausage"], [2, null, "bell peppers", "sliced"],
       [1, null, "red onion", "cut in wedges"], [2, "tbsp", "olive oil"], [null, null, "parmesan", "to serve"]],
     steps: ["Heat the oven to 425°F.", "Toss gnocchi, peppers and onion with oil on a sheet pan; nestle in the sausage.",
@@ -30,7 +33,8 @@ export const RECIPES: MockRecipe[] = [
       [300, "g", "baby bok choy"], [1, "tbsp", "sesame seeds"]],
     steps: ["Whisk miso, maple and vinegar.", "Brush over the salmon and broil 8 minutes.", "Sauté the bok choy; scatter sesame."] },
   { id: 3, title: "Chicken tinga tacos with pickled onions", minutes: 40, servings: 4, source: "book", source_kind: "book",
-    source_title: "Weeknight Mexican", source_ref: "p. 88", photo: "tacos", avg: 4.8, cooked: 5,
+    source_title: "Weeknight Mexican", source_ref: "88", source_author: "Ada Example", photo: "tacos", avg: 4.8, cooked: 5,
+    company: "yes",
     ingredients: [[700, "g", "boneless skinless chicken thighs"], [2, null, "chipotles in adobo"], [1, "can", "diced tomatoes"],
       [12, null, "corn tortillas"], [1, null, "red onion", "thinly sliced"], [1, null, "lime"]],
     steps: ["Simmer the chicken with tomatoes and chipotle 20 minutes.", "Shred and return to the sauce.",
@@ -52,7 +56,7 @@ export const RECIPES: MockRecipe[] = [
     photo: "bourguignon", avg: 4.6, cooked: 3,
     ingredients: [[900, "g", "cremini mushrooms"], [2, null, "carrots"], [1, "cup", "red wine"], [2, "tbsp", "tomato paste"]],
     steps: ["Brown the mushrooms in batches.", "Add carrots, wine and paste; simmer 45 minutes."] },
-  { id: 8, title: "Halloumi grain bowls", minutes: 30, servings: 4, source: "other", source_kind: "other",
+  { id: 8, title: "Halloumi grain bowls", minutes: 30, servings: 4, source: "other", source_kind: "other", source_title: "Grandma's cards",
     photo: null, avg: null, cooked: 0,
     ingredients: [[250, "g", "halloumi"], [1, "cup", "farro"], [1, null, "cucumber"], [1, "cup", "cherry tomatoes"]],
     steps: ["Cook the farro.", "Sear the halloumi.", "Build bowls."] },
@@ -60,17 +64,27 @@ export const RECIPES: MockRecipe[] = [
     photo: "noodles", avg: 4.3, cooked: 3, ingredients: [[1, "block", "extra-firm tofu"], [250, "g", "rice noodles"], [0.33, "cup", "peanut butter"]],
     steps: ["Press and pan-fry the tofu.", "Toss noodles in peanut sauce."] },
   { id: 10, title: "Turkey chili with cornbread", minutes: 60, servings: 6, source: "book", source_kind: "book",
-    source_title: "Big Pot Suppers", source_ref: "p. 41", photo: null, avg: 4.1, cooked: 4,
+    source_title: "Big Pot Suppers", source_ref: "41", photo: null, avg: 4.1, cooked: 4, company: "maybe",
+    notes: ["Kids wanted more cornbread", "A bit too spicy"],
     ingredients: [[700, "g", "ground turkey"], [2, "can", "kidney beans"], [1, "box", "cornbread mix"]], steps: ["Brown, simmer, bake."] },
   { id: 11, title: "Shrimp fried rice", minutes: 20, servings: 4, source: "nyt", source_kind: "nyt",
     photo: "rice", avg: 4.4, cooked: 5, ingredients: [[400, "g", "shrimp"], [3, "cup", "cooked rice"], [3, null, "eggs"]], steps: ["Stir-fry."] },
   { id: 12, title: "Roast chicken with lemon potatoes", minutes: 90, servings: 4, source: "nyt", source_kind: "nyt",
-    photo: null, avg: 4.9, cooked: 8, ingredients: [[1, null, "whole chicken"], [1, "kg", "yellow potatoes"], [2, null, "lemons"]],
+    photo: null, avg: 4.9, cooked: 8, company: "yes", ingredients: [[1, null, "whole chicken"], [1, "kg", "yellow potatoes"], [2, null, "lemons"]],
     steps: ["Roast at 425°F about 75 minutes."] },
+];
+
+/** Book search results ("Which book?"): invented titles. */
+export const BOOKS = [
+  { title: "Weeknight Mexican", subtitle: null, authors: ["Ada Example"], year: 2019, isbn: "9780000000019" },
+  { title: "Big Pot Suppers", subtitle: "Stews for a crowd", authors: ["Bo Sample", "Cy Test"], year: 2021, isbn: "9780000000026" },
+  { title: "The Invented Pantry", subtitle: null, authors: ["Di Placeholder"], year: 2015, isbn: "9780000000033" },
+  { title: "Pantry Suppers", subtitle: "Cooking from the cupboard", authors: ["Ed Fixture"], year: 2023, isbn: null },
 ];
 
 /** Plan entries per week offset from this week: [recipe, day | null, rating | null]. */
 export const PLAN: Record<number, [number, number | null, number | null][]> = {
+  [-1]: [[11, 1, 5], [10, 3, null], [12, 5, null], [4, 6, null]],
   0: [[1, 0, 5], [2, 1, 4], [3, 2, 5], [4, 3, 4], [5, 4, null], [6, 5, null], [7, null, null], [8, null, null]],
   1: [[9, 0, null], [11, 2, null], [12, 4, null]],
 };

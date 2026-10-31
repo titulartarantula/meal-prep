@@ -1,12 +1,13 @@
 import { useMemo, useState, type DragEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  useCan, useMoveEntry, usePrepPlan, useRate, useRecipes, useRemoveEntry, useWeek, useWeekDraft, useWeeks,
+  useCan, useMoveEntry, useRecipes, useRemoveEntry, useWeek, useWeekDraft, useWeeks,
 } from "../api/queries";
 import type { PlanEntry, Recipe } from "../api/types";
 import { Icon, Star } from "../components/Icon";
 import { AddRecipeDialog } from "../components/AddRecipeDialog";
-import { Button, ErrorNote, IconButton, Loading, Menu, MenuItem, Modal, Photo, StarsInput, useToast } from "../components/ui";
+import { RateDialog, RatingBanner, pendingEntry, usePendingBanner } from "../components/Rating";
+import { Button, ErrorNote, IconButton, Loading, Menu, MenuItem, Photo, useToast } from "../components/ui";
 import { formatAvg, formatMinutes } from "../lib/format";
 import { useCompact } from "../lib/media";
 import { DAYS, DAYS_LONG, isSameDay, nightDate, shiftWeek, shortDate, weekName, weekOf, weekRange } from "../lib/weeks";
@@ -23,7 +24,6 @@ export function ThisWeek() {
   const recipes = useRecipes();
   const summary = useWeeks(week, 1).data?.[0];
   const draft = useWeekDraft(week).data;
-  const prep = usePrepPlan(week).data;
   const move = useMoveEntry(week);
   const remove = useRemoveEntry(week);
   const toast = useToast();
@@ -40,6 +40,7 @@ export function ThisWeek() {
   // Touch layouts place dinners with the ⋮ menu: HTML drag-and-drop doesn't start from a finger.
   const compact = useCompact();
   const drag = editable && !compact;
+  const [pending, rateLater] = usePendingBanner(can("rate.self"));
 
   const go = (w: string) => navigate(w === thisWeek ? "/week" : `/week/${w}`);
 
@@ -62,7 +63,18 @@ export function ThisWeek() {
   }
 
   const cartStep = summary?.carted ? "done" : summary?.cart_stale ? "stale" : "todo";
-  const prepDone = prep?.status === "ready" && prep.checklist && prep.checklist.total > 0 && prep.checklist.done >= prep.checklist.total;
+  // The week's one main action; on a phone it is docked above the tab bar, like the Android app's.
+  const size = compact ? "lg" : undefined;
+  const action = list.length === 0 ? (
+    editable ? <Button kind="primary" size={size} icon="plus" onClick={() => setAdding("tray")}>Add recipes</Button> : null
+  ) : summary?.carted && draft ? (
+    <Button kind="outline" size={size} iconAfter="arrow" onClick={() => navigate(`/cart/${draft.id}`)}>View cart</Button>
+  ) : can("cart.build") ? (
+    <Button kind="primary" size={size} iconAfter="arrow" onClick={() => navigate(`/shopping?week=${week}`)}>
+      {draft && draft.status !== "sent" && !draft.stale ? "Review cart" : "Build cart"}
+    </Button>
+  ) : null;
+  const placed = list.filter((e) => e.day != null).length;
 
   return (
     <main className="main" id="main">
@@ -86,20 +98,12 @@ export function ThisWeek() {
               <Icon name={cartStep === "done" ? "check" : cartStep === "stale" ? "alert" : "minus"} size={15} />
               {cartStep === "stale" ? "Cart out of date" : "Cart sent"}
             </li>
-            <li className="step-line" aria-hidden="true" />
-            <li className={prepDone ? "done" : ""}><Icon name={prepDone ? "check" : "minus"} size={15} />Prep done</li>
           </ol>
-          {list.length === 0 ? (
-            <Button kind="primary" icon="plus" onClick={() => setAdding("tray")} disabled={!editable}>Add recipes</Button>
-          ) : summary?.carted && draft ? (
-            <Button kind="outline" iconAfter="arrow" onClick={() => navigate(`/cart/${draft.id}`)}>View cart</Button>
-          ) : can("cart.build") ? (
-            <Button kind="primary" iconAfter="arrow" onClick={() => navigate(`/shopping?week=${week}`)}>
-              {draft && draft.status !== "sent" && !draft.stale ? "Review cart" : "Build cart"}
-            </Button>
-          ) : null}
+          {!compact && action}
         </div>
       </div>
+
+      {pending && <RatingBanner pending={pending} onRate={() => setRating(pendingEntry(pending))} onLater={rateLater} />}
 
       {entries.isPending || recipes.isPending ? <Loading /> : entries.error ? <ErrorNote error={entries.error} onRetry={() => entries.refetch()} /> : (
         <section className="grid" aria-label={`Dinners, ${weekRange(week)}`}>
@@ -178,7 +182,13 @@ export function ThisWeek() {
 
       <AddRecipeDialog open={adding !== null} week={week} day={typeof adding === "number" ? adding : null}
         onClose={() => setAdding(null)} />
-      <RateDialog entry={rating} week={week} onClose={() => setRating(null)} />
+      <RateDialog entry={rating} onClose={() => setRating(null)} />
+      {compact && action && (
+        <div className="dock">
+          <span className="dock-text"><b>{placed}</b> {placed === 1 ? "dinner" : "dinners"} placed</span>
+          {action}
+        </div>
+      )}
     </main>
   );
 }
@@ -231,36 +241,5 @@ function NightCard({ entry, recipe, compact, past, editable, draggable, onRate, 
         ) : null}
       </div>
     </div>
-  );
-}
-
-function RateDialog({ entry, week, onClose }: { entry: PlanEntry | null; week: string; onClose: () => void }) {
-  const rate = useRate(week);
-  const [stars, setStars] = useState(0);
-  const [note, setNote] = useState("");
-  const [shown, setShown] = useState<number | null>(null);
-  if (entry && shown !== entry.id) {
-    setShown(entry.id);
-    setStars(entry.rating?.family ?? 0);
-    setNote(entry.rating?.note ?? "");
-  }
-  const save = () => entry && rate.mutate({ id: entry.id, rating: { family: stars, note: note.trim() || null } }, { onSuccess: onClose });
-  return (
-    <Modal open={!!entry} onClose={() => { setShown(null); onClose(); }} title={entry ? `How was ${entry.title}?` : ""}
-      footer={<>
-        {entry?.rating && <Button kind="ghost" onClick={() => rate.mutate({ id: entry.id, rating: null }, { onSuccess: onClose })}>Remove rating</Button>}
-        <span className="spacer" />
-        <Button kind="outline" onClick={onClose}>Cancel</Button>
-        <Button kind="primary" onClick={save} disabled={!stars || rate.isPending}>Save rating</Button>
-      </>}>
-      <p className="muted">The household's rating for this dinner. Ratings from each person come with family profiles.</p>
-      <StarsInput value={stars} onChange={setStars} label="Rating" />
-      <label className="field">
-        <span>Note <small>(optional)</small></span>
-        <textarea rows={3} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)}
-          placeholder="Too salty, kids loved it, double the sauce next time…" />
-      </label>
-      <ErrorNote error={rate.error} />
-    </Modal>
   );
 }

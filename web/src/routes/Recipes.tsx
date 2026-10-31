@@ -4,8 +4,10 @@ import { useAddToWeek, useCan, useRecipe, useRecipes } from "../api/queries";
 import type { Recipe } from "../api/types";
 import { Icon, Star } from "../components/Icon";
 import { ImportDialog } from "../components/ImportDialog";
+import { EditRecipeDialog, EditSourceDialog } from "../components/RecipeEdit";
 import { Button, ErrorNote, Loading, Modal, Photo, useToast } from "../components/ui";
 import { amount, formatAvg, formatMinutes } from "../lib/format";
+import { page, sourceLabel } from "../lib/sources";
 import { DAYS_LONG, shiftWeek, weekName, weekNameInline, weekOf, weekRange } from "../lib/weeks";
 
 type Sort = "newest" | "favourites" | "az";
@@ -19,16 +21,17 @@ export function Recipes() {
   const [sort, setSort] = useState<Sort>("newest");
   const [source, setSource] = useState<"all" | "nyt" | "book" | "other">("all");
   const [importing, setImporting] = useState(false);
+  const [company, setCompany] = useState(false);
 
   const list = useMemo(() => {
     const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
     const words = norm(q).split(/\s+/).filter(Boolean);
-    const out = (recipes.data ?? []).filter((r) => (source === "all" || r.source_kind === source) &&
+    const out = (recipes.data ?? []).filter((r) => (source === "all" || r.source_kind === source) && (!company || r.ratings.company === "yes") &&
       words.every((w) => norm(r.title + " " + (r.source_title ?? "")).includes(w)));
     if (sort === "favourites") out.sort((a, b) => (b.ratings.avg_family ?? -1) - (a.ratings.avg_family ?? -1) || b.ratings.times_cooked - a.ratings.times_cooked);
     if (sort === "az") out.sort((a, b) => a.title.localeCompare(b.title));
     return out;
-  }, [recipes.data, q, sort, source]);
+  }, [recipes.data, q, sort, source, company]);
 
   return (
     <main className="main scroll" id="main">
@@ -52,6 +55,9 @@ export function Recipes() {
             </button>
           ))}
         </div>
+        <button type="button" className={`toggle${company ? " on" : ""}`} aria-pressed={company} onClick={() => setCompany(!company)}>
+          {company && <Icon name="check" size={15} />}Good for company
+        </button>
         <label className="select-wrap">
           <span className="visually-hidden">Sort</span>
           <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
@@ -65,7 +71,7 @@ export function Recipes() {
       {recipes.isPending ? <Loading /> : recipes.error ? <ErrorNote error={recipes.error} onRetry={() => recipes.refetch()} /> : (
         <ul className="recipe-grid" aria-label="Recipes">
           {list.map((r) => <RecipeTile key={r.id} r={r} onOpen={() => navigate(`/recipes/${r.id}`)} />)}
-          {list.length === 0 && <li className="none">No recipes match.</li>}
+          {list.length === 0 && <li className="none">{company && !q && source === "all" ? NO_COMPANY : "No recipes match."}</li>}
         </ul>
       )}
       <RecipeDrawer id={id ? Number(id) : null} onClose={() => navigate("/recipes")} />
@@ -73,6 +79,8 @@ export function Recipes() {
     </main>
   );
 }
+
+const NO_COMPANY = "None rated good for company yet. After dinner, rate it and answer “Yes” to “Would you make it for company?”.";
 
 function RecipeTile({ r, onOpen }: { r: Recipe; onOpen: () => void }) {
   const planned = r.planned_weeks?.length ? weekName(r.planned_weeks[0]) : null;
@@ -86,6 +94,7 @@ function RecipeTile({ r, onOpen }: { r: Recipe; onOpen: () => void }) {
             {formatMinutes(r.total_minutes) && <span><Icon name="clock" size={14} />{formatMinutes(r.total_minutes)}</span>}
             {r.ratings.avg_family ? <span><Star /><b>{formatAvg(r.ratings.avg_family)}</b></span> : <span className="muted">New</span>}
             {r.ratings.times_cooked > 0 && <span className="muted">cooked {r.ratings.times_cooked}×</span>}
+            {r.ratings.company === "yes" && <span className="muted">good for company</span>}
           </span>
           <span className="tile-src">{sourceText(r)}{planned && <span className="tag neutral">{planned}</span>}</span>
         </span>
@@ -96,7 +105,7 @@ function RecipeTile({ r, onOpen }: { r: Recipe; onOpen: () => void }) {
 
 function sourceText(r: Recipe) {
   if (r.source_kind === "nyt") return "NYT Cooking";
-  if (r.source_kind === "book") return [r.source_title, r.source_ref].filter(Boolean).join(", ") || "Cookbook";
+  if (r.source_kind === "book") return [r.source_title ?? "Unknown book", page(r.source_ref)].filter(Boolean).join(", ");
   return r.source_title || "Other";
 }
 
@@ -108,7 +117,9 @@ function RecipeDrawer({ id, onClose }: { id: number | null; onClose: () => void 
   const thisWeek = weekOf(new Date());
   const [week, setWeek] = useState(shiftWeek(thisWeek, 1));
   const [day, setDay] = useState<string>("");
+  const [editing, setEditing] = useState<"recipe" | "source" | null>(null);
   const d = r.data;
+  const canEdit = can("recipe.edit");
   return (
     <Modal open={id != null} onClose={onClose} drawer title={d?.title ?? "Recipe"}>
       {r.isPending ? <Loading /> : r.error ? <ErrorNote error={r.error} /> : d && (
@@ -118,7 +129,14 @@ function RecipeDrawer({ id, onClose }: { id: number | null; onClose: () => void 
             {formatMinutes(d.total_minutes) && <span><Icon name="clock" size={15} />{formatMinutes(d.total_minutes)}</span>}
             {d.servings && <span>Serves {d.servings}</span>}
             {d.ratings.avg_family ? <span><Star size={15} /><b>{formatAvg(d.ratings.avg_family)}</b> from {d.ratings.times_rated}</span> : <span className="muted">Not rated yet</span>}
-            {d.source_url ? <a href={d.source_url} target="_blank" rel="noreferrer">{sourceText(d)} <Icon name="external" size={13} /></a> : <span>{sourceText(d)}</span>}
+            {d.source_url && <a href={d.source_url} target="_blank" rel="noreferrer">{d.source_kind === "nyt" ? "Open on NYT Cooking" : "The recipe's page"} <Icon name="external" size={13} /></a>}
+          </div>
+          <div className="source-line">
+            <span>From: {sourceLabel(d)}</span>
+            {canEdit && d.source_kind !== "nyt" && (
+              <Button kind="ghost" size="sm" onClick={() => setEditing("source")}>{d.source_kind === "book" && !d.source_title ? "Add book" : "Edit source"}</Button>
+            )}
+            {canEdit && <Button kind="outline" size="sm" icon="edit" onClick={() => setEditing("recipe")}>Edit recipe</Button>}
           </div>
           {d.description && <p>{d.description}</p>}
 
@@ -173,7 +191,9 @@ function RecipeDrawer({ id, onClose }: { id: number | null; onClose: () => void 
               </ul>
             </section>
           )}
-          {d.notes && <section><h3 className="section-h">Notes</h3><p>{d.notes}</p></section>}
+          {d.notes && <section><h3 className="section-h">Notes</h3><p className="pre-line">{d.notes}</p></section>}
+          {editing === "recipe" && <EditRecipeDialog recipe={d} onClose={() => setEditing(null)} />}
+          {editing === "source" && <EditSourceDialog recipe={d} onClose={() => setEditing(null)} />}
         </div>
       )}
     </Modal>
