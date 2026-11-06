@@ -11,7 +11,7 @@ from psycopg.types.json import Jsonb
 
 from . import bulk, db, packs, planner, qtycheck
 from .ingredients import item_key, split_prep
-from .matcher import OUT_OF_STOCK, _choose
+from .matcher import NONE_FIT, OUT_OF_STOCK, _choose
 from .models import ListItem, Product
 
 log = logging.getLogger(__name__)
@@ -169,6 +169,9 @@ def _match(pcx, provider, it, pick, last, pinned=False, usual=None):
         note = bulk.hint_note(hint[0], bulk.cover(it, hint[0])[0], hint[1]) if hint and hint[1] >= HINT_SAVING else None
         return found, cands, pick[0], fit_quantity(it, p, planner.remembered_quantity(it, p, last), last), "memory", note
     code = _choose(provider, it, cands)
+    if code == NONE_FIT:
+        why = none_fit_note(it.name)
+        return found, cands, None, None, "none", f"{note} {why}" if note else why
     if code in by_code:
         chosen = by_code[code]
         bigger, n_big = bulk.better_cover(it, chosen, cands), None
@@ -180,6 +183,10 @@ def _match(pcx, provider, it, pick, last, pinned=False, usual=None):
             code, chosen = big.code, big
         return found, cands, code, fit_quantity(it, chosen, planner.default_quantity(it, chosen, n_big)), "ai", note
     return found, cands, code, None, "ai", note
+
+
+def none_fit_note(name: str) -> str:
+    return f"None of the products found is {name} itself (only foods named after it) — choose one."
 
 
 def _with_bulk(pcx, it, found):
