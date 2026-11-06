@@ -965,7 +965,10 @@ export interface paths {
         };
         /**
          * Login
-         * @description Start a browser sign-in: off to Google (authorization code + PKCE), back at /auth/callback.
+         * @description Start a sign-in: off to Google (authorization code + PKCE), back at /auth/callback. The browser (web) gets a
+         *     cookie at the end. `client=android` (with `app_challenge` = S256 of a verifier the app keeps, and `app` = its
+         *     application id, default the release build) is the Android app in a Custom Tab: the callback hands a one-time
+         *     code to the app instead (see POST /auth/app-token).
          */
         get: operations["login_auth_login_get"];
         put?: never;
@@ -987,6 +990,28 @@ export interface paths {
         get: operations["callback_auth_callback_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/app-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * App Token
+         * @description Android: the one-time code from the sign-in's return URL + the verifier of the app_challenge it started with
+         *     → an app session token for `Authorization: Bearer` (the same session POST /auth/google gives). The code is
+         *     used up by any attempt; 400 = expired, used, or the wrong verifier (sign in again).
+         */
+        post: operations["app_token_auth_app_token_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1243,6 +1268,13 @@ export interface components {
              * @default 1
              */
             quantity: number;
+        };
+        /** AppTokenIn */
+        AppTokenIn: {
+            /** Code */
+            code: string;
+            /** Verifier */
+            verifier: string;
         };
         /** ApplyIn */
         ApplyIn: {
@@ -4080,6 +4112,9 @@ export interface operations {
             query?: {
                 next?: string | null;
                 invite?: string | null;
+                client?: string | null;
+                app?: string | null;
+                app_challenge?: string | null;
             };
             header?: never;
             path?: never;
@@ -4119,6 +4154,39 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    app_token_auth_app_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppTokenIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

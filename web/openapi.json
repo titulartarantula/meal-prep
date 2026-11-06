@@ -2467,7 +2467,7 @@
   "/auth/login": {
    "get": {
     "summary": "Login",
-    "description": "Start a browser sign-in: off to Google (authorization code + PKCE), back at /auth/callback.",
+    "description": "Start a sign-in: off to Google (authorization code + PKCE), back at /auth/callback. The browser (web) gets a\ncookie at the end. `client=android` (with `app_challenge` = S256 of a verifier the app keeps, and `app` = its\napplication id, default the release build) is the Android app in a Custom Tab: the callback hands a one-time\ncode to the app instead (see POST /auth/app-token).",
     "operationId": "login_auth_login_get",
     "parameters": [
      {
@@ -2502,6 +2502,57 @@
         }
        ],
        "title": "Invite"
+      }
+     },
+     {
+      "name": "client",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 20
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Client"
+      }
+     },
+     {
+      "name": "app",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "App"
+      }
+     },
+     {
+      "name": "app_challenge",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "App Challenge"
       }
      }
     ],
@@ -2584,6 +2635,43 @@
       }
      }
     ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/app-token": {
+   "post": {
+    "summary": "App Token",
+    "description": "Android: the one-time code from the sign-in's return URL + the verifier of the app_challenge it started with\n\u2192 an app session token for `Authorization: Bearer` (the same session POST /auth/google gives). The code is\nused up by any attempt; 400 = expired, used, or the wrong verifier (sign in again).",
+    "operationId": "app_token_auth_app_token_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AppTokenIn"
+       }
+      }
+     },
+     "required": true
+    },
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -3155,6 +3243,28 @@
      "product_code"
     ],
     "title": "AddLineIn"
+   },
+   "AppTokenIn": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 20,
+      "title": "Code"
+     },
+     "verifier": {
+      "type": "string",
+      "maxLength": 128,
+      "minLength": 43,
+      "title": "Verifier"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "verifier"
+    ],
+    "title": "AppTokenIn"
    },
    "ApplyIn": {
     "properties": {
