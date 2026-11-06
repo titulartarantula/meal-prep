@@ -20,7 +20,14 @@ import kotlinx.coroutines.launch
 import dev.mealprep.app.ui.nav.AppNav
 import dev.mealprep.app.ui.nav.HomeRoute
 import dev.mealprep.app.ui.nav.Nav
-import dev.mealprep.app.ui.nav.SetupRoute
+import dev.mealprep.app.ui.nav.SignInRoute
+import dev.mealprep.app.ui.account.SignInAgainDialog
+import dev.mealprep.app.ui.account.rememberSignIn
+import dev.mealprep.app.ui.common.Access
+import dev.mealprep.app.ui.common.LocalAccess
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.ui.nav.openLink
 import dev.mealprep.app.ui.nav.ShareRoute
 import dev.mealprep.app.ui.theme.MealPrepTheme
@@ -34,7 +41,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val start: Any = if (graph.settings.value.configured) HomeRoute() else SetupRoute
+        val start: Any = if (graph.settings.value.configured) HomeRoute() else SignInRoute
         if (savedInstanceState == null) handle(intent)
         setContent {
             MealPrepTheme {
@@ -42,7 +49,17 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                         val nav = rememberNavController()
-                        AppNav(nav, start, graph)
+                        // What this person may do (GET /auth/me, saved): screens hide the rest, as the web does.
+                        val prefs by graph.settings.collectAsStateWithLifecycle()
+                        CompositionLocalProvider(LocalAccess provides Access(prefs.account?.permissions)) {
+                            AppNav(nav, start, graph)
+                        }
+                        // A signed-in call was refused: the sign-in ended; offer to sign in again.
+                        val needsSignIn by graph.accounts.needsSignIn.collectAsStateWithLifecycle()
+                        val signIn = rememberSignIn(graph)
+                        if (needsSignIn) SignInAgainDialog(
+                            onSignIn = { graph.accounts.dismissSignInPrompt(); signIn(null) },
+                            onLater = graph.accounts::dismissSignInPrompt)
                         // runCatching: a deep link to a screen this build doesn't have yet must not crash the app.
                         LaunchedEffect(Unit) { navEvents.receiveAsFlow().collect { runCatching { nav.openLink(it) } } }
                     }
@@ -56,6 +73,8 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         if (!graph.settings.value.configured) return
+        // Roles may have changed on the web (or another household was picked there): read them again.
+        lifecycleScope.launch { graph.accounts.refresh() }
         SyncWorker.schedule(graph.workManager)
         SyncWorker.now(graph.workManager)
     }

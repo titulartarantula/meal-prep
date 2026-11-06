@@ -21,6 +21,12 @@ import retrofit2.http.Streaming
 interface MealPrepApi {
     @GET("health") suspend fun health(): Health
 
+    // sign-in: POST auth/app-token goes to the public address without a token (Account.kt)
+    @POST("auth/app-token") suspend fun appToken(@Body body: AppTokenIn): AppSession
+    @GET("auth/me") suspend fun me(): Me
+    @PUT("auth/household") suspend fun pickHousehold(@Body body: HouseholdPick): JsonObject
+    @POST("auth/logout") suspend fun logout(): Response<Unit>
+
     @POST("recipes/share") suspend fun share(@Body body: ShareIn): ShareResult
     @Multipart @POST("recipes/photo")
     suspend fun photo(@Part files: List<MultipartBody.Part>, @Part("week") week: RequestBody?, @Part("title") title: RequestBody?,

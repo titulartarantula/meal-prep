@@ -83,7 +83,7 @@ class ApiErrorTest {
 
     @Test fun `messages are plain`() {
         assertTrue(ApiError.Unreachable.userMessage().contains("home Wi-Fi"))
-        assertTrue(ApiError.Unauthorized.userMessage().contains("token"))
+        assertTrue(ApiError.Unauthorized.userMessage().contains("sign-in"))
         assertEquals("no NYT Cooking link found", ApiError.Http(422, "no NYT Cooking link found").userMessage())
         assertEquals("Server error (500).", ApiError.Http(500, null).userMessage())
     }

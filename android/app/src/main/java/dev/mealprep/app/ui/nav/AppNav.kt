@@ -45,6 +45,7 @@ import dev.mealprep.app.ui.exchange.ImportScreen
 import dev.mealprep.app.ui.share.ShareScreen
 import java.time.LocalDate
 import dev.mealprep.app.ui.setup.SetupScreen
+import dev.mealprep.app.ui.account.SignInScreen
 
 @Composable
 fun AppNav(nav: NavHostController, start: Any, graph: AppGraph) {
@@ -63,11 +64,19 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
     // The top bar's Back on every screen that isn't a tab (and the screens' own "leave" after saving).
     val up: () -> Unit = { if (!nav.popBackStack()) nav.navigate(HomeRoute()) }
     NavHost(nav, startDestination = start) {
+        // First run: the household token (home network) from Sign in's "Use the household token", or sign-in itself.
         composable<SetupRoute> {
-            SetupScreen(graph, onDone = { nav.navigate(HomeRoute()) { popUpTo<SetupRoute> { inclusive = true } } })
+            SetupScreen(graph, onDone = { nav.navigate(HomeRoute()) { popUpTo(nav.graph.id) { inclusive = true } } })
+        }
+        composable<SignInRoute> {
+            SignInScreen(graph, onSignedIn = { nav.navigate(HomeRoute()) { popUpTo(nav.graph.id) { inclusive = true } } },
+                onUseToken = { nav.navigate(SetupRoute) })
         }
         composable<SettingsRoute> {
-            SettingsScreen(graph, onDone = up) { NotifSettings(graph); LoblawsSettings(graph) }
+            SettingsScreen(graph, onDone = up,
+                // Signed out with no household token left: back to the first-run sign-in.
+                onSignedOut = { if (!graph.settings.value.configured) nav.navigate(SignInRoute) { popUpTo(nav.graph.id) { inclusive = true } } },
+            ) { NotifSettings(graph); LoblawsSettings(graph) }
         }
         composable<StaplesRoute> { StaplesScreen(onBack = up) }
         composable<FridgeReviewRoute> { back ->
@@ -184,7 +193,7 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
                 // Saved recipes land in Recipes, where the import card shows its progress.
                 onQueued = { nav.popBackStack(); nav.openTab(Tab.RECIPES) },
                 onBack = up,
-                onSetup = { nav.navigate(SetupRoute) })
+                onSetup = { nav.navigate(SignInRoute) })
         }
     }
 }

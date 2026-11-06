@@ -306,3 +306,21 @@ import kotlinx.serialization.Serializable
                                     val answeredAt: String? = null)
 @Serializable data class UsedChange(val itemId: Int, val name: String, val before: Double? = null, val after: Double? = null,
                                     val unit: String? = null, val text: String = "")
+
+// --- sign-in (the web's Google round trip; server/deploy/README.md "Sign-in and households") ---
+
+@Serializable data class AppTokenIn(val code: String, val verifier: String)
+@Serializable data class AppSession(val token: String, val expiresAt: String? = null, val householdId: Int? = null)
+@Serializable data class HouseholdPick(val householdId: Int)
+@Serializable data class MeUser(val id: Int = 0, val email: String? = null, val name: String? = null)
+@Serializable data class MeHousehold(val id: Int, val name: String = "", val memberId: Int? = null)
+/** GET /auth/me. via = "bearer" (signed in) or "legacy" (the household token: user null, households empty). */
+@Serializable data class Me(
+    val via: String = "",
+    val user: MeUser? = null,
+    val households: List<MeHousehold> = emptyList(),
+    val household: MeHousehold? = null,
+    val memberId: Int? = null,
+    val roles: List<String> = emptyList(),
+    val permissions: List<String> = emptyList(),
+)

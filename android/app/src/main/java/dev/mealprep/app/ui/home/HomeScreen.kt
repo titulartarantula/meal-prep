@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.draganddrop.dragAndDropSource
+import dev.mealprep.app.ui.common.LocalAccess
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -356,10 +358,15 @@ fun WeekContent(
 ) {
     var sheetFor by remember { mutableStateOf<PlanEntry?>(null) }
     val all = ui.view?.all.orEmpty()
-    val drop: (Slot, String?) -> Boolean = { slot, text -> dropMove(all, text, slot)?.let { (e, d) -> onPlace(e, d); true } ?: false }
+    // Role-aware (as on the web): moving dinners needs plan.edit, the cart steps cart.build.
+    val access = LocalAccess.current
+    val drop: (Slot, String?) -> Boolean = { slot, text ->
+        access.canEditPlan && (dropMove(all, text, slot)?.let { (e, d) -> onPlace(e, d); true } ?: false)
+    }
     // The week's next step is docked at the bottom, in thumb reach; an empty week has its card instead, and a week
     // with nothing left to do says so in the list.
     val docked = ui.action.takeIf { !ui.failed && !(ui.loading && ui.view == null) && it != ContextAction.AddRecipes && it != ContextAction.AllSet }
+        ?.takeIf { access.canBuildCart || (it !is ContextAction.BuildCart && it !is ContextAction.ReviewCart) }
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { OfflineBanner(ui.offlineSince); MessageText(ui.error) }
@@ -394,10 +401,10 @@ fun WeekContent(
                         DropHint(drag, Slot.TRAY, "Drop here to take it off its night")
                         if (view.unplaced.isEmpty()) Text("Recipes you add to this week wait here until you put them on a night.",
                             style = MaterialTheme.typography.bodySmall)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { view.unplaced.forEach { EntryChip(it) { sheetFor = it } } }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { view.unplaced.forEach { EntryChip(it, access.canEditPlan) { sheetFor = it } } }
                     }
                 }
-                item {
+                if (access.canEditPlan) item {
                     Text("Hold a recipe and drag it to a night (or back here), or tap it to move it.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -411,7 +418,7 @@ fun WeekContent(
                         Column {
                             DropHint(drag, slot, "Drop here")
                             if (n.entries.isEmpty() && drag.over != slot) Text("—", style = MaterialTheme.typography.bodySmall)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { n.entries.forEach { EntryChip(it) { sheetFor = it } } }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { n.entries.forEach { EntryChip(it, access.canEditPlan) { sheetFor = it } } }
                         }
                     }
                 }
@@ -423,7 +430,7 @@ fun WeekContent(
     }
     sheetFor?.let { e ->
         val ref by produceState<RefPrompt?>(null, e.recipeId) { value = loadRef(e.recipeId) }
-        EntryDialog(e, ref, onDismiss = { sheetFor = null },
+        EntryDialog(e, ref.takeIf { access.canEditRecipes }, canEdit = access.canEditPlan, onDismiss = { sheetFor = null },
             onPlace = { d -> sheetFor = null; onPlace(e, d) },
             onScale = { m -> sheetFor = null; onScale(e, m) },
             onRemove = { sheetFor = null; onRemove(e) },
@@ -479,7 +486,7 @@ private fun StatusStripRow(s: StatusStrip, onCart: (() -> Unit)?) {
 @Suppress("DEPRECATION")   // the block form is the one that lets a single detector start the transfer on a hold
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EntryChip(e: PlanEntry, onClick: () -> Unit) {
+private fun EntryChip(e: PlanEntry, draggable: Boolean, onClick: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     val click by rememberUpdatedState(onClick)
     val label = (e.title ?: "Recipe ${e.recipeId}") + if (e.multiplier != 1.0) " ×${fmt(e.multiplier)}" else ""
@@ -489,12 +496,13 @@ private fun EntryChip(e: PlanEntry, onClick: () -> Unit) {
         modifier = Modifier.minimumInteractiveComponentSize()
             .semantics(mergeDescendants = true) {
                 role = Role.Button
-                onClick(label = "Open, move or remove") { click(); true }
+                onClick(label = if (draggable) "Open, move or remove" else "Open") { click(); true }
             }
             .dragAndDropSource(block = {
                 detectTapGestures(
                     onTap = { click() },
                     onLongPress = {
+                        if (!draggable) return@detectTapGestures
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         startTransfer(DragAndDropTransferData(ClipData.newPlainText("Meal Prep recipe", WeekDragText.of(e.id))))
                     },
@@ -502,7 +510,8 @@ private fun EntryChip(e: PlanEntry, onClick: () -> Unit) {
             }),
     ) {
         Row(Modifier.padding(start = 4.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(painterResource(R.drawable.ic_drag_handle), contentDescription = null, modifier = Modifier.size(18.dp))
+            if (draggable) Icon(painterResource(R.drawable.ic_drag_handle), contentDescription = null, modifier = Modifier.size(18.dp))
+            else Spacer(Modifier.width(8.dp))
             Text(label, style = MaterialTheme.typography.labelLarge)
         }
     }
@@ -550,7 +559,7 @@ internal val AMOUNTS = listOf(0.5 to "Half", 1.0 to "Normal", 1.5 to "1½", 2.0 
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EntryDialog(e: PlanEntry, ref: RefPrompt?, onDismiss: () -> Unit, onPlace: (Int?) -> Unit, onScale: (Double) -> Unit, onRemove: () -> Unit, onOpen: (Any) -> Unit) {
+private fun EntryDialog(e: PlanEntry, ref: RefPrompt?, canEdit: Boolean, onDismiss: () -> Unit, onPlace: (Int?) -> Unit, onScale: (Double) -> Unit, onRemove: () -> Unit, onOpen: (Any) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(e.title ?: "Recipe") },
@@ -563,20 +572,22 @@ private fun EntryDialog(e: PlanEntry, ref: RefPrompt?, onDismiss: () -> Unit, on
                         style = MaterialTheme.typography.bodySmall)
                     TextButton({ onOpen(refRoute(r)) }) { Text("Add photo of p.${r.page}") }
                 }
-                Text("Move to")
-                FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    (0..6).forEach { d -> GardenChip(e.day == d, { if (e.day != d) onPlace(d) }, Weeks.dayLabel(d)) }
-                    GardenChip(e.day == null, { if (e.day != null) onPlace(null) }, NO_NIGHT)
-                }
-                Text("Amount")
-                FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    AMOUNTS.forEach { (m, label) -> GardenChip(e.multiplier == m, { onScale(m) }, label,
-                        description = if (m == 1.5) "One and a half" else null) }
-                }
-                if (e.day != null) FlowRow {
+                if (canEdit) {
+                    Text("Move to")
+                    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (0..6).forEach { d -> GardenChip(e.day == d, { if (e.day != d) onPlace(d) }, Weeks.dayLabel(d)) }
+                        GardenChip(e.day == null, { if (e.day != null) onPlace(null) }, NO_NIGHT)
+                    }
+                    Text("Amount")
+                    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        AMOUNTS.forEach { (m, label) -> GardenChip(e.multiplier == m, { onScale(m) }, label,
+                            description = if (m == 1.5) "One and a half" else null) }
+                    }
+                } else Text(e.day?.let { Weeks.dayLabel(it) } ?: NO_NIGHT, style = MaterialTheme.typography.bodyMedium)
+                if (e.day != null || !canEdit) FlowRow {
                     TextButton({ onOpen(RecipeRoute(e.recipeId)) }) { Text("Recipe") }
                     val rate = if (e.rating != null) "Rating: ${e.rating.family}/5" else "Rate"
-                    TextButton({ onOpen(RatingRoute(e.id, e.week)) }, Modifier.semantics { contentDescription = RatingText.spoken(rate) }) {
+                    if (e.day != null) TextButton({ onOpen(RatingRoute(e.id, e.week)) }, Modifier.semantics { contentDescription = RatingText.spoken(rate) }) {
                         Text(rate)
                     }
                 }
@@ -584,6 +595,6 @@ private fun EntryDialog(e: PlanEntry, ref: RefPrompt?, onDismiss: () -> Unit, on
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-        dismissButton = { TextButton(onClick = onRemove) { Text("Remove from week") } },
+        dismissButton = { if (canEdit) TextButton(onClick = onRemove) { Text("Remove from week") } },
     )
 }

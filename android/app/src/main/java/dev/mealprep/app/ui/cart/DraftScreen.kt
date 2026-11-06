@@ -1,5 +1,7 @@
 package dev.mealprep.app.ui.cart
 
+import dev.mealprep.app.ui.common.AccessText
+import dev.mealprep.app.ui.common.LocalAccess
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -119,9 +121,10 @@ fun DraftContent(s: DraftState, a: DraftActions, today: LocalDate = LocalDate.no
         }) {
             val full = Modifier.fillMaxWidth().heightIn(min = 48.dp)
             when (d.status) {
-                "ready" -> Button(onClick = a.onSend, enabled = s.canSend, modifier = full) {
+                // Role-aware: sending needs cart.send (the household's approver).
+                "ready" -> if (LocalAccess.current.canSendCart) Button(onClick = a.onSend, enabled = s.canSend, modifier = full) {
                     Text(if (s.sending) "Sending…" else "Send to Loblaws")
-                }
+                } else Text(AccessText.SEND, style = MaterialTheme.typography.bodyMedium)
                 // On an older cart, Build a new cart (in the banner) is the main action.
                 "sent" -> if (older) OutlinedButton(onClick = { d.pcxCartId?.let(a.onLoblaws) }, enabled = d.pcxCartId != null, modifier = full) {
                     Text("Open in Loblaws")

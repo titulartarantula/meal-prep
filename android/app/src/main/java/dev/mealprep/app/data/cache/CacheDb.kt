@@ -18,6 +18,8 @@ interface CacheDao {
     @Upsert suspend fun put(doc: CachedDoc)
     @Query("DELETE FROM cached_doc WHERE `key` = :key") suspend fun delete(key: String)
     @Query("DELETE FROM cached_doc WHERE fetchedAt < :before AND `key` NOT LIKE 'once:%'") suspend fun prune(before: Long)
+    /** Another account or household: every saved server reply goes (this phone's own marks and notes stay). */
+    @Query("DELETE FROM cached_doc WHERE `key` NOT LIKE 'once:%' AND `key` NOT LIKE 'local:%'") suspend fun clearServerCopies()
 }
 
 @Database(entities = [CachedDoc::class], version = 1, exportSchema = false)

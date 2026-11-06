@@ -14,6 +14,7 @@ coroutines = "1.11.0"
 room = "2.8.5"
 work = "2.12.0"
 datastore = "1.2.1"
+browser = "1.10.0"
 camerax = "1.6.2"
 coil = "3.5.0"   # 3.6.x needs compileSdk 37 (Compose 1.12)
 junit = "4.13.2"
@@ -46,6 +47,7 @@ room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
+androidx-browser = { module = "androidx.browser:browser", version.ref = "browser" }
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
 camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }

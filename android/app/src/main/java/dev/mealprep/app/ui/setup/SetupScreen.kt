@@ -44,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mealprep.app.AppGraph
 import dev.mealprep.app.ui.common.BackTopBar
 import dev.mealprep.app.ui.common.graphViewModel
+import dev.mealprep.app.ui.account.AccountSection
 
 @Composable
 fun SetupContent(state: SetupState, onUrl: (String) -> Unit, onToken: (String) -> Unit, onSave: () -> Unit, onContinue: () -> Unit,
@@ -88,23 +89,29 @@ fun SetupScreen(graph: AppGraph, onDone: () -> Unit, scrollable: Boolean = true,
 /** Settings: what people change first ([extra]: notifications, Loblaws), then the server, folded away once it is set
  *  up (nobody should need it after setup). */
 @Composable
-fun SettingsScreen(graph: AppGraph, onDone: () -> Unit, extra: @Composable ColumnScope.() -> Unit = {}) {
+fun SettingsScreen(graph: AppGraph, onDone: () -> Unit, onSignedOut: () -> Unit = {}, extra: @Composable ColumnScope.() -> Unit = {}) {
     val s by graph.settings.collectAsStateWithLifecycle()
     // The same check as Save & test's second step: the token works too, not just the address.
-    val status by produceState("Checking…") { value = serverStatus(graph.repo.weeks(LocalDate.now(), 1).error) }
+    val status by produceState("Checking…", s.signedIn) { value = serverStatus(graph.repo.weeks(LocalDate.now(), 1).error) }
     var serverOpen by rememberSaveable { mutableStateOf(false) }
-    SettingsContent(onBack = onDone, extra = extra, server = {
-        ServerSection(s.serverUrl, s.configured, status, serverOpen || !s.configured, onOpen = { serverOpen = true }) {
+    SettingsContent(onBack = onDone, extra = extra, account = { AccountSection(graph, onSignedOut) }, server = {
+        // Signed in, the app uses the public address; the household token (home network) is for not signed in.
+        if (!s.signedIn) ServerSection(s.serverUrl, s.configured, status, serverOpen || !s.configured, onOpen = { serverOpen = true },
+            title = TOKEN_SECTION) {
             SetupScreen(graph, onDone = onDone, scrollable = false, showContinue = false, showTitle = false)
         }
     })
 }
 
+const val TOKEN_SECTION = "Household token (home network)"
+
 @Composable
-fun SettingsContent(onBack: () -> Unit, extra: @Composable ColumnScope.() -> Unit, server: @Composable () -> Unit) {
+fun SettingsContent(onBack: () -> Unit, extra: @Composable ColumnScope.() -> Unit, server: @Composable () -> Unit,
+                    account: @Composable () -> Unit = {}) {
     Column(Modifier.fillMaxSize()) {
         BackTopBar("Settings", onBack)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            account()
             extra()
             server()
         }
@@ -119,9 +126,10 @@ internal fun serverStatus(e: ApiError?): String = when (e) {
 
 /** "Meal-prep server" heading; once set up, one line ("Connected ✓", the address) with Change, which opens the form. */
 @Composable
-fun ServerSection(url: String, configured: Boolean, status: String, open: Boolean, onOpen: () -> Unit, form: @Composable () -> Unit) {
+fun ServerSection(url: String, configured: Boolean, status: String, open: Boolean, onOpen: () -> Unit,
+                  title: String = "Meal-prep server", form: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Meal-prep server", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         if (open) form()
         else Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

@@ -1,5 +1,6 @@
 package dev.mealprep.app.ui.library
 
+import dev.mealprep.app.ui.common.LocalAccess
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -111,7 +112,8 @@ fun LibraryScreen(
                 LibraryContent(state, vm::search, vm::sort, onRecipe, vm::load, onSource = vm::source, onCompany = vm::company)
             }
         }
-        AddRecipeButton(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { traversalIndex = 1f }, onPick = { w ->
+        // Role-aware: adding recipes needs recipe.edit.
+        if (LocalAccess.current.canEditRecipes) AddRecipeButton(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { traversalIndex = 1f }, onPick = { w ->
             when (w) {
                 AddWay.CAMERA -> onOpen(CameraRoute())
                 AddWay.PHOTOS -> picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))

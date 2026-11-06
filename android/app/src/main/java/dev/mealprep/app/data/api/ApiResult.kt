@@ -36,7 +36,7 @@ fun ApiError.userMessage(): String = when (this) {
     ApiError.NotConfigured -> "Set the server address and token in Settings."
     ApiError.Unreachable -> "Can't reach the meal-prep server. Are you on home Wi-Fi (or WireGuard)?"
     ApiError.TimedOut -> "The server is taking too long. It may still finish — check again in a minute."
-    ApiError.Unauthorized -> "The server rejected the token. Check it in Settings."
+    ApiError.Unauthorized -> "The server didn't accept this phone's sign-in. Check Settings."
     // The server's 502 details are "<step> failed: SomeError: …" — internals, not sentences. Other details
     // (404/409/422) are written for people and shown as they are.
     is ApiError.Http -> if (code == 502) "The server couldn't get what it needed from another site. Try again later."

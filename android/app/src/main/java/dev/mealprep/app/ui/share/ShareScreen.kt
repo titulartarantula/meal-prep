@@ -69,8 +69,8 @@ private fun ColumnScope.ShareBody(
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         (state.input as? ShareInput.NytLink)?.let { Text("NYT Cooking · ${it.url.substringAfterLast('/')}") }
         if (!state.configured) {
-            Text("Connect to the meal-prep server first.")
-            Button(onClick = onSetup) { Text("Set up") }
+            Text("Sign in to Meal Prep first.")
+            Button(onClick = onSetup) { Text("Sign in") }
             return@Column
         }
         if (state.isPhotos) {

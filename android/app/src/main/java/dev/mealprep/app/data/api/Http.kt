@@ -40,6 +40,10 @@ object Http {
         readTimeoutSec: Long = 30,
         longReadTimeoutSec: Long = 330,
         transferTimeoutSec: Long = 120,
+        /** Signed in: the household to act for (X-Household); null = the session's own. */
+        household: () -> Int? = { null },
+        /** A 401 to a call that carried a token (the sign-in ended or expired). */
+        onUnauthorized: () -> Unit = {},
     ): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(connectTimeoutSec, TimeUnit.SECONDS)
         .readTimeout(readTimeoutSec, TimeUnit.SECONDS)
@@ -49,7 +53,8 @@ object Http {
             val orig = chain.request()
             // Every call except GET /health carries the bearer token.
             val skipAuth = t.isBlank() || (orig.method == "GET" && HEALTH.containsMatchIn(orig.url.encodedPath))
-            val req = if (skipAuth) orig else orig.newBuilder().header("Authorization", "Bearer $t").build()
+            val req = if (skipAuth) orig else orig.newBuilder().header("Authorization", "Bearer $t")
+                .apply { household()?.let { header("X-Household", it.toString()) } }.build()
             val path = req.url.encodedPath
             val c = when {
                 isLongCall(path) -> chain.withReadTimeout(longReadTimeoutSec.toInt(), TimeUnit.SECONDS).withWriteTimeout(120, TimeUnit.SECONDS)
@@ -57,7 +62,7 @@ object Http {
                     .withWriteTimeout(transferTimeoutSec.toInt(), TimeUnit.SECONDS)
                 else -> chain
             }
-            c.proceed(req)
+            c.proceed(req).also { if (it.code == 401 && !skipAuth) onUnauthorized() }
         }
         .build()
 

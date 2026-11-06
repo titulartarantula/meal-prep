@@ -56,7 +56,7 @@ class ExchangeTextTest {
         assertEquals(ExchangeText.OFFLINE_IMPORT, ExchangeText.importError(ApiError.Unreachable))
         assertEquals(ExchangeText.SLOW_PREVIEW, ExchangeText.importError(ApiError.TimedOut))
         assertEquals(ExchangeText.SLOW_APPLY, ExchangeText.importError(ApiError.TimedOut, apply = true))
-        assertEquals("The server rejected the token. Check it in Settings.", ExchangeText.importError(ApiError.Unauthorized))
+        assertEquals("The server didn't accept this phone's sign-in. Check Settings.", ExchangeText.importError(ApiError.Unauthorized))
         assertEquals("Set the server address and token in Settings.", ExchangeText.importError(ApiError.NotConfigured))
         assertEquals(ExchangeText.GONE, ExchangeText.importError(ApiError.Http(404, "import 7"), job = true))
         assertEquals(ExchangeText.SERVER_PROBLEM, ExchangeText.importError(ApiError.Http(500, "Internal Server Error")))

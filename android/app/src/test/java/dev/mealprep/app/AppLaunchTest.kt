@@ -54,8 +54,11 @@ class AppLaunchTest {
     private fun shareIntent() = Intent(app, MainActivity::class.java).setAction(Intent.ACTION_SEND).setType("text/plain")
         .putExtra(Intent.EXTRA_TEXT, "Chili https://cooking.nytimes.com/recipes/1015819-chili?smid=share")
 
-    @Test fun `first run lands on Setup`() {
+    @Test fun `first run lands on Sign in, with the household token one tap away`() {
         ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithText("Sign in to Meal Prep").assertExists()
+            compose.onNodeWithText(dev.mealprep.app.ui.account.SIGN_IN).assertExists()
+            compose.onNodeWithText(dev.mealprep.app.ui.account.USE_TOKEN).performClick()
             compose.onNodeWithText("Meal-prep server").assertExists()
         }
     }

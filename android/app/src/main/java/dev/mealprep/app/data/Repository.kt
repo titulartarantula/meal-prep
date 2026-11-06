@@ -74,15 +74,22 @@ import retrofit2.Response
 fun interface ApiProvider { fun api(): MealPrepApi? }
 
 /** Rebuilds the Retrofit client when the server URL changes; the token is read per request. */
-class SettingsApiProvider(private val settings: StateFlow<Settings>) : ApiProvider {
-    private val client = Http.client({ settings.value.token })
+/** Signed in with Google: the public address, the session token and the chosen household. Otherwise the home server
+ *  with the household token. [onUnauthorized]: a signed-in call was refused (401), so the session is over. */
+class SettingsApiProvider(
+    private val settings: StateFlow<Settings>,
+    private val onUnauthorized: () -> Unit = {},
+) : ApiProvider {
+    private val client = Http.client({ settings.value.apiToken },
+        household = { settings.value.takeIf { it.signedIn }?.householdId },
+        onUnauthorized = { if (settings.value.signedIn) onUnauthorized() })
     private var cached: Pair<String, MealPrepApi>? = null
 
     @Synchronized override fun api(): MealPrepApi? {
         val s = settings.value
         if (!s.configured) return null
-        cached?.let { (url, api) -> if (url == s.serverUrl) return api }
-        return runCatching { Http.api(s.serverUrl, client) }.getOrNull()?.also { cached = s.serverUrl to it }
+        cached?.let { (url, api) -> if (url == s.apiUrl) return api }
+        return runCatching { Http.api(s.apiUrl, client) }.getOrNull()?.also { cached = s.apiUrl to it }
     }
 }
 
@@ -174,6 +181,9 @@ class Repository(
 
     // --- live reads ---
     suspend fun health(): ApiResult<Health> = call { it.health() }
+
+    /** Signed in / out or another household: the saved copies were someone else's view. */
+    suspend fun forgetServerCopies() = cache.clearServerCopies()
     suspend fun defaultCartWeek(): ApiResult<LocalDate?> = call { api -> api.defaultCartWeek().week?.let(LocalDate::parse) }
     suspend fun draft(id: Int): ApiResult<Draft> = call { it.draft(id) }
     /** Book suggestions for "Which book?" (live, never saved: offline the caller falls back to the household's books). */

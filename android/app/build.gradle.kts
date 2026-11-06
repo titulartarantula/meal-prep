@@ -83,6 +83,7 @@ dependencies {
     ksp(libs.room.compiler)
     implementation(libs.work.runtime.ktx)
     implementation(libs.datastore.preferences)
+    implementation(libs.androidx.browser)
     implementation(libs.camera.core)
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)

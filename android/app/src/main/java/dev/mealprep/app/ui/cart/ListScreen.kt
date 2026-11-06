@@ -1,5 +1,7 @@
 package dev.mealprep.app.ui.cart
 
+import dev.mealprep.app.ui.common.AccessText
+import dev.mealprep.app.ui.common.LocalAccess
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -76,7 +78,7 @@ fun ListContent(
             MessageText(state.error)
             if (!state.loading && state.items.isEmpty() && state.error != null) TextButton(onRetry) { Text("Try again") }
             LazyColumn(Modifier.weight(1f)) {
-                state.existing?.let { d -> item { ExistingCart(d, canBuild = state.canBuild, onOpen = { onOpenDraft(d.id) }, onBuild = onBuild) } }
+                state.existing?.let { d -> item { ExistingCart(d, canBuild = state.canBuild && LocalAccess.current.canBuildCart, onOpen = { onOpenDraft(d.id) }, onBuild = onBuild) } }
                 if (state.staples.isNotEmpty() || state.stapleError != null) item {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Staples", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).semantics { heading() })
@@ -117,7 +119,11 @@ fun ListContent(
                 items(state.extras, key = { "extra-${it.id}" }) { e -> ExtraRow(e, enabled = !state.building && state.draftId == null) { onRemoveExtra(e.id) } }
             }
         }
-        BottomAction(if (state.building) "Starting…" else "Build cart (${state.neededCount} items)", onBuild, enabled = state.canBuild)
+        // Role-aware: building a cart needs cart.build (the server says 403 otherwise); say why it's missing.
+        val access = LocalAccess.current
+        if (access.canBuildCart) BottomAction(if (state.building) "Starting…" else "Build cart (${state.neededCount} items)", onBuild, enabled = state.canBuild)
+        else Text(AccessText.CART, Modifier.fillMaxWidth().padding(16.dp), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

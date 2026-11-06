@@ -65,6 +65,22 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+        <!-- Google sign-in comes back here from the browser (Custom Tab): <application id>://auth?code=… (the server
+             only ever sends it to the scheme of a known build). It hands the URL on and closes the browser tab. -->
+        <activity
+            android:name=".AuthReturnActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${applicationId}" android:host="auth" />
+            </intent-filter>
+        </activity>
         <!-- Lets the phone's camera app write a page photo into the app's pages folder (fallback when CameraX can't start). -->
         <provider
             android:name="androidx.core.content.FileProvider"

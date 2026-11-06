@@ -1,5 +1,6 @@
 package dev.mealprep.app.ui.library
 
+import dev.mealprep.app.ui.common.LocalAccess
 import dev.mealprep.app.ui.common.announced
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -130,7 +131,7 @@ fun RecipeContent(
     Column(Modifier.fillMaxSize()) {
         BackTopBar(r?.title ?: "Recipe", onBack) {
             if (r != null) {
-                IconButton({ onEditOpened(); draft = RecipeDraft.from(r) }) {
+                if (LocalAccess.current.canEditRecipes) IconButton({ onEditOpened(); draft = RecipeDraft.from(r) }) {
                     Icon(painterResource(R.drawable.ic_edit), contentDescription = EDIT_RECIPE)
                 }
                 IconButton({ sharing = true }) { Icon(painterResource(R.drawable.ic_share), contentDescription = SHARE_ONE) }
@@ -145,7 +146,7 @@ fun RecipeContent(
             } else RecipeBody(r, state, today, onWeek, onOpen, onDismissAdded, onEditSource = { editing = true; onStartEdit() })
         }
         // The main action, in thumb reach.
-        if (r != null) BottomAction("Add to a week", { picking = true }, enabled = !state.adding)
+        if (r != null && LocalAccess.current.canEditPlan) BottomAction("Add to a week", { picking = true }, enabled = !state.adding)
     }
     if (editing && r != null) EditSourceDialog(r, state.books, state.found, state.savingSource, state.sourceError,
         onSave = { b, p -> onEditSource(b, p) { ok -> if (ok) editing = false } }, onDismiss = { editing = false },
@@ -302,7 +303,7 @@ private fun SourceLine(r: Recipe, onEdit: () -> Unit) {
     val kind = Sources.kind(r)
     // The button under the line: beside it, large text squeezed the source to a word or two a line.
     Text("From: " + Sources.label(r), style = MaterialTheme.typography.bodyMedium)
-    if (kind != Sources.NYT) TextButton(onEdit) { Text(if (kind == Sources.BOOK && r.sourceTitle == null) "Add book" else "Edit source") }
+    if (kind != Sources.NYT && LocalAccess.current.canEditRecipes) TextButton(onEdit) { Text(if (kind == Sources.BOOK && r.sourceTitle == null) "Add book" else "Edit source") }
 }
 
 /**

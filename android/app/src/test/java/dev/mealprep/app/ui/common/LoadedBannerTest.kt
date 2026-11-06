@@ -22,7 +22,7 @@ class LoadedBannerTest {
 
     @Test fun `unauthorized with saved copy shows the message not the banner`() {
         val l = Loaded("x", ApiError.Unauthorized, at)
-        assertNull(l.offlineSince); assertEquals("The server rejected the token. Check it in Settings.", l.errorMessage)
+        assertNull(l.offlineSince); assertEquals("The server didn't accept this phone's sign-in. Check Settings.", l.errorMessage)
     }
 
     @Test fun `error without saved copy shows the message`() {

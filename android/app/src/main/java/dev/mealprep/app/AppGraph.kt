@@ -33,7 +33,10 @@ class AppGraph(val context: Context) {
     val settings = settingsStore.settings.stateIn(scope, SharingStarted.Eagerly, runBlocking { settingsStore.settings.first() })
     val db: CacheDb = Room.databaseBuilder(context, CacheDb::class.java, "cache.db")
         .fallbackToDestructiveMigration(dropAllTables = true).build()
-    val repo = Repository(SettingsApiProvider(settings), db.cache())
+    // A 401 to a signed-in call: the session is over, so the app asks to sign in again.
+    val repo: Repository = Repository(SettingsApiProvider(settings, onUnauthorized = { accounts.sessionRefused() }), db.cache())
+    /** Google sign-in (the web's round trip), the session, the household switcher, what the person may do. */
+    val accounts: dev.mealprep.app.data.account.Accounts = dev.mealprep.app.data.account.Accounts(settingsStore, settings, repo, BuildConfig.APPLICATION_ID)
     val workManager: WorkManager by lazy { WorkManager.getInstance(context) }
     val notifier = dev.mealprep.app.notify.Notifier(context)
     val imports: dev.mealprep.app.work.ImportQueue by lazy { dev.mealprep.app.work.ImportQueue(workManager) }

@@ -38,6 +38,18 @@ class SettingsStoreTest {
         assertFalse(s.notif.staples)
     }
 
+    @Test fun `the sign-in session, household and account round trip`() = runTest {
+        val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "a.preferences_pb") })
+        val acct = Account("Sam", "sam@example.com", "Testers", listOf("owner", "planner"), setOf("plan.edit", "cart.build"))
+        store.update { it.copy(session = "sess", householdId = 7, account = acct, pendingVerifier = "v".repeat(86)) }
+        val s = store.settings.first()
+        assertTrue(s.signedIn && s.configured)
+        assertEquals("sess", s.session); assertEquals(7, s.householdId); assertEquals(acct, s.account)
+        assertEquals("v".repeat(86), s.pendingVerifier)
+        assertEquals("", s.token)   // the household token is separate and stays as it was
+        assertEquals(null, store.settings.first().copy(account = null).account)
+    }
+
     // One update per store: on the Windows build host a second quick write can fail to rename DataStore's temp file.
     @Test fun `staples reminder and keep-device-trust round trip`() = runTest {
         val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "r.preferences_pb") })

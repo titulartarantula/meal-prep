@@ -4,6 +4,8 @@ import java.time.LocalDate
 import kotlinx.serialization.Serializable
 
 @Serializable object SetupRoute
+/** First run (and after signing out with no household token): Google sign-in. */
+@Serializable object SignInRoute
 @Serializable object SettingsRoute
 @Serializable data class HomeRoute(val week: String? = null)
 @Serializable object ShareRoute
