@@ -106,6 +106,7 @@ class AccountsTest {
         assertEquals(7, s.householdId)
         assertEquals("Sam Example", s.account!!.name); assertEquals("Testers", s.account!!.householdName)
         assertEquals(setOf("plan.read", "rate.self"), s.account!!.permissions)
+        assertEquals(11, s.account!!.memberId)   // whose ratings are "yours"
         val me = requests.first { it.url.encodedPath == "/auth/me" }
         assertEquals("Bearer sess-1", me.headers["Authorization"]); assertEquals("7", me.headers["X-Household"])
         // the other account's saved copies are gone; the phone's own notes stay

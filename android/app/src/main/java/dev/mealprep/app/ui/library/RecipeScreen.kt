@@ -173,11 +173,13 @@ private fun ColumnScope.RecipeBody(
             }
         }
     }
+    val me = LocalAccess.current.me
     LazyColumn(Modifier.weight(1f)) {
         item {
             val small = MaterialTheme.typography.bodySmall
             RatingText.summary(r.ratings)?.let { Text(it, Modifier.semantics { contentDescription = RatingText.spoken(it) }) }
                 ?: Text("Not rated yet", style = small)
+            Text(RatingText.company(r.ratings), style = small)
             RatingText.imported(r.ratings)?.let { Text("Ratings $it", style = small,
                 modifier = Modifier.semantics { contentDescription = "Ratings " + RatingText.imported(r.ratings, spoken = true) }) }
             plannedText(r.plannedWeeks, today)?.let { Text(it, style = small) }
@@ -197,10 +199,16 @@ private fun ColumnScope.RecipeBody(
             item { Section("Notes from the recipe") }
             item { Text(n) }
         }
+        if (r.ratings.people.isNotEmpty()) {
+            item { Section("Ratings") }
+            itemsIndexed(r.ratings.people) { _, p ->
+                RatingText.personSummary(p, me).let { Text(it, Modifier.semantics { contentDescription = RatingText.spoken(it) }) }
+            }
+        }
         if (r.ratings.notes.isNotEmpty()) {
             item { Section("Notes") }
             itemsIndexed(r.ratings.notes) { _, n ->
-                Text("“${n.note}”" + (n.date?.let { d -> " — ${runCatching { Weeks.shortDate(LocalDate.parse(d)) }.getOrDefault(d)}" } ?: ""))
+                Text(RatingText.note(n, me) { d -> runCatching { Weeks.shortDate(LocalDate.parse(d)) }.getOrDefault(d) })
             }
         }
         item { Section("Ingredients") }
@@ -222,7 +230,7 @@ private fun ColumnScope.RecipeBody(
             itemsIndexed(r.history) { _, h ->
                 val week = runCatching { LocalDate.parse(h.week) }.getOrNull()
                 val line = listOfNotNull(week?.let { "Week of ${Weeks.shortDate(it)}" } ?: h.week,
-                    h.day?.let(Weeks::dayLabel) ?: "no night", h.rating?.let { "rated ${it.family}/5" }).joinToString(" · ")
+                    h.day?.let(Weeks::dayLabel) ?: "no night", RatingText.cooked(h.ratingAvg, h.ratingCount, h.rating?.family)).joinToString(" · ")
                 Text(line, Modifier.semantics { contentDescription = RatingText.spoken(line) })
             }
         }

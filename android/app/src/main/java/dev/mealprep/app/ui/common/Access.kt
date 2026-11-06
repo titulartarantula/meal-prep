@@ -7,7 +7,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * 403 anyway). Actions they can't take are hidden or disabled, as on the web. null = not known yet (first start,
  * offline before the first answer): nothing is hidden, and the server still decides.
  */
-data class Access(val permissions: Set<String>? = null) {
+data class Access(val permissions: Set<String>? = null, /** Your member id (your own ratings say "you"). */ val me: Int? = null) {
     fun can(permission: String): Boolean = permissions == null || permission in permissions
     val canEditPlan get() = can(Perm.PLAN_EDIT)
     val canEditRecipes get() = can(Perm.RECIPE_EDIT)
@@ -23,6 +23,8 @@ object Perm {
     const val CART_SEND = "cart.send"
     const val FRIDGE_EDIT = "fridge.edit"
     const val RATE_SELF = "rate.self"
+    const val RATE_FOR_CHILDREN = "rate.for_children"
+    const val RECIPE_COMPANY = "recipe.company"
 }
 
 /** Provided once at the top (MainActivity) from the saved account; screens read it to hide what isn't theirs to do. */

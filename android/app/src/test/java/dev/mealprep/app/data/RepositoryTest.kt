@@ -130,9 +130,9 @@ class RepositoryTest {
         env.on("PUT", "/plan/21/rating", code = 204)
         env.repo.placeEntry(23, null)
         env.repo.placeEntry(23, 4)
-        env.repo.setRating(21, 4, "maybe", "  ")
+        env.repo.setRating(21, 4, "  ")
         assertEquals(listOf("""{"day":null}""", """{"day":4}"""), env.bodies("PATCH", "/plan/23"))
-        assertEquals(listOf("""{"family":4,"company":"maybe"}"""), env.bodies("PUT", "/plan/21/rating"))
+        assertEquals(listOf("""{"family":4}"""), env.bodies("PUT", "/plan/21/rating"))
     }
 
     @Test fun `markOnce is true only the first time`() = runTest {

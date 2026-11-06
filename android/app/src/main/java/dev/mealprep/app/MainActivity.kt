@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
                         val nav = rememberNavController()
                         // What this person may do (GET /auth/me, saved): screens hide the rest, as the web does.
                         val prefs by graph.settings.collectAsStateWithLifecycle()
-                        CompositionLocalProvider(LocalAccess provides Access(prefs.account?.permissions)) {
+                        CompositionLocalProvider(LocalAccess provides Access(prefs.account?.permissions, prefs.account?.memberId)) {
                             AppNav(nav, start, graph)
                         }
                         // A signed-in call was refused: the sign-in ended; offer to sign in again.

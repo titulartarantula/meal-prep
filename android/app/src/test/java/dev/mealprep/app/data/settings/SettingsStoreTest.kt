@@ -40,7 +40,7 @@ class SettingsStoreTest {
 
     @Test fun `the sign-in session, household and account round trip`() = runTest {
         val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "a.preferences_pb") }, testCipher())
-        val acct = Account("Sam", "sam@example.com", "Testers", listOf("owner", "planner"), setOf("plan.edit", "cart.build"))
+        val acct = Account("Sam", "sam@example.com", "Testers", listOf("owner", "planner"), setOf("plan.edit", "cart.build"), memberId = 3)
         store.update { it.copy(session = "sess", householdId = 7, account = acct, pendingVerifier = "v".repeat(86)) }
         val s = store.settings.first()
         assertTrue(s.signedIn && s.configured)

@@ -1,5 +1,8 @@
 package dev.mealprep.app.data
 
+import dev.mealprep.app.data.api.Member
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
 import dev.mealprep.app.core.ExportFile
 import dev.mealprep.app.core.ExportFiles
 import dev.mealprep.app.core.Sources
@@ -221,9 +224,18 @@ class Repository(
     suspend fun scaleEntry(entryId: Int, multiplier: Double): ApiResult<Unit> =
         planWrite { it.patchEntry(entryId, Bodies.entryPatch(multiplier = multiplier)) }
     suspend fun removeEntry(entryId: Int): ApiResult<Unit> = planWrite { it.deleteEntry(entryId) }
-    suspend fun setRating(entryId: Int, family: Int, company: String?, note: String?): ApiResult<Unit> =
-        call { it.putRating(entryId, RatingIn(family, company, note?.trim()?.ifBlank { null })) }
-    suspend fun deleteRating(entryId: Int): ApiResult<Unit> = call { it.deleteRating(entryId) }
+    /** Your rating of that dinner, or a child profile's ([memberId]). */
+    suspend fun setRating(entryId: Int, family: Int, note: String?, memberId: Int? = null): ApiResult<Unit> =
+        call { it.putRating(entryId, RatingIn(family, note?.trim()?.ifBlank { null }, memberId)) }
+    suspend fun deleteRating(entryId: Int, memberId: Int? = null): ApiResult<Unit> = call { it.deleteRating(entryId, memberId) }
+    /** The recipe's Good for company verdict ("yes" | "no"; null = not decided). Owners only (recipe.company). */
+    suspend fun setCompany(recipeId: Int, company: String?): ApiResult<Unit> = call {
+        it.putCompany(recipeId, kotlinx.serialization.json.buildJsonObject {
+            put("company", company?.let(::JsonPrimitive) ?: JsonNull)
+        }).let { }
+    }
+    /** The household's members and child profiles (for "Rating for"), with the saved copy offline. */
+    suspend fun members(): Loaded<List<Member>> = load("members", ListSerializer(Member.serializer())) { it.members() }
     suspend fun createDraft(items: List<ListItem>, weeks: List<LocalDate>): ApiResult<JobStarted> =
         call { it.createDraft(DraftIn(items, weeks.map(::wk))) }
     suspend fun setLineQuantity(draftId: Int, lineId: Int, quantity: Int): ApiResult<DraftLine> =

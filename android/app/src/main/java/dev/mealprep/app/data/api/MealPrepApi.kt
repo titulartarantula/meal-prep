@@ -49,7 +49,10 @@ interface MealPrepApi {
     @PATCH("plan/{id}") suspend fun patchEntry(@Path("id") id: Int, @Body body: JsonObject)
     @DELETE("plan/{id}") suspend fun deleteEntry(@Path("id") id: Int)
     @PUT("plan/{id}/rating") suspend fun putRating(@Path("id") id: Int, @Body body: RatingIn)
-    @DELETE("plan/{id}/rating") suspend fun deleteRating(@Path("id") id: Int)
+    @DELETE("plan/{id}/rating") suspend fun deleteRating(@Path("id") id: Int, @Query("member_id") memberId: Int? = null)
+    /** The recipe's Good for company verdict (Owners): {"company": "yes" | "no" | null}. */
+    @PUT("recipes/{id}/company") suspend fun putCompany(@Path("id") id: Int, @Body body: JsonObject): JsonObject
+    @GET("household/members") suspend fun members(): List<Member>
     @GET("ratings/pending") suspend fun pendingRatings(@Query("today") today: String): List<PendingRating>
 
     @POST("list") suspend fun list(@Body body: ListIn): List<ListItem>

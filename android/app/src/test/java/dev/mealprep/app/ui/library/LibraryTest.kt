@@ -342,7 +342,7 @@ class LibraryTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Page 191 missing: its ingredients aren't on the list")))
         list.performScrollToNode(hasText("★ 5 · good for company · NYT Cooking"))
         compose.onNodeWithText("★ 5 · good for company · NYT Cooking", useUnmergedTree = true)   // TalkBack doesn't hear "black star"
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Family 5 out of 5, good for company, NYT Cooking")))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Average 5 out of 5, good for company, NYT Cooking")))
         list.performScrollToNode(hasText("On the plan: next week, week of Oct 25"))
         compose.onNodeWithText("Apple Crumble").performClick()
         assertEquals(10, opened)

@@ -207,7 +207,7 @@ fun FileImportCard(w: WatchedImport, onOpen: () -> Unit) {
     }
 }
 
-const val NO_COMPANY = "None rated good for company yet. After dinner, rate it and answer “Yes” to “Would you make it for company?”."
+const val NO_COMPANY = "None marked good for company yet. When rating a dinner, an Owner can answer “Yes” to “Good for company?”."
 
 const val EMPTY_LIBRARY = "No recipes yet. Tap Add recipe to scan a cookbook page, choose photos or paste an NYT " +
     "Cooking link — or share a recipe from the NYT Cooking app."
@@ -227,7 +227,7 @@ fun rowDetail(r: Recipe): String = listOfNotNull(r.ratings.avgFamily?.let { "★
     RatingText.imported(r.ratings), if (r.ratings.company == "yes") "good for company" else null, Sources.label(r)).joinToString(" · ")
 
 /** [rowDetail] for TalkBack: "Family 4.5 out of 5, good for company, …" (not "black star 4.5"). */
-fun spokenRowDetail(r: Recipe): String = listOfNotNull(r.ratings.avgFamily?.let { "Family ${RatingText.number(it)} out of 5" } ?: "Not rated",
+fun spokenRowDetail(r: Recipe): String = listOfNotNull(r.ratings.avgFamily?.let { "Average ${RatingText.number(it)} out of 5" } ?: "Not rated",
     RatingText.imported(r.ratings, spoken = true), if (r.ratings.company == "yes") "good for company" else null, Sources.label(r)).joinToString(", ")
 
 /** Title, then one quiet line; "On the plan: …" and a missing page only when they apply. */

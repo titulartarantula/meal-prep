@@ -67,6 +67,8 @@ data class Account(
     val name: String? = null, val email: String? = null,
     val householdName: String? = null, val roles: List<String> = emptyList(),
     val permissions: Set<String>? = null,
+    /** This person's member id in the household (their own ratings; the household token = its legacy member). */
+    val memberId: Int? = null,
 )
 
 fun normalizeServerUrl(s: String): String {
@@ -121,9 +123,10 @@ class SettingsStore(private val ds: DataStore<Preferences>, cipher: SecretCipher
         val accName = stringPreferencesKey("acct_name"); val accEmail = stringPreferencesKey("acct_email")
         val accHousehold = stringPreferencesKey("acct_household"); val accRoles = stringPreferencesKey("acct_roles")
         val accPerms = stringSetPreferencesKey("acct_perms"); val accKnown = booleanPreferencesKey("acct_known")
+        val accMember = intPreferencesKey("acct_member")
         val verifier = stringPreferencesKey("pkce_verifier")
         val secrets = listOf(token, session, verifier)
-        val account = listOf(accName, accEmail, accHousehold, accRoles, accPerms, accKnown)
+        val account = listOf(accName, accEmail, accHousehold, accRoles, accPerms, accKnown, accMember)
     }
 
     /** A secret's value; one that can't be decrypted reads as not set. */
@@ -160,7 +163,7 @@ class SettingsStore(private val ds: DataStore<Preferences>, cipher: SecretCipher
             session = open(p, K.session) ?: "",
             householdId = p[K.household],
             account = if (p[K.accKnown] == true) Account(p[K.accName], p[K.accEmail], p[K.accHousehold],
-                p[K.accRoles]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(), p[K.accPerms]) else null,
+                p[K.accRoles]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(), p[K.accPerms], p[K.accMember]) else null,
             pendingVerifier = open(p, K.verifier),
         )
     }
@@ -185,6 +188,7 @@ class SettingsStore(private val ds: DataStore<Preferences>, cipher: SecretCipher
         a?.householdName?.let { p[K.accHousehold] = it } ?: p.remove(K.accHousehold)
         a?.let { p[K.accRoles] = it.roles.joinToString(",") } ?: p.remove(K.accRoles)
         a?.permissions?.let { p[K.accPerms] = it } ?: p.remove(K.accPerms)
+        a?.memberId?.let { p[K.accMember] = it } ?: p.remove(K.accMember)
         seal(p, K.verifier, s.pendingVerifier)
     }
 

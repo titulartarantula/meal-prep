@@ -51,11 +51,11 @@ class A11yTest {
     @Test fun `rating chips are two radio groups, the chosen one selected`() {
         compose.setContent {
             MealPrepTheme(dark = false) {
-                RatingContent(RatingState(title = "Chili", night = "Tuesday", family = 4, company = "yes", loading = false),
+                RatingContent(RatingState(title = "Chili", night = "Tuesday", family = 4, company = "yes", canSetCompany = true, loading = false),
                     {}, {}, {}, {}, {})
             }
         }
-        compose.onAllNodes(role(Role.RadioButton)).assertCountEquals(5 + 3)
+        compose.onAllNodes(role(Role.RadioButton)).assertCountEquals(5 + 2)
         compose.onAllNodes(role(Role.Checkbox)).assertCountEquals(0)
         compose.onNodeWithContentDescription("4 out of 5").assert(role(Role.RadioButton)).assertIsSelected()
         compose.onNodeWithContentDescription("4 out of 5").onParent().assert(group)

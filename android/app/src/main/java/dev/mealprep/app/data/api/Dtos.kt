@@ -12,16 +12,37 @@ import kotlinx.serialization.Serializable
 )
 
 @Serializable data class Rating(val family: Int, val company: String? = null, val note: String? = null, val ratedAt: String? = null)
-@Serializable data class RatingNote(val note: String, val date: String? = null, val ratedAt: String? = null)
+/** [memberId]/[name]: who wrote it (since per-person ratings; null name = imported from another library). */
+@Serializable data class RatingNote(val note: String, val date: String? = null, val ratedAt: String? = null,
+                                    val memberId: Int? = null, val name: String? = null)
+/** One person's rating of one time cooked. [memberId] null = "Family" (before profiles); [kind] account | child |
+ *  family | former; [enteredByName]: the parent who entered a child's. */
+@Serializable data class PersonRating(
+    val memberId: Int? = null, val name: String = "", val kind: String = "", val family: Int, val note: String? = null,
+    val ratedAt: String? = null, val enteredBy: Int? = null, val enteredByName: String? = null,
+)
+/** One person's ratings of a recipe: their latest score and their average. */
+@Serializable data class PersonSummary(
+    val memberId: Int? = null, val name: String = "", val kind: String = "", val family: Int, val note: String? = null,
+    val date: String? = null, val ratedAt: String? = null, val avg: Double = 0.0, val count: Int = 0,
+)
 @Serializable data class RatingSummary(
     val timesCooked: Int = 0, val timesRated: Int = 0, val avgFamily: Double? = null, val lastFamily: Int? = null,
-    val lastRatedAt: String? = null, val company: String? = null, val notes: List<RatingNote> = emptyList(),
+    val lastRatedAt: String? = null,
+    /** The household's Good for company verdict: "yes" | "no" (one per recipe, set by an Owner); null = not decided. */
+    val company: String? = null, val notes: List<RatingNote> = emptyList(),
     /** How many of [timesRated] came from another library's export (since 0.9.0; they count like the household's own). */
     val importedRatings: Int = 0,
+    /** Individual ratings averaged in [avgFamily] (a time cooked can have several); 0 from older servers. */
+    val ratingCount: Int = 0,
+    val people: List<PersonSummary> = emptyList(),
+    val companySetByName: String? = null,
 )
 @Serializable data class CookedEntry(
     val entryId: Int, val week: String, val day: Int? = null, val date: String? = null,
     val multiplier: Double = 1.0, val rating: Rating? = null,
+    val myRating: Rating? = null, val ratings: List<PersonRating> = emptyList(),
+    val ratingAvg: Double? = null, val ratingCount: Int = 0,
 )
 
 @Serializable data class Recipe(
@@ -64,6 +85,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class PlanEntry(
     val id: Int, val week: String, val recipeId: Int, val day: Int? = null, val multiplier: Double = 1.0,
     val rating: Rating? = null, val title: String? = null,
+    /** Per-person ratings: the caller's own, everyone's (household order), their average and count. */
+    val myRating: Rating? = null, val ratings: List<PersonRating> = emptyList(),
+    val ratingAvg: Double? = null, val ratingCount: Int = 0,
 )
 
 @Serializable data class ShareIn(val text: String, val week: String? = null)
@@ -73,7 +97,11 @@ import kotlinx.serialization.Serializable
  *  recipes changed since (absent from servers before 0.8.1). */
 @Serializable data class WeekSummary(val week: String, val entries: Int = 0, val carted: Boolean = false, val cartStale: Boolean = false)
 @Serializable data class EntryIn(val recipeId: Int)
-@Serializable data class RatingIn(val family: Int, val company: String? = null, val note: String? = null)
+/** [memberId]: rate for a child profile (rate.for_children); null = yourself. Good for company is set apart
+ *  (PUT /recipes/{id}/company), never in a rating. */
+@Serializable data class RatingIn(val family: Int, val note: String? = null, val memberId: Int? = null)
+/** GET /household/members: a member or child profile ([kind] account | child). */
+@Serializable data class Member(val id: Int, val name: String, val kind: String = "account")
 @Serializable data class PendingRating(
     val entryId: Int, val week: String, val day: Int, val date: String, val recipeId: Int, val title: String,
     val multiplier: Double = 1.0,

@@ -91,7 +91,7 @@ class ImportWorkerTest {
         assertEquals("Already in your Recipes: Thai Green Curry Wings", n.extras.getString(Notification.EXTRA_TITLE))
         assertTrue(n.actions.isNullOrEmpty())                    // it is in a week already
         val text = n.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
-        assertTrue(text.contains("Family 4.5/5")); assertTrue(text.contains("page 191"))
+        assertTrue(text.contains("Average 4.5/5")); assertTrue(text.contains("page 191"))
     }
 
     @Test fun `unreachable is retried until the last attempt, then fails with the input echoed`() = runTest {

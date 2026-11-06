@@ -111,7 +111,7 @@ class Accounts(
             store.update { s ->
                 s.copy(account = Account(
                     name = me.user?.name, email = me.user?.email, householdName = me.household?.name,
-                    roles = me.roles, permissions = me.permissions.toSet()),
+                    roles = me.roles, permissions = me.permissions.toSet(), memberId = me.memberId),
                     // The household the server answered for is the one in use (the session's, when none was picked).
                     householdId = if (s.signedIn) me.household?.id ?: s.householdId else null)
             }
