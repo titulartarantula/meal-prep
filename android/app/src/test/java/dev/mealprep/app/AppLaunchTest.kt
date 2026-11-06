@@ -34,7 +34,7 @@ import org.robolectric.annotation.Config
 /** The real launch path: MealPrepApp (DataStore, Room, notification channels) + MainActivity's start-screen choice.
  *  Robolectric gives each test a fresh app data directory, so the DataStore written here is this test's alone. */
 @RunWith(RobolectricTestRunner::class)
-@Config(application = MealPrepApp::class)
+@Config(application = KeystorelessApp::class)
 class AppLaunchTest {
     @get:Rule val compose = createEmptyComposeRule()
     private val app: MealPrepApp = ApplicationProvider.getApplicationContext()

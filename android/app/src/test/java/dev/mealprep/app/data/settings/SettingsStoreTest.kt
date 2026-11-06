@@ -24,7 +24,7 @@ class SettingsStoreTest {
     @get:Rule val tmp = TemporaryFolder()
 
     @Test fun `defaults then round trip`() = runTest {
-        val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "s.preferences_pb") })
+        val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "s.preferences_pb") }, testCipher())
         val d = store.settings.first()
         assertEquals("http://192.168.1.101:8790", d.serverUrl)
         assertFalse(d.configured)
@@ -39,7 +39,7 @@ class SettingsStoreTest {
     }
 
     @Test fun `the sign-in session, household and account round trip`() = runTest {
-        val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "a.preferences_pb") })
+        val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "a.preferences_pb") }, testCipher())
         val acct = Account("Sam", "sam@example.com", "Testers", listOf("owner", "planner"), setOf("plan.edit", "cart.build"))
         store.update { it.copy(session = "sess", householdId = 7, account = acct, pendingVerifier = "v".repeat(86)) }
         val s = store.settings.first()
@@ -52,7 +52,7 @@ class SettingsStoreTest {
 
     // One update per store: on the Windows build host a second quick write can fail to rename DataStore's temp file.
     @Test fun `staples reminder and keep-device-trust round trip`() = runTest {
-        val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "r.preferences_pb") })
+        val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "r.preferences_pb") }, testCipher())
         store.update { it.copy(loblawsKeepDeviceTrust = true,
             notif = it.notif.copy(staples = true, staplesDay = java.time.DayOfWeek.FRIDAY, staplesAt = LocalTime.of(18, 15))) }
         assertTrue(store.settings.first().loblawsKeepDeviceTrust)
@@ -69,14 +69,14 @@ class SettingsStoreTest {
             p[booleanPreferencesKey("lob_signed_out")] = false; p[booleanPreferencesKey("lob_keep_trust")] = false
             p[stringPreferencesKey("token")] = "abc"
         }
-        val s = SettingsStore(ds).settings.first()
+        val s = SettingsStore(ds, testCipher()).settings.first()
         assertTrue(s.loblawsKeepDeviceTrust)
         assertEquals("abc", s.token)
     }
 
     @Test fun `device trust turned off stays off and the old keys are dropped`() = runTest {
         val ds = PreferenceDataStoreFactory.create(scope = backgroundScope) { java.io.File(tmp.root, "off.preferences_pb") }
-        val store = SettingsStore(ds)
+        val store = SettingsStore(ds, testCipher())
         store.update { it.copy(loblawsKeepDeviceTrust = false) }
         assertFalse(store.settings.first().loblawsKeepDeviceTrust)
         val raw = ds.data.first()
@@ -95,13 +95,13 @@ class SettingsStoreTest {
     }
 
     @Test fun `io errors read as defaults`() = runTest {
-        val s = SettingsStore(FailingStore(IOException("disk"))).settings.first()
+        val s = SettingsStore(FailingStore(IOException("disk")), testCipher()).settings.first()
         assertEquals(Settings(), s)
     }
 
     @Test fun `other errors are not swallowed`() = runTest {
         try {
-            SettingsStore(FailingStore(IllegalStateException("boom"))).settings.first()
+            SettingsStore(FailingStore(IllegalStateException("boom")), testCipher()).settings.first()
             fail("expected the error to propagate")
         } catch (e: IllegalStateException) {
             assertEquals("boom", e.message)

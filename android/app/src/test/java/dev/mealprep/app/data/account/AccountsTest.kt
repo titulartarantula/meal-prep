@@ -11,8 +11,10 @@ import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.Http
 import dev.mealprep.app.data.cache.CacheDb
 import dev.mealprep.app.data.cache.CachedDoc
+import dev.mealprep.app.data.settings.LostSecrets
 import dev.mealprep.app.data.settings.Settings
 import dev.mealprep.app.data.settings.SettingsStore
+import dev.mealprep.app.data.settings.testCipher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -75,7 +77,7 @@ class AccountsTest {
             }
         }
         server.start()
-        val store = SettingsStore(MemoryPrefs())
+        val store = SettingsStore(MemoryPrefs(), testCipher())
         val settings = store.settings.stateIn(backgroundScope, SharingStarted.Eagerly, Settings())
         val url = server.url("/").toString()
         // As SettingsApiProvider, but the signed-in address is the fake server.
@@ -108,6 +110,20 @@ class AccountsTest {
         assertEquals("Bearer sess-1", me.headers["Authorization"]); assertEquals("7", me.headers["X-Household"])
         // the other account's saved copies are gone; the phone's own notes stay
         assertNull(db.cache().get("week:2026-11-01")); assertNotNull(db.cache().get("local:later"))
+    }
+
+    @Test fun `saved secrets the phone couldn't read - Sign in says why, or the dialog when the token is left`() = runTest {
+        val (acc, store, settings) = accounts()
+        acc.secretsLost(LostSecrets(session = true))
+        assertEquals("This phone couldn't read your saved sign-in. Sign in again.", (acc.status.value as SignInStatus.Failed).message)
+        assertFalse(acc.needsSignIn.value)
+        acc.resetStatus()
+        acc.secretsLost(LostSecrets(token = true))
+        assertTrue((acc.status.value as SignInStatus.Failed).message.contains("household token"))
+        acc.resetStatus()
+        store.update { it.copy(token = "tok") }; settings.first { it.configured }
+        acc.secretsLost(LostSecrets(session = true))
+        assertTrue(acc.needsSignIn.value); assertEquals(SignInStatus.Idle, acc.status.value)
     }
 
     @Test fun `not invited, cancelled and a refused code are explained and store nothing`() = runTest {

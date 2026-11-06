@@ -10,6 +10,7 @@ import dev.mealprep.app.core.ShareInput
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.SettingsApiProvider
 import dev.mealprep.app.data.cache.CacheDb
+import dev.mealprep.app.data.settings.SecretCipher
 import dev.mealprep.app.data.settings.SettingsStore
 import dev.mealprep.app.ui.camera.ImageScaler
 import dev.mealprep.app.ui.camera.PageStore
@@ -26,9 +27,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Hand-wired dependencies (one per process). */
-class AppGraph(val context: Context) {
+class AppGraph(val context: Context, secretCipher: SecretCipher) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val settingsStore = SettingsStore.create(context)
+    val settingsStore = SettingsStore.create(context, secretCipher)
+    // Before the first read: plain secrets from before 0.17.0 encrypted; unreadable ones dropped (told below).
+    private val lostSecrets = runBlocking { settingsStore.migrateSecrets() }
     // First value read synchronously so the API provider never sees "not configured" during startup.
     val settings = settingsStore.settings.stateIn(scope, SharingStarted.Eagerly, runBlocking { settingsStore.settings.first() })
     val db: CacheDb = Room.databaseBuilder(context, CacheDb::class.java, "cache.db")
@@ -37,6 +40,7 @@ class AppGraph(val context: Context) {
     val repo: Repository = Repository(SettingsApiProvider(settings, onUnauthorized = { accounts.sessionRefused() }), db.cache())
     /** Google sign-in (the web's round trip), the session, the household switcher, what the person may do. */
     val accounts: dev.mealprep.app.data.account.Accounts = dev.mealprep.app.data.account.Accounts(settingsStore, settings, repo, BuildConfig.APPLICATION_ID)
+    init { accounts.secretsLost(lostSecrets) }
     val workManager: WorkManager by lazy { WorkManager.getInstance(context) }
     val notifier = dev.mealprep.app.notify.Notifier(context)
     val imports: dev.mealprep.app.work.ImportQueue by lazy { dev.mealprep.app.work.ImportQueue(workManager) }

@@ -33,7 +33,7 @@ import org.robolectric.annotation.Config
 /** Remove from week, then straight to Recipes: the whole app against a fake server that answers like the real one
  *  (a recipe is "On the plan" while its plan entry exists). */
 @RunWith(RobolectricTestRunner::class)
-@Config(application = MealPrepApp::class, qualifiers = "w411dp-h891dp")
+@Config(application = KeystorelessApp::class, qualifiers = "w411dp-h891dp")
 class RemoveFromWeekTest {
     @get:Rule val compose = createEmptyComposeRule()
     private val app: MealPrepApp = ApplicationProvider.getApplicationContext()

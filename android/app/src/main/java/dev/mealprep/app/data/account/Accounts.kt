@@ -11,6 +11,7 @@ import dev.mealprep.app.data.api.Me
 import dev.mealprep.app.data.api.apiCall
 import dev.mealprep.app.data.api.userMessage
 import dev.mealprep.app.data.settings.Account
+import dev.mealprep.app.data.settings.LostSecrets
 import dev.mealprep.app.data.settings.Settings
 import dev.mealprep.app.data.settings.SettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +52,16 @@ class Accounts(
 
     fun sessionRefused() { if (settings.value.signedIn) _needsSignIn.value = true }
     fun dismissSignInPrompt() { _needsSignIn.value = false }
+
+    /** At start: saved secrets this phone couldn't decrypt were dropped (a restore, another phone, a corrupt value).
+     *  Still set up (the household token is left): the Sign in again dialog; else the Sign in screen says why. */
+    fun secretsLost(lost: LostSecrets) {
+        if (!lost.session && !lost.token) return
+        if (settings.value.configured) { if (lost.session) _needsSignIn.value = true; return }
+        _status.value = SignInStatus.Failed(
+            if (lost.session) "This phone couldn't read your saved sign-in. Sign in again."
+            else "This phone couldn't read the saved household token. Sign in, or enter the token again.")
+    }
 
     /** Starts a sign-in: a new verifier is kept (on disk, the app may be closed meanwhile); returns the page to open. */
     suspend fun begin(invite: String? = null): String {

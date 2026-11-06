@@ -10,6 +10,7 @@ import dev.mealprep.app.data.SettingsApiProvider
 import dev.mealprep.app.data.cache.CacheDb
 import dev.mealprep.app.data.settings.Settings
 import dev.mealprep.app.data.settings.SettingsStore
+import dev.mealprep.app.data.settings.testCipher
 import dev.mealprep.app.fixture
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -51,7 +52,7 @@ class SetupViewModelTest {
     }
 
     private suspend fun kotlinx.coroutines.test.TestScope.vm(url: String, token: String): Pair<SetupViewModel, SettingsStore> {
-        val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { tmp.newFile("s.preferences_pb") })
+        val store = SettingsStore(PreferenceDataStoreFactory.create(scope = backgroundScope) { tmp.newFile("s.preferences_pb") }, testCipher())
         val settings = store.settings.stateIn(backgroundScope, SharingStarted.Eagerly, Settings())
         val repo = Repository(SettingsApiProvider(settings), db.cache())
         return SetupViewModel(store, settings, repo, Settings()).apply { setUrl(url); setToken(token) } to store

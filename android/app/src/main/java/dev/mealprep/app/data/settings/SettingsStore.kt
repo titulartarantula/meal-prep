@@ -17,6 +17,7 @@ import java.time.DayOfWeek
 import java.time.LocalTime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /** Per-phone notification settings (defaults on, Tonight optional, times adjustable). */
@@ -73,8 +74,30 @@ fun normalizeServerUrl(s: String): String {
     return if (t.startsWith("http://") || t.startsWith("https://")) t else "http://$t"
 }
 
-class SettingsStore(private val ds: DataStore<Preferences>) {
-    val settings: Flow<Settings> = ds.data.catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }.map(::read)
+/** The settings DataStore. The household token, the session token and the sign-in verifier are encrypted ([Secrets]). */
+class SettingsStore(private val ds: DataStore<Preferences>, cipher: SecretCipher) {
+    private val secrets = Secrets(cipher)
+    private val data: Flow<Preferences> = ds.data.catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }
+    val settings: Flow<Settings> = data.map(::read)
+
+    /**
+     * Run once at start, before the first read: secrets saved in plain text (before 0.17.0) are encrypted in place, so
+     * nobody signs in again after the update; secrets that can't be decrypted any more (the Keystore key is gone after
+     * a restore, or the value is corrupt) are dropped, a lost session with the account it described.
+     */
+    suspend fun migrateSecrets(): LostSecrets {
+        val p = data.first()
+        fun plain(k: Preferences.Key<String>) = p[k]?.let { it.isNotEmpty() && !secrets.isSealed(it) } == true
+        fun lost(k: Preferences.Key<String>) = p[k]?.let { secrets.isSealed(it) && secrets.open(it) == null } == true
+        val toSeal = K.secrets.filter(::plain); val toDrop = K.secrets.filter(::lost)
+        if (toSeal.isEmpty() && toDrop.isEmpty()) return LostSecrets()   // nothing to write (one write per start at most)
+        ds.edit { m ->
+            toSeal.forEach { k -> m[k]?.let { if (!secrets.isSealed(it)) m[k] = secrets.seal(it) } }
+            toDrop.forEach { m.remove(it) }
+            if (K.session in toDrop) { m.remove(K.household); K.account.forEach { m.remove(it) } }
+        }
+        return LostSecrets(session = K.session in toDrop, token = K.token in toDrop)
+    }
 
     suspend fun update(f: (Settings) -> Settings) {
         ds.edit { p -> write(p, f(read(p))) }
@@ -99,6 +122,20 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
         val accHousehold = stringPreferencesKey("acct_household"); val accRoles = stringPreferencesKey("acct_roles")
         val accPerms = stringSetPreferencesKey("acct_perms"); val accKnown = booleanPreferencesKey("acct_known")
         val verifier = stringPreferencesKey("pkce_verifier")
+        val secrets = listOf(token, session, verifier)
+        val account = listOf(accName, accEmail, accHousehold, accRoles, accPerms, accKnown)
+    }
+
+    /** A secret's value; one that can't be decrypted reads as not set. */
+    private fun open(p: Preferences, k: Preferences.Key<String>): String? = p[k]?.let(secrets::open)
+
+    /** Saves [value] encrypted (blank stays blank, null removes it); an unchanged value keeps its stored text. */
+    private fun seal(p: MutablePreferences, k: Preferences.Key<String>, value: String?) {
+        if (value == null) { p.remove(k); return }
+        if (value.isEmpty()) { p[k] = ""; return }
+        val cur = p[k]
+        if (cur != null && secrets.isSealed(cur) && secrets.open(cur) == value) return
+        p[k] = secrets.seal(value)
     }
 
     private fun t(min: Int?, d: LocalTime) = min?.let { LocalTime.of(it / 60, it % 60) } ?: d
@@ -107,7 +144,7 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
     private fun read(p: Preferences): Settings {
         val d = Settings(); val n = d.notif
         return Settings(
-            serverUrl = p[K.url] ?: d.serverUrl, token = p[K.token] ?: "",
+            serverUrl = p[K.url] ?: d.serverUrl, token = open(p, K.token) ?: "",
             notif = NotifPrefs(
                 rate = p[K.rate] ?: n.rate, rateAt = t(p[K.rateAt], n.rateAt),
                 tonight = p[K.tonight] ?: n.tonight, tonightAt = t(p[K.tonightAt], n.tonightAt),
@@ -120,16 +157,16 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
             loblawsKeepDeviceTrust = p[K.keepTrust] ?: d.loblawsKeepDeviceTrust,
             askedNotificationPermission = p[K.asked] ?: false,
             lastBook = p[K.lastBook],
-            session = p[K.session] ?: "",
+            session = open(p, K.session) ?: "",
             householdId = p[K.household],
             account = if (p[K.accKnown] == true) Account(p[K.accName], p[K.accEmail], p[K.accHousehold],
                 p[K.accRoles]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(), p[K.accPerms]) else null,
-            pendingVerifier = p[K.verifier],
+            pendingVerifier = open(p, K.verifier),
         )
     }
 
     private fun write(p: MutablePreferences, s: Settings) {
-        p[K.url] = s.serverUrl; p[K.token] = s.token
+        p[K.url] = s.serverUrl; seal(p, K.token, s.token)
         p[K.rate] = s.notif.rate; p[K.rateAt] = m(s.notif.rateAt)
         p[K.tonight] = s.notif.tonight; p[K.tonightAt] = m(s.notif.tonightAt)
         p[K.cartReady] = s.notif.cartReady
@@ -139,7 +176,7 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
         K.legacy.forEach { p.remove(it) }
         p[K.asked] = s.askedNotificationPermission
         s.lastBook?.let { p[K.lastBook] = it } ?: p.remove(K.lastBook)
-        p[K.session] = s.session
+        seal(p, K.session, s.session)
         s.householdId?.let { p[K.household] = it } ?: p.remove(K.household)
         val a = s.account
         p[K.accKnown] = a != null
@@ -148,11 +185,14 @@ class SettingsStore(private val ds: DataStore<Preferences>) {
         a?.householdName?.let { p[K.accHousehold] = it } ?: p.remove(K.accHousehold)
         a?.let { p[K.accRoles] = it.roles.joinToString(",") } ?: p.remove(K.accRoles)
         a?.permissions?.let { p[K.accPerms] = it } ?: p.remove(K.accPerms)
-        s.pendingVerifier?.let { p[K.verifier] = it } ?: p.remove(K.verifier)
+        seal(p, K.verifier, s.pendingVerifier)
     }
 
     companion object {
-        fun create(context: Context) =
-            SettingsStore(PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("settings") })
+        fun create(context: Context, cipher: SecretCipher) =
+            SettingsStore(PreferenceDataStoreFactory.create { context.preferencesDataStoreFile(FILE) }, cipher)
+
+        /** The DataStore's name (files/datastore/settings.preferences_pb; kept out of backups and device transfer). */
+        const val FILE = "settings"
     }
 }
