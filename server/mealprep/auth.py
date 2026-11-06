@@ -3,7 +3,13 @@
 - Web: GET /auth/login → Google (authorization code + PKCE, scopes openid email profile) → GET /auth/callback, which
   verifies the ID token and sets an HttpOnly Secure SameSite=Lax session cookie. Writes made with the cookie must
   carry X-CSRF-Token (GET /auth/me returns it).
-- Android: Credential Manager's Google ID token → POST /auth/google → a session token, sent as a bearer token.
+- Android: the same round trip in a Custom Tab. GET /auth/login?client=android&app=<application id>&app_challenge=<S256
+  of a verifier the app keeps> → Google → GET /auth/callback, which sets no cookie but sends the browser to
+  <application id>://auth?code=<one-time code> (the app's return URL comes from APP_IDS, never from the request). The
+  app trades code + verifier at POST /auth/app-token for a session token, sent as a bearer token. The code is single
+  use, lives 2 minutes, is stored hashed and is useless without the verifier (another app that grabbed the redirect
+  can't redeem it).
+- Android (older path, kept): a Google ID token from Credential Manager → POST /auth/google → a session token.
 - Tokens (sessions, OAuth state, invites) are random, shown once and stored only as sha256 hashes.
 """
 import base64, hashlib, hmac, ipaddress, secrets, threading, time
@@ -17,6 +23,11 @@ from joserfc.jwk import KeySet
 COOKIE = "__Host-mealprep_session"      # __Host-: Secure, Path=/, no Domain (can't be set by a sibling subdomain)
 CSRF_HEADER = "X-CSRF-Token"
 LOGIN_MINUTES = 10
+APP_CODE_SECONDS = 120
+ANDROID = "android"
+# The Android builds that may sign in (release, debug): their application ids are their return URL schemes.
+APP_IDS = frozenset({"dev.mealprep.app", "dev.mealprep.app.debug"})
+DEFAULT_APP = "dev.mealprep.app"
 
 
 class AuthError(Exception):
@@ -45,6 +56,17 @@ def safe_next(path: str | None) -> str:
     if not path or not path.startswith("/") or path.startswith("//") or "\\" in path or "\n" in path:
         return "/"
     return path[:500]
+
+
+def valid_challenge(c: str | None) -> bool:
+    """An S256 PKCE challenge: 43 base64url characters (RFC 7636)."""
+    return bool(c) and len(c) == 43 and all(ch.isascii() and (ch.isalnum() or ch in "-_") for ch in c)
+
+
+def app_return(app_id: str, **params) -> str:
+    """The app's return URL (custom scheme = its application id). app_id must be one of APP_IDS."""
+    assert app_id in APP_IDS
+    return f"{app_id}://auth?" + urlencode({k: v for k, v in params.items() if v is not None})
 
 
 def networks(spec: str) -> list:
@@ -132,24 +154,49 @@ class Google:
 
 # --- login state (the OAuth round trip) ---
 
-def start_login(conn, next_path: str | None, invite: str | None) -> tuple[str, str, str]:
-    """(state, code_verifier, nonce); stored hashed by state for the callback (single use, 10 minutes)."""
+def start_login(conn, next_path: str | None, invite: str | None, app_id: str | None = None,
+                app_challenge: str | None = None) -> tuple[str, str, str]:
+    """(state, code_verifier, nonce); stored hashed by state for the callback (single use, 10 minutes). app_id +
+    app_challenge mark an Android sign-in (the caller has checked both)."""
     state, verifier, nonce = new_token(24), new_token(64), new_token(16)
     conn.execute("DELETE FROM login_states WHERE expires_at < now()")
-    conn.execute("INSERT INTO login_states(state_hash, code_verifier, nonce, next, invite_hash, expires_at) "
-                 "VALUES(%s,%s,%s,%s,%s, now() + %s * interval '1 minute')",
+    conn.execute("INSERT INTO login_states(state_hash, code_verifier, nonce, next, invite_hash, app_id, app_challenge, "
+                 "expires_at) VALUES(%s,%s,%s,%s,%s,%s,%s, now() + %s * interval '1 minute')",
                  (hash_token(state), verifier, nonce, safe_next(next_path), hash_token(invite) if invite else None,
-                  LOGIN_MINUTES))
+                  app_id, app_challenge, LOGIN_MINUTES))
     return state, verifier, nonce
 
 
-def finish_login(conn, state: str) -> tuple[str, str, str, str | None]:
-    """(code_verifier, nonce, next, invite_hash) of a login in progress; it is used up."""
+def finish_login(conn, state: str) -> dict:
+    """A login in progress (verifier, nonce, next, invite_hash, app_id, app_challenge); it is used up."""
     row = conn.execute("DELETE FROM login_states WHERE state_hash=%s RETURNING code_verifier, nonce, next, invite_hash, "
-                       "expires_at > now()", (hash_token(state or ""),)).fetchone()
-    if row is None or not row[4]:
+                       "app_id, app_challenge, expires_at > now()", (hash_token(state or ""),)).fetchone()
+    if row is None or not row[6]:
         raise AuthError("This sign-in link has expired; start again.")
-    return row[0], row[1], row[2], row[3]
+    return dict(zip(("verifier", "nonce", "next", "invite_hash", "app_id", "app_challenge"), row[:6]))
+
+
+# --- app sign-in: the one-time code the callback hands to the app ---
+
+def create_app_code(conn, user_id: int, household_id: int | None, app_challenge: str) -> str:
+    code = new_token(32)
+    conn.execute("DELETE FROM app_codes WHERE expires_at < now()")
+    conn.execute("INSERT INTO app_codes(code_hash, user_id, household_id, app_challenge, expires_at) "
+                 "VALUES(%s,%s,%s,%s, now() + %s * interval '1 second')",
+                 (hash_token(code), user_id, household_id, app_challenge, APP_CODE_SECONDS))
+    return code
+
+
+def redeem_app_code(conn, code: str, verifier: str) -> tuple[int, int | None]:
+    """(user id, household id) for a code + the verifier of its challenge. The code is used up by any attempt, right
+    or wrong, so a guessed verifier gets one try."""
+    row = conn.execute("DELETE FROM app_codes WHERE code_hash=%s RETURNING user_id, household_id, app_challenge, "
+                       "expires_at > now()", (hash_token(code or ""),)).fetchone()
+    if row is None or not row[3]:
+        raise AuthError("This sign-in has expired; sign in again.")
+    if not hmac.compare_digest(pkce_challenge(verifier or "").encode(), row[2].encode()):
+        raise AuthError("This sign-in didn't come from this app; sign in again.")
+    return row[0], row[1]
 
 
 # --- sessions ---
@@ -190,3 +237,4 @@ def set_session_household(conn, token_hash: str, household_id: int) -> None:
 def clean_expired(conn) -> None:
     conn.execute("DELETE FROM sessions WHERE expires_at < now()")
     conn.execute("DELETE FROM login_states WHERE expires_at < now()")
+    conn.execute("DELETE FROM app_codes WHERE expires_at < now()")

@@ -61,8 +61,15 @@ permission map is `mealprep/rbac.py`; a member without it gets 403, a household 
 - **Web**: `GET /auth/login?next=/path[&invite=TOKEN]` → Google (authorization code + PKCE, scopes `openid email
   profile`) → `GET /auth/callback` sets the `__Host-mealprep_session` cookie (HttpOnly, Secure, SameSite=Lax). Writes
   with the cookie need `X-CSRF-Token` = `csrf_token` from `GET /auth/me`.
-- **Android**: Credential Manager's Google ID token (audience = the web client id) → `POST /auth/google
-  {id_token, invite?}` → `{token, expires_at, household_id}`; send `Authorization: Bearer <token>`.
+- **Android** (the web's round trip in a Custom Tab): `GET /auth/login?client=android&app_challenge=<S256 of a
+  verifier the app keeps>[&app=<application id>][&invite=TOKEN]` → Google → `GET /auth/callback`, which sets no
+  cookie and sends the browser to `<application id>://auth?code=<one-time code>` (or `?error=cancelled|not_invited|
+  failed[&message=…]`). `app` must be one of `auth.APP_IDS` (the release and debug builds; default release); the return
+  URL is never taken from the request. `POST /auth/app-token {code, verifier}` → `{token, expires_at, household_id}`
+  (the code: single use, 2 minutes, stored hashed, used up by a wrong verifier too; 400 = sign in again). Send
+  `Authorization: Bearer <token>`. Google only ever sees the registered https callback, so no Google console change.
+  Older path, kept: Credential Manager's Google ID token (audience = the web client id) → `POST /auth/google
+  {id_token, invite?}` → the same reply. App sessions are bearer-only and web sessions cookie-only.
 - **Shared token** (until the app signs in): `Authorization: Bearer $MEALPREP_TOKEN`, accepted only from
   `MEALPREP_LEGACY_NETWORKS` (default `127.0.0.1/32,192.168.1.0/24,10.8.0.0/24`), acting as the household's
   legacy member. Don't let uvicorn trust forwarded headers from the reverse proxy, or the proxy's clients would be

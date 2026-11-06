@@ -16,7 +16,8 @@ MEMBER = "member"           # any member of the household, whatever their roles
 OWNER, APPROVER, CHILD = "owner", "approver", "child"
 
 PUBLIC = frozenset({
-    ("GET", "/health"), ("GET", "/auth/login"), ("GET", "/auth/callback"), ("POST", "/auth/google")})
+    ("GET", "/health"), ("GET", "/auth/login"), ("GET", "/auth/callback"), ("POST", "/auth/google"),
+    ("POST", "/auth/app-token")})
 SIGNED_IN = frozenset({
     ("GET", "/auth/me"), ("POST", "/auth/logout"), ("PUT", "/auth/household"), ("POST", "/invites/accept")})
 

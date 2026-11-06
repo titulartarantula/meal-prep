@@ -412,3 +412,154 @@ def test_invite_endpoints_need_members_manage(conn, g):
                                                           roles=["owner", "approver"]), ["owner", "approver"])
     households.set_roles(conn, hid, owner, ["contributor"])
     assert c.post("/household/invites", headers=b, json={}).status_code == 403
+
+
+# --- Android: the same round trip in a Custom Tab, a one-time code for the app -----------------------------------
+
+APP = "dev.mealprep.app"
+VERIFIER = "v" * 20 + "erifier-held-by-the-app-only-0123456789"     # 59 chars, like the app's
+
+
+def app_login(c, g, verifier=VERIFIER, params=None, **claims):
+    """The app opens /auth/login in a Custom Tab; Google signs the user in; returns the callback's response."""
+    q = {"client": "android", "app_challenge": auth.pkce_challenge(verifier), **(params or {})}
+    r = c.get("/auth/login", params=q, follow_redirects=False)
+    assert r.status_code == 302, r.text
+    state = parse_qs(urlparse(r.headers["location"]).query)["state"][0]
+    return c.get("/auth/callback", params={"code": g.authorize(r.headers["location"], **claims), "state": state},
+                 follow_redirects=False)
+
+
+def returned(r):
+    """The app return URL's scheme and query."""
+    assert r.status_code == 303 and "set-cookie" not in r.headers
+    u = urlparse(r.headers["location"])
+    assert u.netloc == "auth" and u.path == ""
+    return u.scheme, {k: v[0] for k, v in parse_qs(u.query).items()}
+
+
+def test_app_sign_in_hands_a_one_time_code_to_the_app_not_a_cookie(conn, g):
+    hid, mid = household(conn, owner_email="a@example.com")
+    c = make(conn, g, client=("203.0.113.5", 1))                          # works away from home
+    r = app_login(c, g)
+    scheme, q = returned(r)
+    assert scheme == APP and set(q) == {"code"} and r.headers["cache-control"] == "no-store"
+    assert conn.execute("SELECT count(*) FROM sessions").fetchone()[0] == 0           # no session until redeemed
+    assert conn.execute("SELECT code_hash FROM app_codes").fetchall() == [(auth.hash_token(q["code"]),)]
+    t = c.post("/auth/app-token", json={"code": q["code"], "verifier": VERIFIER})
+    assert t.status_code == 200 and t.json()["household_id"] == hid and t.json()["expires_at"]
+    assert "set-cookie" not in t.headers
+    b = {"Authorization": f"Bearer {t.json()['token']}"}
+    me = c.get("/auth/me", headers=b).json()
+    assert me["via"] == "bearer" and me["member_id"] == mid and "cart.send" in me["permissions"]
+    assert conn.execute("SELECT kind FROM sessions").fetchall() == [("app",)]
+    # single use
+    again = c.post("/auth/app-token", json={"code": q["code"], "verifier": VERIFIER})
+    assert again.status_code == 400 and "expired" in again.json()["detail"]
+    # an app session is no cookie session, and a web cookie is no bearer token
+    assert c.get("/recipes", headers={"Cookie": f"{auth.COOKIE}={t.json()['token']}"}).status_code == 401
+    web = cookie_of(browser_login(c, g))
+    assert c.get("/recipes", headers={"Cookie": f"{auth.COOKIE}={web}"}).status_code == 200
+    assert c.get("/recipes", headers={"Authorization": f"Bearer {web}"}).status_code == 401
+
+
+def test_app_code_needs_the_verifier_and_any_wrong_try_uses_it_up(conn, g):
+    household(conn, owner_email="a@example.com")
+    c = make(conn, g)
+    _, q = returned(app_login(c, g))
+    r = c.post("/auth/app-token", json={"code": q["code"], "verifier": "w" * 59})
+    assert r.status_code == 400 and "didn't come from this app" in r.json()["detail"]
+    assert c.post("/auth/app-token", json={"code": q["code"], "verifier": VERIFIER}).status_code == 400
+    assert c.post("/auth/app-token", json={"code": "x" * 40, "verifier": VERIFIER}).status_code == 400
+    assert c.post("/auth/app-token", json={"code": "short", "verifier": VERIFIER}).status_code == 422
+    assert conn.execute("SELECT count(*) FROM sessions").fetchone()[0] == 0
+
+
+def test_app_code_expires(conn, g):
+    household(conn, owner_email="a@example.com")
+    c = make(conn, g)
+    _, q = returned(app_login(c, g))
+    assert conn.execute("SELECT expires_at - created_at <= interval '2 minutes' FROM app_codes").fetchone()[0]
+    conn.execute("UPDATE app_codes SET expires_at = now() - interval '1 second'")
+    assert c.post("/auth/app-token", json={"code": q["code"], "verifier": VERIFIER}).status_code == 400
+
+
+def test_app_login_state_is_single_use_and_a_web_state_never_reaches_the_app(conn, g):
+    household(conn, owner_email="a@example.com")
+    c = make(conn, g)
+    r = c.get("/auth/login", params={"client": "android", "app_challenge": auth.pkce_challenge(VERIFIER)},
+              follow_redirects=False)
+    state = parse_qs(urlparse(r.headers["location"]).query)["state"][0]
+    assert returned(c.get("/auth/callback", params={"code": g.authorize(r.headers["location"]), "state": state},
+                          follow_redirects=False))[1]["code"]
+    r2 = c.get("/auth/callback", params={"code": g.authorize(r.headers["location"]), "state": state})
+    assert r2.status_code == 400 and "expired" in r2.text and "set-cookie" not in r2.headers
+    # a wrong state: the browser page, no code, no cookie
+    r3 = c.get("/auth/callback", params={"code": "c", "state": "not-a-state"}, follow_redirects=False)
+    assert r3.status_code == 400 and "location" not in r3.headers
+    # a web sign-in ends with a cookie and makes no app code
+    conn.execute("DELETE FROM app_codes")
+    w = browser_login(c, g)
+    assert w.status_code == 303 and w.headers["location"] == "/" and auth.COOKIE in w.headers["set-cookie"]
+    assert conn.execute("SELECT count(*) FROM app_codes").fetchone()[0] == 0
+
+
+def test_app_login_parameters_are_checked_and_the_return_url_is_never_the_callers(conn, g):
+    household(conn, owner_email="a@example.com")
+    c = make(conn, g)
+    ch = auth.pkce_challenge(VERIFIER)
+    bad = [{"client": "ios", "app_challenge": ch}, {"client": "android"}, {"client": "android", "app_challenge": "x"},
+           {"client": "android", "app_challenge": ch[:-1] + "="}, {"client": "android", "app_challenge": ch + "a"},
+           {"client": "android", "app_challenge": ch, "app": "com.evil.app"},
+           {"client": "android", "app_challenge": ch, "app": "https"},
+           {"app_challenge": ch}, {"app": APP}]
+    for p in bad:
+        assert c.get("/auth/login", params=p, follow_redirects=False).status_code == 422, p
+    assert conn.execute("SELECT count(*) FROM login_states").fetchone()[0] == 0
+    # next / redirect_uri can't move an app sign-in anywhere else; the debug build returns to its own scheme
+    r = app_login(c, g, params={"app": APP + ".debug", "next": "https://evil.example/x",
+                                "redirect_uri": "https://evil.example/cb"})
+    scheme, q = returned(r)
+    assert scheme == APP + ".debug" and "evil" not in r.headers["location"]
+    assert c.post("/auth/app-token", json={"code": q["code"], "verifier": VERIFIER}).status_code == 200
+    # what Google is sent stays the registered https callback
+    loc = c.get("/auth/login", params={"client": "android", "app_challenge": ch}, follow_redirects=False).headers["location"]
+    assert parse_qs(urlparse(loc).query)["redirect_uri"] == ["https://mealprep.example/api/auth/callback"]
+    # the challenge given to Google is the server's own PKCE pair, not the app's
+    assert parse_qs(urlparse(loc).query)["code_challenge"] != [ch]
+
+
+def test_app_sign_in_errors_go_back_to_the_app(conn, g):
+    household(conn, owner_email="someone@example.com")
+    c = make(conn, g)
+    scheme, q = returned(app_login(c, g, email="stranger@example.com", sub="sub-x"))
+    assert scheme == APP and q["error"] == "not_invited" and "Ask your household head for an invite" in q["message"]
+    assert "code" not in q and conn.execute("SELECT count(*) FROM users").fetchone()[0] == 0
+    # cancelled at Google
+    r = c.get("/auth/login", params={"client": "android", "app_challenge": auth.pkce_challenge(VERIFIER)},
+              follow_redirects=False)
+    state = parse_qs(urlparse(r.headers["location"]).query)["state"][0]
+    _, q = returned(c.get("/auth/callback", params={"error": "access_denied", "state": state}, follow_redirects=False))
+    assert q == {"error": "cancelled"}
+    # a used invite
+    hid, owner = household(conn, "Other")
+    _, token, _ = households.create_invite(conn, hid, owner)
+    conn.execute("UPDATE invites SET revoked_at = now()")
+    _, q = returned(app_login(c, g, params={"invite": token}, email="new@example.com", sub="sub-n"))
+    assert q["error"] == "failed" and q["message"]
+
+
+def test_app_sign_in_with_an_invite_joins_the_household(conn, g):
+    hid, owner = household(conn)
+    _, token, _ = households.create_invite(conn, hid, owner, roles=["contributor"])
+    c = make(conn, g)
+    _, q = returned(app_login(c, g, params={"invite": token}, email="new@example.com", sub="sub-new", name="Newt"))
+    t = c.post("/auth/app-token", json={"code": q["code"], "verifier": VERIFIER}).json()
+    me = c.get("/auth/me", headers={"Authorization": f"Bearer {t['token']}"}).json()
+    assert me["household"]["id"] == hid and me["roles"] == ["contributor"] and "cart.build" not in me["permissions"]
+
+
+def test_app_token_is_503_without_a_google_client(conn, monkeypatch):
+    for v in ("MEALPREP_GOOGLE_CLIENT_ID", "MEALPREP_GOOGLE_CLIENT_SECRET"):
+        monkeypatch.delenv(v, raising=False)
+    assert make(conn).post("/auth/app-token", json={"code": "x" * 40, "verifier": VERIFIER}).status_code == 503

@@ -541,6 +541,19 @@ CREATE TABLE IF NOT EXISTS login_states(
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL
 );
+-- The Android app signs in through the same round trip: its login state names the app (the return URL is built from
+-- an allow-list, never taken from the request) and carries the S256 challenge of a verifier only the app holds.
+ALTER TABLE login_states ADD COLUMN IF NOT EXISTS app_id text;
+ALTER TABLE login_states ADD COLUMN IF NOT EXISTS app_challenge text;
+-- A finished app sign-in waiting to be picked up by POST /auth/app-token: single use, 2 minutes, stored hashed.
+CREATE TABLE IF NOT EXISTS app_codes(
+  code_hash text PRIMARY KEY,
+  user_id int NOT NULL REFERENCES users ON DELETE CASCADE,
+  household_id int REFERENCES households ON DELETE SET NULL,
+  app_challenge text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL
+);
 CREATE TABLE IF NOT EXISTS audit_log(
   id bigserial PRIMARY KEY,
   household_id int REFERENCES households ON DELETE CASCADE,

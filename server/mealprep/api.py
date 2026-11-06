@@ -387,6 +387,11 @@ class GoogleIn(BaseModel):        # Android: Credential Manager's Google ID toke
     invite: Annotated[str, Field(max_length=200)] | None = None
 
 
+class AppTokenIn(BaseModel):      # Android: the one-time code from the sign-in's return URL + the app's PKCE verifier
+    code: Annotated[str, Field(min_length=20, max_length=200)]
+    verifier: Annotated[str, Field(min_length=43, max_length=128)]
+
+
 class HouseholdPick(BaseModel):
     household_id: int
 
@@ -539,12 +544,12 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
                     raise HTTPException(401, "The shared token only works on the home network; sign in instead.")
                 return Principal("legacy")
             s = auth.get_session(c, token, settings.session_days)
-            if s is None:
+            if s is None or s["kind"] != "app":    # a web (cookie) session is no bearer token, and vice versa
                 raise HTTPException(401)
             return Principal("bearer", s["user_id"], s["hash"], s["household_id"], token)
         cookie = request.cookies.get(auth.COOKIE)
         s = auth.get_session(c, cookie, settings.session_days) if cookie else None
-        if s is None:
+        if s is None or s["kind"] != "web":
             raise HTTPException(401)
         if request.method not in ("GET", "HEAD", "OPTIONS") and not hmac.compare_digest(
                 request.headers.get(auth.CSRF_HEADER, "").encode(), auth.csrf_token(cookie).encode()):
@@ -1341,32 +1346,73 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.get("/auth/login")
     def login(next: str | None = Query(None, max_length=500), invite: str | None = Query(None, max_length=200),
-              c=Depends(get_conn)):
-        """Start a browser sign-in: off to Google (authorization code + PKCE), back at /auth/callback."""
+              client: str | None = Query(None, max_length=20), app_id: str | None = Query(None, alias="app", max_length=100),
+              app_challenge: str | None = Query(None, max_length=100), c=Depends(get_conn)):
+        """Start a sign-in: off to Google (authorization code + PKCE), back at /auth/callback. The browser (web) gets a
+        cookie at the end. `client=android` (with `app_challenge` = S256 of a verifier the app keeps, and `app` = its
+        application id, default the release build) is the Android app in a Custom Tab: the callback hands a one-time
+        code to the app instead (see POST /auth/app-token)."""
         _need_google()
-        state, verifier, nonce = auth.start_login(c, next, invite)
+        if client is not None:
+            if client != auth.ANDROID:
+                raise HTTPException(422, "Unknown sign-in client.")
+            app_id = app_id or auth.DEFAULT_APP
+            if app_id not in auth.APP_IDS:
+                raise HTTPException(422, "Unknown app.")
+            if not auth.valid_challenge(app_challenge):
+                raise HTTPException(422, "app_challenge must be an S256 code challenge.")
+        elif app_id or app_challenge:
+            raise HTTPException(422, "app and app_challenge go with client=android.")
+        state, verifier, nonce = auth.start_login(c, next, invite, app_id if client else None,
+                                                  app_challenge if client else None)
         return RedirectResponse(google.authorize_url(state, auth.pkce_challenge(verifier), nonce), status_code=302,
                                 headers={"Cache-Control": "no-store"})
+
+    def _to_app(app_id: str, **params) -> RedirectResponse:
+        return RedirectResponse(auth.app_return(app_id, **params), status_code=303, headers={"Cache-Control": "no-store"})
 
     @app.get("/auth/callback")
     def callback(request: Request, code: str | None = Query(None, max_length=2000),
                  state: str | None = Query(None, max_length=200), error: str | None = Query(None, max_length=200),
                  c=Depends(get_conn)):
         _need_google()
-        if error or not code or not state:
-            return _page("Not signed in", "The Google sign-in was cancelled or didn't finish. Try again.", 400)
+        cancelled = "The Google sign-in was cancelled or didn't finish. Try again."
+        if not state:
+            return _page("Not signed in", cancelled, 400)
         try:
-            verifier, nonce, nxt, invite_hash = auth.finish_login(c, state)
-            claims = google.verify(google.exchange(code, verifier), nonce=nonce)
-            uid, hid = households.sign_in(c, claims, invite_hash)
-        except households.NotInvited as e:
-            return _page("No household yet", str(e), 403)
-        except (auth.AuthError, households.InviteError) as e:
+            login = auth.finish_login(c, state)
+        except auth.AuthError as e:
             return _page("Not signed in", str(e), 400)
+        app_id = login["app_id"] if login["app_id"] in auth.APP_IDS else None
+        if error or not code:
+            return _to_app(app_id, error="cancelled") if app_id else _page("Not signed in", cancelled, 400)
+        try:
+            claims = google.verify(google.exchange(code, login["verifier"]), nonce=login["nonce"])
+            uid, hid = households.sign_in(c, claims, login["invite_hash"])
+        except households.NotInvited as e:
+            return _to_app(app_id, error="not_invited", message=str(e)) if app_id else _page("No household yet", str(e), 403)
+        except (auth.AuthError, households.InviteError) as e:
+            return _to_app(app_id, error="failed", message=str(e)) if app_id else _page("Not signed in", str(e), 400)
+        if app_id:
+            # no cookie: the app picks the session up with the code and its verifier
+            return _to_app(app_id, code=auth.create_app_code(c, uid, hid, login["app_challenge"]))
         token, _ = auth.create_session(c, uid, hid, "web", settings.session_days, request.headers.get("user-agent"))
-        resp = RedirectResponse(auth.safe_next(nxt), status_code=303, headers={"Cache-Control": "no-store"})
+        resp = RedirectResponse(auth.safe_next(login["next"]), status_code=303, headers={"Cache-Control": "no-store"})
         _session_cookie(resp, token)
         return resp
+
+    @app.post("/auth/app-token")
+    def app_token(body: AppTokenIn, request: Request, c=Depends(get_conn)):
+        """Android: the one-time code from the sign-in's return URL + the verifier of the app_challenge it started with
+        → an app session token for `Authorization: Bearer` (the same session POST /auth/google gives). The code is
+        used up by any attempt; 400 = expired, used, or the wrong verifier (sign in again)."""
+        _need_google()
+        try:
+            uid, hid = auth.redeem_app_code(c, body.code, body.verifier)
+        except auth.AuthError as e:
+            raise HTTPException(400, str(e))
+        token, expires = auth.create_session(c, uid, hid, "app", settings.session_days, request.headers.get("user-agent"))
+        return {"token": token, "expires_at": expires.isoformat(), "household_id": hid}
 
     @app.post("/auth/google")
     def google_sign_in(body: GoogleIn, request: Request, c=Depends(get_conn)):
