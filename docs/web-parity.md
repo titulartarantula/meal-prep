@@ -106,10 +106,10 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 | Notifications (import done, cart ready, how was dinner, tonight, staples) + settings | No | Prep ready and thaw reminders were retired with Sunday prep. |
 | Offline copies (week, recipes, fridge) + offline banner | No | The web needs a connection; no service worker. |
 | Background jobs you can leave (imports, cart builds) | Partial | Server jobs keep running; the web shows progress only while the page is open. |
-| Settings: server address + token | n/a | The web is same-origin with a session. |
+| Settings: server address + token | n/a | The web is same-origin with a session. On Android the token is now the fallback, "Use the household token (home network)". |
 | Theme | Partial | Android: fixed Garden theme, dark follows the system. Web: Stone theme, Light / Dark / Match the system (offered only once a theme was chosen). |
-| Sign in with Google, households, roles, switcher | Web only | Android still uses the shared token (plan Task 7). |
-| Role-aware screens (only purchasers build/send, etc.) | Web only | |
+| Sign in with Google, households, roles, switcher | Yes (Android built 2026-11-05, not released yet) | The **same** Google round trip as the web (authorization code + PKCE through the server's `/auth/login` → `/auth/callback`), opened in a Custom Tab; the callback hands the app a one-time code (`<application id>://auth?code=…`, bound to a PKCE challenge the app holds) that it trades at `POST /auth/app-token` for a bearer session. Same invite-only rules and "Ask your household head for an invite" message; an invite link can be pasted on the sign-in screen. Signed in, the app talks to the public address (works away from home); Settings shows who is signed in, the household and roles, a household switcher (`PUT /auth/household` + `X-Household`) and Sign out; a refused session asks to sign in again. The household token stays as a fallback until the release. |
+| Role-aware screens (only purchasers build/send, etc.) | Yes (Android built 2026-11-05, not released yet) | Android reads the permissions from `GET /auth/me` (also for the household token) and hides: Build cart / Build a new cart and the week's cart step without cart.build, Send to Loblaws without cart.send, moving / scaling / removing / dragging dinners and Add to a week without plan.edit, Edit recipe / Edit source / Add recipe without recipe.edit. Members, invites and role screens: web only. |
 | Add to home screen | Web only | Web app manifest + icons (no offline). |
 | Privacy policy / terms pages | Yes | Android links the Play-published policy. |
 
@@ -121,4 +121,5 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 - **Phone only, biggest gaps:** cookbook photos, export, fridge cleaner, notifications, offline, staples editing, pins
   and pack sizes, chooser filters and detail.
 - **Retired everywhere (2026-10-31):** Sunday prep and cook cards.
-- **Web only:** Google sign-in + households + roles, per-person ratings, recipe photos, cart filters, theme switch, add to home screen.
+- **Web only:** per-person ratings, members / invites / roles screens, recipe photos, cart filters, theme switch, add to home screen.
+  Google sign-in, the household switcher and role-aware screens are built on Android too (2026-11-05, not released yet).
