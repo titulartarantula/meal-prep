@@ -172,11 +172,16 @@ internal fun needText(line: DraftLine): String? =
 
 /** The quiet line under the product: "onion · need 4 · diced · 3 recipes" (one recipe by name). */
 internal fun lineDetail(line: DraftLine): String {
-    val n = line.recipes.size
+    val recipes = lineRecipes(line)
+    val n = recipes.size
     val each = line.product?.takeIf { !it.weighted }?.price?.takeIf { (line.quantity ?: 0) > 1 }?.let { "${price(it)} each" }
     return listOfNotNull(line.name, needText(line)?.replaceFirstChar(Char::lowercase),
-        if (n == 1) line.recipes[0] else if (n > 1) "$n recipes" else null, each).joinToString(" · ")
+        if (n == 1) recipes[0] else if (n > 1) "$n recipes" else null, each).joinToString(" · ")
 }
+
+/** What a line is for; an item added to a night on This week says which ("Added for Thu"). */
+internal fun lineRecipes(line: DraftLine): List<String> =
+    line.recipes.map { if (it == "Added" && line.day != null) "Added for ${dev.mealprep.app.core.Weeks.dayLabel(line.day)}" else it }
 
 /** The product (brand · name · size), or what's missing. */
 internal fun productTitle(line: DraftLine): String =
@@ -250,7 +255,7 @@ private fun LineMenu(line: DraftLine, editable: Boolean, onSwap: () -> Unit, onR
     Box {
         IconButton({ open = true }) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More for ${line.name}") }
         DropdownMenu(open, { open = false }) {
-            val info = listOfNotNull(line.why, PackText.summary(line.pack), line.recipes.takeIf { it.isNotEmpty() }?.let { "For " + it.joinToString(", ") },
+            val info = listOfNotNull(line.why, PackText.summary(line.pack), lineRecipes(line).takeIf { it.isNotEmpty() }?.let { "For " + it.joinToString(", ") },
                 (if (line.pinned) ALWAYS_BOUGHT else SOURCE[line.source])?.let { "Product: $it" })
             Column(Modifier.widthIn(max = 280.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
                 info.forEach { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }

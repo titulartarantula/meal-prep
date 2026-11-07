@@ -2,7 +2,10 @@ package dev.mealprep.app.ui.home
 
 import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.api.Draft
+import dev.mealprep.app.data.api.Extra
 import dev.mealprep.app.data.api.PlanEntry
+import dev.mealprep.app.data.api.WeekNight
+import dev.mealprep.app.ui.cart.ChooserText
 import java.time.LocalDate
 
 data class Night(val day: Int, val date: LocalDate, val entries: List<PlanEntry>)
@@ -31,7 +34,9 @@ fun pagerSpan(ahead: Int, opened: Int): PagerSpan {
 /** Planned → Cart sent (DESIGN "App: home screen"). */
 data class StatusStrip(val planned: Boolean, val cartSent: Boolean)
 
-fun statusStrip(entries: List<PlanEntry>, carted: Boolean) = StatusStrip(entries.any { it.day != null }, carted)
+/** Planned = a dinner on a night, or a night with a name or store items (planned for display; no rating asked). */
+fun statusStrip(entries: List<PlanEntry>, carted: Boolean, nights: List<WeekNight> = emptyList()) =
+    StatusStrip(entries.any { it.day != null } || nights.any { it.title != null || it.items.isNotEmpty() }, carted)
 
 /** The one context button (docked at the bottom of the week): Build cart → Review cart → Tonight: X (its recipe). */
 sealed interface ContextAction {
@@ -46,9 +51,10 @@ sealed interface ContextAction {
     data object AllSet : ContextAction { override val label = "✓ All set for this week" }
 }
 
-fun contextAction(week: LocalDate, today: LocalDate, entries: List<PlanEntry>, carted: Boolean, draft: Draft?): ContextAction {
+/** [extras]: items added by search for the week or its nights (a week with only store items still builds a cart). */
+fun contextAction(week: LocalDate, today: LocalDate, entries: List<PlanEntry>, carted: Boolean, draft: Draft?, extras: Int = 0): ContextAction {
     val start = Weeks.weekStart(week)
-    if (entries.isEmpty()) return ContextAction.AddRecipes
+    if (entries.isEmpty() && extras == 0) return ContextAction.AddRecipes
     if (start.plusDays(6).isBefore(today)) return ContextAction.AllSet
     val tonight = entries.firstOrNull { it.day != null && Weeks.nightDate(start, it.day) == today }
         ?.let { ContextAction.Tonight(it.id, it.recipeId, it.title ?: "dinner") }
@@ -98,3 +104,46 @@ fun fridgeNudgeText(n: dev.mealprep.app.data.api.FridgeNight): String {
 /** "Fridge updated · Eggs 2, Whole milk 3 cups". */
 fun fridgeUpdatedText(a: dev.mealprep.app.data.api.UsedAnswer): String =
     if (a.changes.isEmpty()) "Fridge updated" else "Fridge updated · " + a.changes.joinToString(", ") { it.text }
+
+// --- a night's name and store items (2026-11-06; as the web's useNights / useNightItems) ---
+
+/** The longest night name the server keeps. */
+const val NIGHT_TITLE_MAX = 60
+
+/** The name as the server keeps it: spaces collapsed, trimmed; null = no name. */
+fun cleanNightTitle(t: String): String? = t.trim().replace(Regex("\\s+"), " ").ifEmpty { null }
+
+/** A night's name in the week's nights: a night with no name and no items drops out. */
+fun withTitle(nights: List<WeekNight>, day: Int, title: String?): List<WeekNight> {
+    val out = if (nights.any { it.day == day }) nights.map { if (it.day == day) it.copy(title = title) else it }
+        else if (title != null) nights + WeekNight(day, title) else nights
+    return out.filter { it.title != null || it.items.isNotEmpty() }.sortedBy { it.day }
+}
+
+/** A changed or added item on its night (moved off any other; day null = for the week, off the nights). */
+fun putItem(nights: List<WeekNight>, e: Extra): List<WeekNight> {
+    val rest = nights.map { n -> n.copy(items = n.items.filter { it.id != e.id }) }
+    val out = when {
+        e.day == null -> rest
+        rest.any { it.day == e.day } -> rest.map { n -> if (n.day == e.day) n.copy(items = (n.items + e).sortedBy { it.id }) else n }
+        else -> rest + WeekNight(e.day, null, listOf(e))
+    }
+    return out.filter { it.title != null || it.items.isNotEmpty() }.sortedBy { it.day }
+}
+
+fun dropItem(nights: List<WeekNight>, id: Int): List<WeekNight> =
+    nights.map { n -> n.copy(items = n.items.filter { it.id != id }) }.filter { it.title != null || it.items.isNotEmpty() }
+
+/** "Hearthstone Pepperoni Pizza" (brand + product), else what was searched. */
+fun itemName(e: Extra): String = e.product?.let { p -> listOfNotNull(p.brand, p.name).joinToString(" ") } ?: e.term
+
+/** "×2", or grams for a weighed product; null for a single pack. */
+fun itemCount(e: Extra): String? = when {
+    e.product?.weighted == true -> ChooserText.quantity(e.quantity, e.product)
+    e.quantity > 1 -> "×${e.quantity}"
+    else -> null
+}
+
+/** "From the store: Hearthstone Pepperoni Pizza ×2 · Caesar Salad Kit". */
+fun storeLine(items: List<Extra>): String =
+    "From the store: " + items.joinToString(" · ") { e -> listOfNotNull(itemName(e), itemCount(e)).joinToString(" ") }

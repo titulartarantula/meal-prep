@@ -86,6 +86,9 @@ interface MealPrepApi {
     @POST("drafts/{id}/lines") suspend fun addLine(@Path("id") id: Int, @Body body: AddLineIn): DraftLine
     @GET("products/choices") suspend fun productChoices(@Query("term") term: String, @Query("page") page: Int): Choices
     @GET("extras") suspend fun extras(@Query("week") weeks: List<String>): List<Extra>
+    @GET("weeks/{week}/nights") suspend fun nights(@Path("week") week: String): List<WeekNight>
+    @PUT("weeks/{week}/nights/{day}") suspend fun nameNight(@Path("week") week: String, @Path("day") day: Int, @Body body: NightTitleIn): NightTitle
+    @DELETE("weeks/{week}/nights/{day}") suspend fun clearNight(@Path("week") week: String, @Path("day") day: Int)
     @POST("extras") suspend fun addExtra(@Body body: ExtraIn): Extra
     @PATCH("extras/{id}") suspend fun patchExtra(@Path("id") id: Int, @Body body: JsonObject): Extra
     @DELETE("extras/{id}") suspend fun deleteExtra(@Path("id") id: Int)

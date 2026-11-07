@@ -29,9 +29,11 @@ object Bodies {
             .forEach { (k, v) -> if (v != null) put(k, v) else put(k, JsonNull) }
     }
 
-    fun extraPatch(quantity: Int? = null, productCode: String? = null): JsonObject = buildJsonObject {
+    /** An added item's edit: only what is given; [move] sends the night ([day], null = the whole week, sent explicitly). */
+    fun extraPatch(quantity: Int? = null, productCode: String? = null, move: Boolean = false, day: Int? = null): JsonObject = buildJsonObject {
         if (quantity != null) put("quantity", quantity)
         if (productCode != null) put("product_code", productCode)
+        if (move) { if (day != null) put("day", day) else put("day", JsonNull) }
     }
 
     fun linePatch(productCode: String? = null, quantity: Int? = null, removed: Boolean? = null, pinned: Boolean? = null): JsonObject = buildJsonObject {

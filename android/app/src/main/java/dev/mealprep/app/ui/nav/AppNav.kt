@@ -142,7 +142,8 @@ private fun Screens(nav: NavHostController, start: Any, graph: AppGraph, open: (
         }
         composable<AddItemRoute> { back ->
             val r = back.toRoute<AddItemRoute>()
-            val mode = if (r.draftId > 0) ChooserMode.AddToCart(r.draftId) else ChooserMode.AddToList(LocalDate.parse(r.week))
+            val mode = if (r.draftId > 0) ChooserMode.AddToCart(r.draftId)
+                else ChooserMode.AddToList(LocalDate.parse(r.week), r.day.takeIf { it in 0..6 })
             ChooserScreen(mode, onDone = up, onBack = up)
         }
         composable<LoblawsRoute> { back ->

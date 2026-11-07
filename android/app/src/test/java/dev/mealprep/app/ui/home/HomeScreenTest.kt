@@ -163,9 +163,10 @@ class HomeScreenTest {
         compose.onNodeWithText("○ Planned").assertExists()                                  // the status line stays
         compose.onNodeWithText("Choose from Recipes").performClick()
         assertEquals(ContextAction.AddRecipes, action)
-        // Only the card: no tray, no seven empty nights, no drag hint, no Refresh.
+        // The card and the seven nights (to name one or add store items to it); no tray, no drag hint, no Refresh.
         compose.onNodeWithText(NO_NIGHT).assertDoesNotExist()
-        compose.onNodeWithText("Tue 13").assertDoesNotExist()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Tue 13"))
+        compose.onNodeWithText("Tue 13").assertExists()
         compose.onNodeWithText("Hold a recipe", substring = true).assertDoesNotExist()
         compose.onNodeWithText("Refresh").assertDoesNotExist()
     }

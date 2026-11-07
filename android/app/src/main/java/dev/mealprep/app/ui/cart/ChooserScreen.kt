@@ -89,6 +89,9 @@ const val ADD_PLACEHOLDER = "Paper towels, coffee, snacks…"
 const val ADD_HINT = "Search Loblaws for anything the recipes don't cover. Products you bought before, deals and bigger packs show first, as for recipe items."
 const val ADD_TO_LIST = "Add to list"
 const val ADD_TO_CART = "Add to cart"
+/** Adding store items to one night of the week (This week → a night → Add items). */
+fun addToNightTitle(day: Int) = "Add items for ${dev.mealprep.app.core.Weeks.longDayLabel(day)}"
+fun addToNight(day: Int) = "Add to ${dev.mealprep.app.core.Weeks.longDayLabel(day)}"
 const val USE_THIS = "Use this"
 const val ALWAYS_BUY = "Always buy this"
 const val OUT_THIS_WEEK = "Out of stock this week"
@@ -110,7 +113,7 @@ private fun ChoiceList(s: ChooserState, a: ChooserActions) {
     val line = s.line
     Column(Modifier.fillMaxSize()) {
         BackTopBar(when {
-            s.adding -> if (s.toCart) ADD_TO_CART_TITLE else ADD_TO_LIST_TITLE
+            s.adding -> s.night?.let { addToNightTitle(it) } ?: if (s.toCart) ADD_TO_CART_TITLE else ADD_TO_LIST_TITLE
             line?.product == null -> "Find ${line?.name ?: "a product"}"
             else -> "Choose ${line.name}"
         }, a.onBack, subtitle = line?.let { needText(it) })
@@ -261,7 +264,7 @@ private fun ChoiceDetailContent(s: ChooserState, d: ChoiceDetail, a: ChooserActi
                 Text(when {
                     s.saving -> "Saving…"
                     !s.editable -> "This cart can't be changed"
-                    s.adding -> if (s.toCart) ADD_TO_CART else ADD_TO_LIST
+                    s.adding -> s.night?.let { addToNight(it) } ?: if (s.toCart) ADD_TO_CART else ADD_TO_LIST
                     else -> USE_THIS
                 })
             }

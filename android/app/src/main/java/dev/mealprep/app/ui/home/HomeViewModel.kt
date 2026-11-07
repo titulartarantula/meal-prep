@@ -7,7 +7,9 @@ import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.ApiResult
 import dev.mealprep.app.data.api.PendingRating
 import dev.mealprep.app.data.api.FridgeNight
+import dev.mealprep.app.data.api.Extra
 import dev.mealprep.app.data.api.PlanEntry
+import dev.mealprep.app.data.api.WeekNight
 import dev.mealprep.app.data.api.userMessage
 import dev.mealprep.app.ui.camera.RefPrompt
 import dev.mealprep.app.ui.camera.refPrompt
@@ -39,6 +41,8 @@ data class WeekUi(
     val action: ContextAction = ContextAction.AddRecipes,
     /** The week's sent cart draft, so "Cart sent" can reopen it (Open in Loblaws again); not a stale one. */
     val sentDraftId: Int? = null,
+    /** Nights with a name or store items (GET /weeks/{week}/nights; empty from an older server). */
+    val nights: List<WeekNight> = emptyList(),
     val loading: Boolean = true,
     val offlineSince: Instant? = null,
     val error: String? = null,
@@ -167,20 +171,54 @@ class HomeViewModel(
         val entries = async { repo.week(w) }
         val summary = async { repo.weeks(w, 1) }
         val draft = async { repo.weekDraft(w) }
+        val nightsAsync = async { repo.nights(w) }
         val e = entries.await()
         val list = e.value
-        val carted = summary.await().value?.firstOrNull()?.carted == true
+        val sum = summary.await().value?.firstOrNull()
+        val carted = sum?.carted == true
         val d = draft.await().value
-        val r: (WeekUi) -> WeekUi = { prev -> prev.copy(
+        val nightsLoaded = nightsAsync.await().value
+        val r: (WeekUi) -> WeekUi = { prev ->
+            val nights = nightsLoaded ?: prev.nights
+            prev.copy(
             view = list?.let { weekView(w, it) } ?: prev.view,
-            strip = statusStrip(list.orEmpty(), carted),
-            action = contextAction(w, today(), list.orEmpty(), carted, d),
+            nights = nights,
+            strip = statusStrip(list.orEmpty(), carted, nights),
+            action = contextAction(w, today(), list.orEmpty(), carted, d, maxOf(sum?.extras ?: 0, nights.sumOf { it.items.size })),
             sentDraftId = d?.takeIf { it.status == "sent" && !it.stale }?.id,
             loading = false,
             offlineSince = e.offlineSince,
             error = if (list == null) e.error?.userMessage() else e.errorMessage,
         ) }
         r
+    }
+
+    /** Name, rename or clear (empty) a night. */
+    fun nameNight(week: LocalDate, day: Int, title: String) =
+        nightWrite(week, { withTitle(it, day, cleanNightTitle(title)) }) { repo.nameNight(week, day, title) }
+
+    /** A night's store item: how many (packs, or grams by weight). */
+    fun setItemQuantity(week: LocalDate, item: Extra, quantity: Int) =
+        nightWrite(week, { putItem(it, item.copy(quantity = quantity)) }) { repo.setExtraQuantity(item.id, quantity) }
+
+    /** Move a store item to another night, or (null) to the whole week. */
+    fun moveItem(week: LocalDate, item: Extra, day: Int?) =
+        nightWrite(week, { putItem(it, item.copy(day = day)) }) { repo.moveExtra(item.id, day) }
+
+    fun removeItem(week: LocalDate, item: Extra) = nightWrite(week, { dropItem(it, item.id) }) { repo.deleteExtra(item.id) }
+
+    /** As [mutate], for the week's nights: shown at once, the server's answer (or the saved copy) replaces the guess. */
+    private fun nightWrite(week: LocalDate, optimistic: (List<WeekNight>) -> List<WeekNight>, call: suspend () -> ApiResult<*>) {
+        val w = Weeks.weekStart(week)
+        val f = weeks[w] ?: return
+        loads.remove(w)?.cancel()
+        writes[w] = (writes[w] ?: 0) + 1
+        f.update { it.copy(nights = optimistic(it.nights), strip = statusStrip(it.view?.all.orEmpty(), it.strip.cartSent, optimistic(it.nights))) }
+        viewModelScope.launch {
+            val r = try { call() } finally { writes[w] = (writes[w] ?: 1) - 1 }
+            if (r is ApiResult.Err) _message.value = r.error.userMessage()
+            refresh(w)
+        }
     }
 
     fun place(entry: PlanEntry, day: Int?) =

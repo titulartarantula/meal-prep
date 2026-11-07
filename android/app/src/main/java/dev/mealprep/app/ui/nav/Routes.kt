@@ -15,8 +15,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class DraftRoute(val id: Int)
 /** The product chooser for one line of a cart draft. */
 @Serializable data class ChooserRoute(val draftId: Int, val lineId: Int)
-/** The chooser to add an item by search: to the week [week] of the shopping list, or to the cart [draftId] (> 0). */
-@Serializable data class AddItemRoute(val week: String = "", val draftId: Int = 0)
+/** The chooser to add an item by search: to the week [week] of the shopping list (one night of it when [day] is
+ *  0–6), or to the cart [draftId] (> 0). */
+@Serializable data class AddItemRoute(val week: String = "", val draftId: Int = 0, val day: Int = -1)
 @Serializable data class LoblawsRoute(val cartId: String)
 @Serializable data class RatingRoute(val entryId: Int, val week: String)
 @Serializable object StaplesRoute

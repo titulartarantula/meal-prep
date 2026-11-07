@@ -97,6 +97,7 @@ import dev.mealprep.app.data.api.FridgeNight
 import dev.mealprep.app.ui.nav.FridgeRoute
 import dev.mealprep.app.ui.nav.FridgeSuggestRoute
 import dev.mealprep.app.data.api.PlanEntry
+import dev.mealprep.app.ui.nav.AddItemRoute
 import dev.mealprep.app.ui.nav.DraftRoute
 import dev.mealprep.app.ui.common.MessageText
 import dev.mealprep.app.ui.common.GardenChip
@@ -182,7 +183,14 @@ fun HomeScreen(graph: AppGraph, startWeek: LocalDate?, onAction: (ContextAction)
                 val week = current.plusWeeks((page - BACK).toLong())
                 val ui by vm.week(week).collectAsStateWithLifecycle()
                 WeekContent(ui, today, onAction, vm::place, vm::scale, vm::remove, onOpen, onRefresh = { vm.refresh(week) },
-                    loadRef = vm::refPromptFor, drag = drag, fridgeCount = fridgeCount)
+                    loadRef = vm::refPromptFor, drag = drag, fridgeCount = fridgeCount,
+                    nightActions = remember(week) { NightActions(
+                        onName = { d, t -> vm.nameNight(week, d, t) },
+                        onAddItems = { d -> onOpen(AddItemRoute(week = week.toString(), day = d)) },
+                        onQuantity = { e, q -> vm.setItemQuantity(week, e, q) },
+                        onMove = { e, d -> vm.moveItem(week, e, d) },
+                        onRemove = { e -> vm.removeItem(week, e) },
+                    ) })
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
@@ -355,8 +363,12 @@ fun WeekContent(
     drag: WeekDrag = remember { WeekDrag() },
     /** Items in the fridge list: "Use up the fridge" shows only with some. */
     fridgeCount: Int = 0,
+    /** A night's name and store items (name / rename / clear, add, change, move, remove). */
+    nightActions: NightActions = NightActions(),
 ) {
     var sheetFor by remember { mutableStateOf<PlanEntry?>(null) }
+    var naming by remember { mutableStateOf<Int?>(null) }
+    var itemFor by remember { mutableStateOf<dev.mealprep.app.data.api.Extra?>(null) }
     val all = ui.view?.all.orEmpty()
     // Role-aware (as on the web): moving dinners needs plan.edit, the cart steps cart.build.
     val access = LocalAccess.current
@@ -393,7 +405,8 @@ fun WeekContent(
                 }
             }
             val view = ui.view
-            // An empty week is only its card: no tray, no seven empty nights.
+            // An empty week has its card and, for naming a night or adding store items to it, the seven nights (no tray).
+            val showNights = view != null && (all.isNotEmpty() || ui.nights.isNotEmpty() || access.canEditPlan || access.canBuildCart)
             if (view != null && all.isNotEmpty()) {
                 item {
                     Column(Modifier.fillMaxWidth().dropZone(drag, Slot.TRAY, drop).padding(4.dp)) {
@@ -408,18 +421,23 @@ fun WeekContent(
                     Text("Hold a recipe and drag it to a night (or back here), or tap it to move it.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+            if (view != null && showNights) {
                 items(view.nights, key = { it.day }) { n ->
                     val slot = Slot(n.day)
+                    val extra = ui.nights.firstOrNull { it.day == n.day }
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).dropZone(drag, slot, drop).padding(4.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         // At least 64 dp so the nights line up; wider (never wrapped) with large text.
                         Text(Weeks.nightTitle(view.week, n.day), Modifier.widthIn(min = 64.dp).padding(end = 8.dp), softWrap = false,
                             fontWeight = if (n.date == today) FontWeight.Bold else FontWeight.Normal)
-                        Column {
+                        Column(Modifier.weight(1f)) {
                             DropHint(drag, slot, "Drop here")
-                            if (n.entries.isEmpty() && drag.over != slot) Text("—", style = MaterialTheme.typography.bodySmall)
+                            if (n.entries.isEmpty() && extra == null && drag.over != slot) Text("—", style = MaterialTheme.typography.bodySmall)
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { n.entries.forEach { EntryChip(it, access.canEditPlan) { sheetFor = it } } }
+                            NightExtras(n.day, extra, access.canEditPlan, access.canBuildCart, onRename = { naming = n.day }, onItem = { itemFor = it })
                         }
+                        NightMenu(n.day, extra, access.canEditPlan, access.canBuildCart, onRename = { naming = n.day }, a = nightActions)
                     }
                 }
             } else if (view == null && ui.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
@@ -428,6 +446,10 @@ fun WeekContent(
         }
         docked?.let { a -> BottomAction(a.label, { onAction(a) }) }
     }
+    naming?.let { d ->
+        NameNightDialog(d, ui.nights.firstOrNull { it.day == d }?.title, onSave = { t -> nightActions.onName(d, t) }, onDismiss = { naming = null })
+    }
+    itemFor?.let { e -> NightItemDialog(e, nightActions, onDismiss = { itemFor = null }) }
     sheetFor?.let { e ->
         val ref by produceState<RefPrompt?>(null, e.recipeId) { value = loadRef(e.recipeId) }
         EntryDialog(e, ref.takeIf { access.canEditRecipes }, canEdit = access.canEditPlan, onDismiss = { sheetFor = null },

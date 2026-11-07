@@ -191,6 +191,23 @@ class ChooserViewModelTest {
             env.bodies("POST", "/extras").single())
     }
 
+    @Test fun `adding for a night of the week posts its day and says which night`() = runTest {
+        env.on("GET", "/products/choices", body = fixture("choices.json").replace("\"term\": \"old cheddar\"", "\"term\": \"cheddar\""))
+        env.on("POST", "/extras", code = 201, body = """{"id":4,"week":"2026-10-11","day":4,"term":"cheddar","quantity":1}""")
+        val vm = ChooserViewModel(env.repo, ChooserMode.AddToList(java.time.LocalDate.parse("2026-10-11"), day = 4))
+        assertEquals(4, vm.state.value.night)
+        assertEquals("Add items for Thursday", addToNightTitle(4))
+        assertEquals("Add to Thursday", addToNight(4))
+        vm.search("cheddar")
+        vm.state.await { !it.loading && it.choices.isNotEmpty() }
+        vm.open(vm.state.value.choices.first { it.product.code == "21289751_EA" })
+        vm.use()
+        vm.state.await { it.done }
+        val body = env.bodies("POST", "/extras").single()
+        assertTrue(body, body.startsWith("""{"week":"2026-10-11","term":"cheddar","product_code":"21289751_EA","quantity":"""))
+        assertTrue(body, body.endsWith(""","day":4}"""))
+    }
+
     @Test fun `Add to cart checks the cart is open and posts a line`() = runTest {
         env.on("GET", "/drafts/7", body = fixture("draft_ready.json"))
         env.on("GET", "/products/choices", body = fixture("choices.json"))

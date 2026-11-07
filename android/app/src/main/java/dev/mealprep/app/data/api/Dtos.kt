@@ -95,7 +95,17 @@ import kotlinx.serialization.Serializable
 @Serializable data class ShareResult(val recipe: Recipe, val entry: PlanEntry? = null, val existing: Boolean = false)
 /** [carted]: the week's newest sent cart still matches its recipes; [cartStale]: a cart was sent but the week's
  *  recipes changed since (absent from servers before 0.8.1). */
-@Serializable data class WeekSummary(val week: String, val entries: Int = 0, val carted: Boolean = false, val cartStale: Boolean = false)
+@Serializable data class WeekSummary(val week: String, val entries: Int = 0, val carted: Boolean = false, val cartStale: Boolean = false,
+    /** Items added by search for the week or one of its nights (since 2026-11-06): something to shop for without a recipe. */
+    val extras: Int = 0,
+    /** Nights with a name ("Pizza night"; since 2026-11-06). */
+    val namedNights: Int = 0)
+/** GET /weeks/{week}/nights (since 2026-11-06): a night with a name or store items; [items] = its added items. A night
+ *  with no recipe still counts as planned; it never asks for a rating. */
+@Serializable data class WeekNight(val day: Int, val title: String? = null, val items: List<Extra> = emptyList())
+/** PUT /weeks/{week}/nights/{day}: the night's name (trimmed by the server, at most 60 characters); empty clears it. */
+@Serializable data class NightTitleIn(val title: String)
+@Serializable data class NightTitle(val week: String, val day: Int, val title: String? = null)
 @Serializable data class EntryIn(val recipeId: Int)
 /** [memberId]: rate for a child profile (rate.for_children); null = yourself. Good for company is set apart
  *  (PUT /recipes/{id}/company), never in a rating. */
@@ -179,6 +189,8 @@ import kotlinx.serialization.Serializable
     val pinned: Boolean = false, val note: String? = null,
     /** An item added by search (since 0.13.0): its id in the week's added items. */
     val extraId: Int? = null,
+    /** An added item's night (0 = Sun … 6 = Sat; since 2026-11-06); null = for the week. */
+    val day: Int? = null,
     /** What the fridge covered when the list was made (since 0.14.0): "partial" with [fridgeQty] in the line's unit. */
     val fridge: String? = null, val fridgeQty: Double? = null,
     /** What one pack of the product holds (since 0.15.0), or null; [packEditable] = it's sold by the piece, so the
@@ -221,8 +233,11 @@ import kotlinx.serialization.Serializable
 @Serializable data class Extra(
     val id: Int, val week: String, val term: String, val key: String = "", val product: Product? = null,
     val quantity: Int = 1, val createdAt: String? = null,
+    /** The night it is for (0 = Sun … 6 = Sat; since 2026-11-06); null = for the week. */
+    val day: Int? = null,
 )
-@Serializable data class ExtraIn(val week: String, val term: String, val productCode: String, val quantity: Int)
+/** [day]: add it to one night of the week (left out when null = for the week). */
+@Serializable data class ExtraIn(val week: String, val term: String, val productCode: String, val quantity: Int, val day: Int? = null)
 @Serializable data class AddLineIn(val term: String, val productCode: String, val quantity: Int)
 /** The newest sent cart that had this product: when ([date], ISO timestamp), at what price, how many. */
 @Serializable data class LastBought(val date: String? = null, val price: Double? = null, val quantity: Int? = null)

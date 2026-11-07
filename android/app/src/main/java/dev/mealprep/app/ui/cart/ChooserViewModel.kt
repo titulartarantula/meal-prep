@@ -18,7 +18,8 @@ import kotlinx.coroutines.launch
 /** What the chooser is for: a cart line's product, or an item added by search to a week's list or to a cart. */
 sealed interface ChooserMode {
     data class Line(val draftId: Int, val lineId: Int) : ChooserMode
-    data class AddToList(val week: LocalDate) : ChooserMode
+    /** [day]: the item is for one night of the week (This week → a night → Add items); null = for the week. */
+    data class AddToList(val week: LocalDate, val day: Int? = null) : ChooserMode
     data class AddToCart(val draftId: Int) : ChooserMode
 }
 
@@ -46,6 +47,8 @@ data class ChooserState(
     /** Adding an item by search (no line): nothing is searched until something is typed. */
     val adding: Boolean = false,
     val toCart: Boolean = false,
+    /** Adding to one night of the week (0 = Sun … 6 = Sat). */
+    val night: Int? = null,
 ) {
     val shown: List<Choice> get() = ChooserText.filtered(choices, filters)
     /** Adding, before the first search. */
@@ -58,7 +61,7 @@ class ChooserViewModel(private val repo: Repository, private val mode: ChooserMo
     constructor(repo: Repository, draftId: Int, lineId: Int) : this(repo, ChooserMode.Line(draftId, lineId))
 
     private val _state = MutableStateFlow(ChooserState(adding = mode !is ChooserMode.Line, toCart = mode is ChooserMode.AddToCart,
-        loading = mode !is ChooserMode.AddToList, editable = mode is ChooserMode.AddToList))
+        loading = mode !is ChooserMode.AddToList, editable = mode is ChooserMode.AddToList, night = (mode as? ChooserMode.AddToList)?.day))
     val state = _state.asStateFlow()
     private var loading: Job? = null
 
@@ -178,7 +181,7 @@ class ChooserViewModel(private val repo: Repository, private val mode: ChooserMo
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
             val r = when (mode) {
-                is ChooserMode.AddToList -> repo.addExtra(mode.week, term, d.choice.product.code, d.quantity)
+                is ChooserMode.AddToList -> repo.addExtra(mode.week, term, d.choice.product.code, d.quantity, mode.day)
                 is ChooserMode.AddToCart -> repo.addLine(mode.draftId, term, d.choice.product.code, d.quantity)
                 is ChooserMode.Line -> return@launch
             }

@@ -211,9 +211,10 @@ private fun ExtraRow(e: Extra, enabled: Boolean, onRemove: () -> Unit) {
 internal fun extraTitle(e: Extra): String =
     e.product?.let { p -> listOfNotNull(p.brand, p.name, p.packageSize?.ifBlank { null }).joinToString(" · ") } ?: e.term
 
-/** "2 · about $17.98", "300 g · about $7.47" (sold by weight). */
+/** "2 · about $17.98", "300 g · about $7.47" (sold by weight), "… · for Thursday" (added to a night on This week). */
 internal fun extraDetail(e: Extra): String =
-    listOfNotNull(ChooserText.quantity(e.quantity, e.product), e.product?.cost(e.quantity)?.let { "about ${price(it)}" }).joinToString(" · ")
+    listOfNotNull(ChooserText.quantity(e.quantity, e.product), e.product?.cost(e.quantity)?.let { "about ${price(it)}" },
+        e.day?.let { "for ${dev.mealprep.app.core.Weeks.longDayLabel(it)}" }).joinToString(" · ")
 
 /** A whole-row checkbox (48 dp tall at least; TalkBack reads it as one checkbox with its text). */
 @Composable

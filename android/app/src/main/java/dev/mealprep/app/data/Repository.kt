@@ -19,6 +19,8 @@ import dev.mealprep.app.data.api.DraftLine
 import dev.mealprep.app.data.api.EntryIn
 import dev.mealprep.app.data.api.Extra
 import dev.mealprep.app.data.api.ExtraIn
+import dev.mealprep.app.data.api.NightTitleIn
+import dev.mealprep.app.data.api.WeekNight
 import dev.mealprep.app.data.api.ApplyIn
 import dev.mealprep.app.data.api.ApplyLine
 import dev.mealprep.app.data.api.FridgeIn
@@ -259,8 +261,18 @@ class Repository(
         call { it.addLine(draftId, AddLineIn(term.trim(), code, quantity)) }
     /** Items added by search for [weeks] (live: they change from either phone). */
     suspend fun extras(weeks: List<LocalDate>): ApiResult<List<Extra>> = call { it.extras(weeks.map(::wk)) }
-    suspend fun addExtra(week: LocalDate, term: String, code: String, quantity: Int): ApiResult<Extra> =
-        call { it.addExtra(ExtraIn(wk(week), term.trim(), code, quantity)) }
+    suspend fun addExtra(week: LocalDate, term: String, code: String, quantity: Int, day: Int? = null): ApiResult<Extra> =
+        call { it.addExtra(ExtraIn(wk(week), term.trim(), code, quantity, day)) }
+    /** Move an added item to another night ([day]) or the whole week (null). */
+    suspend fun moveExtra(id: Int, day: Int?): ApiResult<Extra> = call { it.patchExtra(id, Bodies.extraPatch(move = true, day = day)) }
+    /** The week's nights with a name or store items (the saved copy offline). */
+    suspend fun nights(week: LocalDate): Loaded<List<WeekNight>> =
+        load("nights:${wk(week)}", ListSerializer(WeekNight.serializer())) { it.nights(wk(week)) }
+    /** Name or rename a night; an empty [title] clears it. */
+    suspend fun nameNight(week: LocalDate, day: Int, title: String): ApiResult<Unit> {
+        val t = title.trim()
+        return if (t.isEmpty()) call { it.clearNight(wk(week), day) } else call { it.nameNight(wk(week), day, NightTitleIn(t)); Unit }
+    }
     suspend fun setExtraQuantity(id: Int, quantity: Int): ApiResult<Extra> =
         call { it.patchExtra(id, Bodies.extraPatch(quantity = quantity)) }
     suspend fun deleteExtra(id: Int): ApiResult<Unit> = call { it.deleteExtra(id) }
