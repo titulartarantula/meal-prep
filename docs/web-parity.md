@@ -25,6 +25,8 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 | Week status strip (Planned · Cart sent) | Yes | Hidden on narrow laptops and landscape tablets (900–1180 px). "Prep done" was retired with Sunday prep. |
 | Context button (Build cart / Review cart / View cart; Android: Tonight → the recipe) | Yes | Docked above the tab bar on phones, like Android. Tonight isn't offered on the web. |
 | Empty week → Add recipes | Yes | |
+| Night names ("Pizza night", "Leftovers"): name, rename, clear | Yes (both, 2026-11-06) | Web: the night's ⋮ (Name this night / Rename night / Clear name) or tap the name; a dialog, at most 60 characters. Android (0.19.0): the night's ⋮ or tap the name; same rules. Server: `GET /weeks/{week}/nights`, `PUT` / `DELETE /weeks/{week}/nights/{day}` (plan.edit). A named night counts as planned; it never asks for a rating. |
+| Store items for a night (the product chooser, without a recipe) | Yes (both, 2026-11-06) | "Add items" / Add store items on any night (empty ones too) opens the same chooser as Add an item; the item is saved for that night (`POST /extras {day}`) and goes into the week's cart like any added item (a cart under review gets it at once). The night lists "From the store" items; each can be changed (one more / less), moved to another night or the whole week, or removed. Web keeps the chooser open to add several (Done); Android goes back after each add. Shopping list "Added items" and cart rows say the night ("Added · Thu" / "Added for Thu"). Purchasers only (cart.build). |
 | "Use up the fridge · N nights free" | No | Fridge isn't on the web. |
 | Import cards (Adding X to Recipes, page prompts) | No | The web's imports show their state in the Add a recipe dialog only. |
 
@@ -70,7 +72,7 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 | Staples: tick for this list, last bought | Yes | |
 | Staples screen (add, edit, every week, reorder, delete) | No | |
 | "Use what's in the fridge" switch, "from the fridge" lines | No | |
-| Added items (Add an item on the list, per week) | No | Web adds items on the cart only. |
+| Added items (Add an item on the list, per week) | Partial | Web: the list shows "Added items" (with their night, read-only) and adds them from This week (a night's "Add items") or on the cart; no Add an item on the list itself. |
 | A cart already made for the week (Open it) | Yes | |
 | Build cart, progress, failure | Yes | |
 | Review: quantities (incl. grams for weighed items), remove / put back | Yes | |
