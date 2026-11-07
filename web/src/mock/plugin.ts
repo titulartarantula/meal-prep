@@ -352,7 +352,7 @@ export function mockApi(): Plugin {
       if (rest === "/lines" && m === "POST") {
         const b = body as { term: string; product_code: string; quantity: number };
         d.lines.push(line(++db.nextId, b.term, b.term[0].toUpperCase() + b.term.slice(1), null, null, b.product_code, b.quantity || 1, "user", ["Added"], db.nextId));
-        return send(res, 201, draftOut(d));
+        return send(res, 201, d.lines[d.lines.length - 1]);   // like the server: the added line, not the draft
       }
       if ((h = rest.match(/^\/lines\/(\d+)$/))) {
         const l = d.lines.find((l) => l.id === Number(h![1]));
@@ -361,7 +361,7 @@ export function mockApi(): Plugin {
         if (b.quantity != null) l.quantity = b.quantity;
         if (b.removed != null) l.removed = b.removed;
         if (b.product_code) { l.product = product(byCode(b.product_code)); l.source = "user"; }
-        return send(res, 200, draftOut(d));
+        return send(res, 200, l);   // like the server: the changed line, not the draft
       }
       if ((h = rest.match(/^\/lines\/(\d+)\/choices$/))) {
         const l = d.lines.find((l) => l.id === Number(h![1]));

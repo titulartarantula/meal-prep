@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ApiError, del, get, patch, post, put, setSession } from "./client";
 import type {
-  BookHit, Choices, Draft, ImportReport, ListItem, Me, Member, PendingRating, Permission, PlanEntry, Recipe, RecipeDetail, RecipePatch,
+  BookHit, Choices, Draft, DraftLine, ImportReport, ListItem, Me, Member, PendingRating, Permission, PlanEntry, Recipe, RecipeDetail, RecipePatch,
   RecipeRatingOut, RecipeSource, RatingIn, ShareResult, Staple, WeekSummary, Company, CompanyOut,
 } from "./types";
 
@@ -271,13 +271,26 @@ export function useCreateDraft() {
   });
 }
 
-/** Line edits return the whole draft; it replaces the cached one. */
+/** Line edits (PATCH /drafts/{id}/lines/{line}, POST /drafts/{id}/lines) return the one changed or added LINE, not the
+ * draft: it is merged into the cached draft, then the draft is refetched for what depends on every line (estimated
+ * total, stale). A whole draft (with `lines`) is also accepted. */
+export function mergeLine(d: Draft | undefined, res: DraftLine | Draft): Draft | undefined {
+  if ("lines" in res && Array.isArray(res.lines)) return res as Draft;
+  if (!d) return d;
+  const l = res as DraftLine;
+  const i = d.lines.findIndex((x) => x.id === l.id);
+  return { ...d, lines: i < 0 ? [...d.lines, l] : d.lines.map((x) => (x.id === l.id ? l : x)) };
+}
+
 export function useDraftWrite(id: number) {
   const qc = useQueryClient();
-  const done = (d: Draft) => qc.setQueryData(keys.draft(id), d);
+  const done = (res: DraftLine | Draft) => {
+    qc.setQueryData<Draft>(keys.draft(id), (d) => mergeLine(d, res));
+    qc.invalidateQueries({ queryKey: keys.draft(id) });
+  };
   const patchLine = useMutation({
     mutationFn: ({ line, ...body }: { line: number; quantity?: number; removed?: boolean; product_code?: string; pinned?: boolean }) =>
-      patch<Draft>(`/drafts/${id}/lines/${line}`, body),
+      patch<DraftLine>(`/drafts/${id}/lines/${line}`, body),
     onMutate: async ({ line, ...body }) => {
       await qc.cancelQueries({ queryKey: keys.draft(id) });
       const before = qc.getQueryData<Draft>(keys.draft(id));
@@ -293,7 +306,7 @@ export function useDraftWrite(id: number) {
     onSuccess: done,
   });
   const addLine = useMutation({
-    mutationFn: (b: { term: string; product_code: string; quantity: number }) => post<Draft>(`/drafts/${id}/lines`, b),
+    mutationFn: (b: { term: string; product_code: string; quantity: number }) => post<DraftLine>(`/drafts/${id}/lines`, b),
     onSuccess: done,
   });
   const send = useMutation({
