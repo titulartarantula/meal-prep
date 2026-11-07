@@ -318,7 +318,7 @@ def _line_out(row) -> dict:
                   staple_packs=item.get("staple_packs"))
     plan = planner.plan(it, product)
     return {"id": lid, "item_key": key, "name": name, "qty": qty, "unit": unit, "prep": item.get("prep"),
-            "recipes": item.get("recipes", []), "staple": bool(item.get("staple")),
+            "recipes": item.get("recipes", []), "staple": bool(item.get("staple")), "day": item.get("day"),
             "staple_packs": item.get("staple_packs"), "product": product, "quantity": quantity, "source": source,
             "alternatives": alts or [], "removed": removed, "status": status,
             "packs_min": plan.packs_min if plan else None, "needs_check": bool(plan and plan.needs_check),
@@ -472,7 +472,7 @@ def update_line(conn, draft_id: int, line_id: int, product_code=_UNSET, quantity
 
 def _mirror_extra(conn, draft_id, line, product, qty, removed: bool) -> None:
     """Edits of an added item's line are the item's (`extras`): its product and quantity follow; removing the line
-    deletes the item, restoring the line adds it back (same id, the draft's first week)."""
+    deletes the item, restoring the line adds it back (same id, the draft's first week, the line's night)."""
     eid = line["extra_id"]
     if removed:
         conn.execute("DELETE FROM extras WHERE id=%s", (eid,))
@@ -480,10 +480,10 @@ def _mirror_extra(conn, draft_id, line, product, qty, removed: bool) -> None:
     code = _get(product, "code")
     if not code or not qty:
         return
-    conn.execute("INSERT INTO extras(id, week, term, key, product_code, quantity) "
-                 "SELECT %s, c.weeks[1], %s, %s, %s, %s FROM carts c WHERE c.id=%s AND c.weeks[1] IS NOT NULL "
+    conn.execute("INSERT INTO extras(id, week, term, key, product_code, quantity, day) "
+                 "SELECT %s, c.weeks[1], %s, %s, %s, %s, %s FROM carts c WHERE c.id=%s AND c.weeks[1] IS NOT NULL "
                  "ON CONFLICT (id) DO UPDATE SET product_code=EXCLUDED.product_code, quantity=EXCLUDED.quantity",
-                 (eid, line["name"], line["item_key"], code, qty, draft_id))
+                 (eid, line["name"], line["item_key"], code, qty, line.get("day"), draft_id))
 
 
 def search_line(conn, draft_id: int, line_id: int, term: str, pcx, store_id: str = "1092") -> list[dict]:

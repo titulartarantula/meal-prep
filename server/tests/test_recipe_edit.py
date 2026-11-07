@@ -260,7 +260,7 @@ def test_editing_what_a_carted_recipe_buys_makes_the_cart_stale(conn):
     patch(c, rid, title="Test Renamed Stew", steps=["Simmer all day."], notes="Good cold.", description="Hearty.")
     assert week(conn)["carted"] is True and drafts.get_draft(conn, did)["stale"] is False   # nothing to buy changed
     patch(c, rid, ingredients=["2 cups stock", "1 onoin", "Salt", "3 carrots"])
-    assert week(conn) == {"week": ON, "entries": 1, "carted": False, "cart_stale": True}
+    assert week(conn) == {"week": ON, "entries": 1, "extras": 0, "named_nights": 0, "carted": False, "cart_stale": True}
     assert drafts.get_draft(conn, did)["stale"] is True
     patch(c, rid, ingredients=["2 cups stock", "1 onoin", "Salt"])                  # undone: the cart fits again
     assert week(conn)["carted"] is True

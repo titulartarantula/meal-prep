@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, books, db, drafts, extras, fridge, households, rbac, recipe_edit, staples, subrecipe
+from . import auth, books, db, drafts, extras, fridge, households, nights, rbac, recipe_edit, staples, subrecipe
 from .ai import AIError, get_provider
 from .ai.metered import Meter, Metered
 from .exchange import importer, jsonld, safe
@@ -364,16 +364,34 @@ class SearchIn(BaseModel):
     term: str = Field(min_length=1)
 
 
-class ExtraIn(BaseModel):     # an item added by search for a week (see extras.py)
+class ExtraIn(BaseModel):     # an item added by search for a week, or one night of it (see extras.py)
     week: date
     term: Annotated[str, Field(min_length=1, max_length=200)]
     product_code: Annotated[str, Field(min_length=1, max_length=64)]
     quantity: Annotated[int, Field(gt=0, le=10000)] = 1
+    day: Annotated[int, Field(ge=0, le=6)] | None = None   # 0 = Sun … 6 = Sat; none = for the week
 
 
 class ExtraPatch(BaseModel):
     product_code: Annotated[str, Field(min_length=1, max_length=64)] | None = None
     quantity: Annotated[int, Field(gt=0, le=10000)] | None = None
+    day: Annotated[int, Field(ge=0, le=6)] | None = None   # sent as null = move to the whole week; left out = unchanged
+
+
+class NightIn(BaseModel):     # a night's name; empty = clear it
+    title: Annotated[str, Field(max_length=200)] | None = None
+
+
+class NightTitle(BaseModel):
+    week: str
+    day: int
+    title: str | None
+
+
+class Night(BaseModel):
+    day: int                     # 0 = Sun … 6 = Sat
+    title: str | None            # the night's name, if it has one
+    items: list[dict]            # the night's added items (as GET /extras)
 
 
 class AddLineIn(BaseModel):   # "Add an item" on a cart under review
@@ -973,6 +991,28 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     def get_week(week: date, c=Depends(get_conn), s: Scope = Depends(household_scope)) -> list[PlanEntry]:
         return db.get_week(c, week, viewer(s))
 
+    @app.get("/weeks/{week}/nights", dependencies=A)
+    def get_nights(week: date, c=Depends(get_conn)) -> list[Night]:
+        """The week's nights that have a name or store items (Sunday first). A night with no recipe still counts as
+        planned for display; it never asks for a rating."""
+        return nights.list_nights(c, week)
+
+    @app.put("/weeks/{week}/nights/{day}", dependencies=A)
+    def put_night(week: date, day: int, body: NightIn, c=Depends(get_conn)) -> NightTitle:
+        """Name or rename a night (trimmed, at most 60 characters); an empty name clears it."""
+        try:
+            return nights.set_title(c, week, day, body.title)
+        except nights.NightError as e:
+            raise HTTPException(422, str(e))
+
+    @app.delete("/weeks/{week}/nights/{day}", status_code=204, dependencies=A)
+    def delete_night(week: date, day: int, c=Depends(get_conn)):
+        """Clear a night's name (its store items stay)."""
+        try:
+            nights.clear_title(c, week, day)
+        except nights.NightError as e:
+            raise HTTPException(422, str(e))
+
     @app.post("/weeks/{week}/entries", dependencies=A)
     def add_entry(week: date, body: EntryIn, c=Depends(get_conn), s: Scope = Depends(household_scope)) -> PlanEntry:
         if db.get_recipe(c, body.recipe_id) is None:
@@ -1300,11 +1340,12 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.post("/extras", status_code=201, dependencies=A)
     def add_extra(body: ExtraIn, c=Depends(get_conn)):
-        return _extra_call(extras.add_extra, c, body.week, body.term, body.product_code, body.quantity)
+        return _extra_call(extras.add_extra, c, body.week, body.term, body.product_code, body.quantity, day=body.day)
 
     @app.patch("/extras/{extra_id}", dependencies=A)
     def patch_extra(extra_id: int, body: ExtraPatch, c=Depends(get_conn)):
-        return _extra_call(extras.update_extra, c, extra_id, quantity=body.quantity, product_code=body.product_code)
+        kw = {"day": body.day} if "day" in body.model_fields_set else {}
+        return _extra_call(extras.update_extra, c, extra_id, quantity=body.quantity, product_code=body.product_code, **kw)
 
     @app.delete("/extras/{extra_id}", status_code=204, dependencies=A)
     def delete_extra(extra_id: int, c=Depends(get_conn)):

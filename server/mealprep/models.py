@@ -73,6 +73,7 @@ class ListItem(BaseModel):
     extra_id: int | None = None
     product_code: str | None = None
     quantity: int | None = None
+    day: int | None = None       # an added item's night (0=Sun … 6=Sat); None = for the week
     # What the fridge covers (`POST /list {fridge: true}`, 0.14.0): "covered" = all of it (qty is still what the recipes
     # need; not needed, shown in Probably have), "partial" = qty is the remainder and fridge_qty what the fridge covers
     # (in the line's unit), "check" = the units don't convert (not needed, "check you have enough"). fridge_items = the

@@ -497,12 +497,12 @@ def test_sent_cart_goes_stale_and_week_is_no_longer_carted(conn):
     pcx = FakePcx({"x": [prod("A")]})
     did = build(conn, [item("x")], pcx, FakeAI({"x": "A"}))
     drafts.send_draft(conn, did, pcx)
-    assert summary(conn) == {"week": "2026-10-11", "entries": 1, "carted": True, "cart_stale": False}
+    assert summary(conn) == {"week": "2026-10-11", "entries": 1, "extras": 0, "named_nights": 0, "carted": True, "cart_stale": False}
     assert db.default_cart_week(conn, date(2026, 10, 7)) is None
     db.update_entry(conn, ea, day=4)                        # a night move keeps it carted
     assert summary(conn)["carted"] is True
     db.update_entry(conn, ea, multiplier=2)
-    assert summary(conn) == {"week": "2026-10-11", "entries": 1, "carted": False, "cart_stale": True}
+    assert summary(conn) == {"week": "2026-10-11", "entries": 1, "extras": 0, "named_nights": 0, "carted": False, "cart_stale": True}
     assert db.default_cart_week(conn, date(2026, 10, 7)) == WK[0]          # a stale week is offered again
     assert drafts.get_draft(conn, did)["stale"] is True
     assert drafts.send_draft(conn, did, pcx) == pcx.created[0]             # resending a sent cart stays a no-op
@@ -510,7 +510,7 @@ def test_sent_cart_goes_stale_and_week_is_no_longer_carted(conn):
     new = build(conn, [item("x")], pcx, FakeAI({"x": "A"}))
     assert summary(conn)["cart_stale"] is True                             # a ready draft isn't a sent cart
     drafts.send_draft(conn, new, pcx)
-    assert summary(conn) == {"week": "2026-10-11", "entries": 2, "carted": True, "cart_stale": False}
+    assert summary(conn) == {"week": "2026-10-11", "entries": 2, "extras": 0, "named_nights": 0, "carted": True, "cart_stale": False}
     assert drafts.latest_for_week(conn, WK[0])["id"] == new
 
 
@@ -536,7 +536,7 @@ def test_null_fingerprint_is_never_stale(conn):
     drafts.send_draft(conn, did, pcx)
     conn.execute("UPDATE carts SET plan_fingerprint = NULL")
     db.add_to_week(conn, WK[0], a)
-    assert summary(conn) == {"week": "2026-10-11", "entries": 2, "carted": True, "cart_stale": False}
+    assert summary(conn) == {"week": "2026-10-11", "entries": 2, "extras": 0, "named_nights": 0, "carted": True, "cart_stale": False}
     assert drafts.get_draft(conn, did)["stale"] is False
     assert db.default_cart_week(conn, date(2026, 10, 7)) is None
     assert db.cart_is_stale(conn, WK, None) is False and db.cart_is_stale(conn, [], "x") is False

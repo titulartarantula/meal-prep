@@ -371,21 +371,25 @@ def sent_cart_stale(conn, weeks: list[date]) -> dict[date, bool]:
 
 
 def week_summaries(conn, start: date, count: int) -> list[dict]:
-    """One row per week from start's Sunday: number of plan entries; carted = its newest sent cart still matches the
-    plan; cart_stale = a cart was sent but the week's recipes changed since."""
+    """One row per week from start's Sunday: number of plan entries; extras = items added by search (for the week or
+    a night: something to shop for without a recipe); named_nights = nights with a name; carted = its newest sent cart
+    still matches the plan; cart_stale = a cart was sent but the week's recipes changed since."""
     first = week_start(start)
     weeks = [first + timedelta(weeks=i) for i in range(count)]
     entries = dict(conn.execute("SELECT week, count(*) FROM plan WHERE week = ANY(%s) GROUP BY week", (weeks,)).fetchall())
+    added = dict(conn.execute("SELECT week, count(*) FROM extras WHERE week = ANY(%s) GROUP BY week", (weeks,)).fetchall())
+    named = dict(conn.execute("SELECT week, count(*) FROM nights WHERE week = ANY(%s) GROUP BY week", (weeks,)).fetchall())
     sent = sent_cart_stale(conn, weeks)
-    return [{"week": w.isoformat(), "entries": entries.get(w, 0), "carted": w in sent and not sent[w],
+    return [{"week": w.isoformat(), "entries": entries.get(w, 0), "extras": added.get(w, 0),
+             "named_nights": named.get(w, 0), "carted": w in sent and not sent[w],
              "cart_stale": sent.get(w, False)} for w in weeks]
 
 
 def default_cart_week(conn, today: date) -> date | None:
-    """Earliest week >= this week's Sunday that has plan entries and no up-to-date sent cart (a stale one counts as
-    none)."""
-    planned = [w for (w,) in conn.execute("SELECT DISTINCT week FROM plan WHERE week >= %s ORDER BY week",
-                                          (week_start(today),))]
+    """Earliest week >= this week's Sunday that has plan entries or added items and no up-to-date sent cart (a stale
+    one counts as none)."""
+    planned = [w for (w,) in conn.execute("SELECT week FROM plan WHERE week >= %s UNION SELECT week FROM extras "
+                                          "WHERE week >= %s ORDER BY week", (week_start(today), week_start(today)))]
     sent = sent_cart_stale(conn, planned)
     return next((w for w in planned if w not in sent or sent[w]), None)
 

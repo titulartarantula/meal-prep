@@ -347,6 +347,9 @@ CREATE TABLE IF NOT EXISTS extras(
 );
 CREATE INDEX IF NOT EXISTS extras_week_idx ON extras(week);
 ALTER TABLE cart_lines ADD COLUMN IF NOT EXISTS extra_id int;
+-- Store items for a night (2026-11-06): an added item can belong to one night of its week (0 = Sun … 6 = Sat); NULL =
+-- for the week, as before. Its cart line carries the night in its item (cart_lines.item->'day').
+ALTER TABLE extras ADD COLUMN IF NOT EXISTS day smallint CHECK (day BETWEEN 0 AND 6);
 
 -- Fridge cleaner (0.14.0): the household's perishables on hand. `key` = the shopping-list name the item matches
 -- (staples.name_key: the cleaned, singular name without the unit family), set once when the name is added or edited
@@ -582,6 +585,17 @@ CREATE TABLE IF NOT EXISTS ai_usage(
 );
 CREATE INDEX IF NOT EXISTS ai_usage_household_idx ON ai_usage(household_id, at);
 
+-- Night names (2026-11-06): an optional name for one night of a week ("Pizza night", "Leftovers"), set on This week.
+-- No row = no name. A named night with no recipe counts as planned for display only: ratings stay tied to recipes.
+CREATE TABLE IF NOT EXISTS nights(
+  household_id int NOT NULL DEFAULT current_setting('mealprep.household_id')::int REFERENCES households,
+  week date NOT NULL,
+  day smallint NOT NULL CHECK (day BETWEEN 0 AND 6),
+  title text NOT NULL CHECK (length(title) BETWEEN 1 AND 60),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(household_id, week, day)
+);
+
 -- The first household: every row from before households belongs to it (renamed by the seed CLI, mealprep.seed).
 INSERT INTO households(name, ai_daily_budget) SELECT 'Household', NULL WHERE NOT EXISTS (SELECT 1 FROM households);
 
@@ -601,7 +615,7 @@ DECLARE
   owned text[] := ARRAY['recipes','plan','picks','pick_history','carts','cart_weeks','cart_lines','ratings',
                         'rating_history','prep_plans','prep_tasks','prep_task_events','cook_cards','staples',
                         'imported_ratings','import_jobs','extras','fridge_items','fridge_reads','fridge_nudges',
-                        'recipe_ratings','recipe_company'];
+                        'recipe_ratings','recipe_company','nights'];
 BEGIN
   FOREACH t IN ARRAY owned LOOP
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()

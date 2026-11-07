@@ -39,6 +39,9 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/weeks"): "plan.read",
     ("GET", "/weeks/{week}"): "plan.read",
     ("POST", "/weeks/{week}/entries"): "plan.edit",
+    ("GET", "/weeks/{week}/nights"): "plan.read",             # night names + the nights' store items
+    ("PUT", "/weeks/{week}/nights/{day}"): "plan.edit",       # name / rename / clear a night
+    ("DELETE", "/weeks/{week}/nights/{day}"): "plan.edit",
     ("PATCH", "/plan/{entry_id}"): "plan.edit",
     ("DELETE", "/plan/{entry_id}"): "plan.edit",
     ("GET", "/ratings/pending"): "plan.read",
