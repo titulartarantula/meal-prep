@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 import { ApiError, del, get, patch, post, put, setSession } from "./client";
 import type {
   BookHit, Choices, Draft, DraftLine, ImportReport, ListItem, Me, Member, PendingRating, Permission, PlanEntry, Recipe, RecipeDetail, RecipePatch,
-  RecipeRatingOut, RecipeSource, RatingIn, ShareResult, Staple, WeekSummary, Company, CompanyOut,
+  RecipeRatingOut, RecipeSource, RatingIn, ShareResult, Staple, WeekSummary, Company, CompanyOut, Extra, Night,
 } from "./types";
 
 export const keys = {
@@ -19,6 +19,8 @@ export const keys = {
   draft: (id: number) => ["draft", id] as const,
   staples: ["staples"] as const,
   defaultWeek: ["defaultWeek"] as const,
+  nights: (w: string) => ["nights", w] as const,
+  extras: (weeks: string[]) => ["extras", ...weeks] as const,
 };
 
 /** Signed in? 401 = no; 404 = a server from before sign-in (dev against 0.15): treated as the shared token. */
@@ -82,6 +84,96 @@ export function useWeekDraft(week: string | null) {
     queryFn: () => orNull(get<Draft>(`/weeks/${week}/draft`)),
     enabled: !!week,
   });
+}
+
+/** The week's nights that have a name or store items (GET /weeks/{week}/nights, plan.read). */
+export function useNights(week: string) {
+  return useQuery({ queryKey: keys.nights(week), queryFn: () => get<Night[]>(`/weeks/${week}/nights`) });
+}
+
+/** Items added by search for these weeks (GET /extras, cart.build), for the week or one of its nights. */
+export function useExtras(weeks: string[], enabled = true) {
+  const q = new URLSearchParams(weeks.map((w) => ["week", w]));
+  return useQuery({ queryKey: keys.extras(weeks), queryFn: () => get<Extra[]>(`/extras?${q}`), enabled: enabled && weeks.length > 0 });
+}
+
+/** After a night's name or store items change: the week, its summaries, the list's added items, and the week's cart
+ * (an added item also changes the cart under review). */
+function invalidateNights(qc: QueryClient, week: string) {
+  qc.invalidateQueries({ queryKey: keys.nights(week) });
+  qc.invalidateQueries({ queryKey: keys.weeks });
+  qc.invalidateQueries({ queryKey: ["extras"] });
+  qc.invalidateQueries({ queryKey: keys.weekDraft(week) });
+  qc.invalidateQueries({ queryKey: keys.defaultWeek });
+  qc.invalidateQueries({ queryKey: ["draft"] });
+  qc.invalidateQueries({ queryKey: ["list"] });
+}
+
+/** Name, rename or clear (empty title) a night. PUT answers with {week, day, title}. Optimistic. */
+export function useNameNight(week: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ day, title }: { day: number; title: string }): Promise<void> => {
+      if (title.trim()) await put<{ week: string; day: number; title: string | null }>(`/weeks/${week}/nights/${day}`, { title });
+      else await del<void>(`/weeks/${week}/nights/${day}`);
+    },
+    onMutate: async ({ day, title }) => {
+      await qc.cancelQueries({ queryKey: keys.nights(week) });
+      const before = qc.getQueryData<Night[]>(keys.nights(week));
+      qc.setQueryData<Night[]>(keys.nights(week), (ns) => setTitle(ns, day, title.trim().replace(/\s+/g, " ") || null));
+      return { before };
+    },
+    onError: (_e, _v, ctx) => ctx?.before && qc.setQueryData(keys.nights(week), ctx.before),
+    onSettled: () => invalidateNights(qc, week),
+  });
+}
+
+/** A night's name in the cached nights: a night with no name and no items drops out. */
+export function setTitle(ns: Night[] | undefined, day: number, title: string | null): Night[] | undefined {
+  if (!ns) return ns;
+  const has = ns.some((n) => n.day === day);
+  const out = has ? ns.map((n) => (n.day === day ? { ...n, title } : n)) : title ? [...ns, { day, title, items: [] }] : ns;
+  return out.filter((n) => n.title || n.items.length).sort((a, b) => a.day - b.day);
+}
+
+/** A night's store items: add (POST /extras with the day), change the quantity or move (PATCH /extras/{id}), remove
+ * (DELETE). Writes answer with the one changed item, not the week. */
+export function useNightItems(week: string) {
+  const qc = useQueryClient();
+  const settled = () => invalidateNights(qc, week);
+  const add = useMutation({
+    mutationFn: (b: { day: number | null; term: string; product_code: string; quantity: number }) => post<Extra>("/extras", { week, ...b }),
+    onSuccess: (e) => qc.setQueryData<Night[]>(keys.nights(week), (ns) => putItem(ns, e)),
+    onSettled: settled,
+  });
+  const change = useMutation({
+    mutationFn: ({ id, ...b }: { id: number; quantity?: number; day?: number | null }) => patch<Extra>(`/extras/${id}`, b),
+    onSuccess: (e) => qc.setQueryData<Night[]>(keys.nights(week), (ns) => putItem(ns, e)),
+    onSettled: settled,
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) => del<void>(`/extras/${id}`),
+    onSuccess: (_r, id) => qc.setQueryData<Night[]>(keys.nights(week), (ns) => dropItem(ns, id)),
+    onSettled: settled,
+  });
+  return { add, change, remove };
+}
+
+/** Put a changed or added item on its night in the cached nights (moving it off another night). */
+export function putItem(ns: Night[] | undefined, e: Extra): Night[] | undefined {
+  if (!ns) return ns;
+  const rest = dropItem(ns, e.id, false)!;
+  if (e.day == null) return rest.filter((n) => n.title || n.items.length);
+  const has = rest.some((n) => n.day === e.day);
+  const out = has ? rest.map((n) => (n.day === e.day ? { ...n, items: [...n.items, e].sort((a, b) => a.id - b.id) } : n))
+    : [...rest, { day: e.day, title: null, items: [e] }];
+  return out.filter((n) => n.title || n.items.length).sort((a, b) => a.day - b.day);
+}
+
+export function dropItem(ns: Night[] | undefined, id: number, prune = true): Night[] | undefined {
+  if (!ns) return ns;
+  const out = ns.map((n) => ({ ...n, items: n.items.filter((i) => i.id !== id) }));
+  return prune ? out.filter((n) => n.title || n.items.length) : out;
 }
 
 /** Dinners on a night before today (last 14 days) with no rating yet, newest first: the "How was …?" banner. */

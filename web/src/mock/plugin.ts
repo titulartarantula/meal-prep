@@ -28,7 +28,9 @@ interface Rated extends PR { recipe_id: number; cooked_on: string }
 interface Line { id: number; item_key: string; name: string; qty: number | null; unit: string | null; recipes: string[];
   product: ReturnType<typeof product> | null; quantity: number | null; source: string; alternatives: unknown[];
   removed: boolean; status: string; staple: boolean; pinned: boolean; note: string | null; why: string | null;
-  needs_check: boolean; extra_id: number | null }
+  needs_check: boolean; extra_id: number | null; day: number | null }
+/** An item added by search (GET/POST/PATCH/DELETE /extras), for a week or one night of it. */
+interface MockExtra { id: number; week: string; day: number | null; term: string; code: string; quantity: number; created_at: string }
 interface Draft { id: number; status: string; weeks: string[]; lines: Line[]; pcx_cart_id: string | null;
   created_at: string; sent_at: string | null; built: number; total: number }
 
@@ -60,7 +62,8 @@ function fresh() {
   const recipes: (MockRecipe & { revision: number; notesText?: string | null })[] = structuredClone(RECIPES).map((r) => ({ ...r, revision: 1 }));
   const company = new Map<number, Verdict>(recipes.filter((r) => r.company)
     .map((r) => [r.id, { company: r.company!, set_by: 1, set_at: "2026-10-01T18:00:00Z" }]));
-  return { nextId: 500, entries, rated: [] as Rated[], drafts: [sent] as Draft[], imports: new Map<number, number>(), recipes, company };
+  return { nextId: 500, entries, rated: [] as Rated[], drafts: [sent] as Draft[], imports: new Map<number, number>(), recipes, company,
+    extras: [] as MockExtra[], nights: new Map<string, string>() };
 }
 
 export function mockApi(): Plugin {
@@ -263,16 +266,88 @@ export function mockApi(): Plugin {
       return send(res, 202, importJob(id));
     }
     if ((g = path.match(/^\/imports\/(\d+)$/))) return send(res, 200, importJob(Number(g[1])));
+    // --- items added by search (a night's store items) and night names, answering like the server: writes return
+    // the one changed object (an item, or {week, day, title}), never the week or a draft ---
+    const can = (p: string) => perms.includes(p);
+    const openDraft = (week: string) => {
+      const d = [...db.drafts].reverse().find((x) => x.weeks.includes(week));
+      return d && d.status === "ready" ? d : null;
+    };
+    const badDay = (d: unknown) => d != null && !(Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6);
+    if (path === "/extras") {
+      if (!can("cart.build")) return send(res, 403, { detail: "You need the cart.build permission for this." });
+      if (m === "GET") {
+        const weeks = url.searchParams.getAll("week");
+        if (!weeks.length) return send(res, 422, { detail: "week is required" });
+        return send(res, 200, db.extras.filter((x) => weeks.includes(x.week))
+          .sort((a, b) => a.week.localeCompare(b.week) || a.id - b.id).map(extraOut));
+      }
+      const b = (body ?? {}) as { week: string; term?: string; product_code: string; quantity?: number; day?: number | null };
+      const term = (b.term ?? "").trim().replace(/\s+/g, " ");
+      if (!term || badDay(b.day) || (b.quantity != null && b.quantity <= 0)) return send(res, 422, { detail: "invalid added item" });
+      if (!byCode(b.product_code)) return send(res, 422, { detail: `unknown product ${b.product_code} — search for it first` });
+      const x: MockExtra = { id: ++db.nextId, week: sunday(new Date(b.week + "T12:00")), day: b.day ?? null, term, code: b.product_code,
+        quantity: b.quantity || 1, created_at: new Date().toISOString() };
+      db.extras.push(x);
+      const d = openDraft(x.week);   // a cart under review gets the line at once
+      if (d) d.lines.push(line(++db.nextId, `${term}|each`, term, null, null, x.code, x.quantity, "user", ["Added"], x.id, x.day));
+      return send(res, 201, extraOut(x));
+    }
+    if ((g = path.match(/^\/extras\/(\d+)$/))) {
+      if (!can("cart.build")) return send(res, 403, { detail: "You need the cart.build permission for this." });
+      const i = db.extras.findIndex((x) => x.id === Number(g![1]));
+      if (m === "DELETE") {
+        if (i >= 0) {
+          const [x] = db.extras.splice(i, 1);
+          openDraft(x.week)?.lines.filter((l) => l.extra_id === x.id).forEach((l) => { l.removed = true; });
+        }
+        return send(res, 204);
+      }
+      if (i < 0) return send(res, 404, { detail: `added item ${g[1]}` });
+      const x = db.extras[i];
+      const b = (body ?? {}) as { quantity?: number | null; product_code?: string | null; day?: number | null };
+      if (badDay(b.day) || (b.quantity != null && b.quantity <= 0)) return send(res, 422, { detail: "invalid change" });
+      if (b.product_code && !byCode(b.product_code)) return send(res, 422, { detail: `unknown product ${b.product_code}` });
+      if (b.quantity) x.quantity = b.quantity;
+      if (b.product_code) x.code = b.product_code;
+      if ("day" in b) x.day = b.day ?? null;
+      for (const l of openDraft(x.week)?.lines.filter((l) => l.extra_id === x.id) ?? []) {
+        l.day = x.day;
+        if (!l.removed) { l.quantity = x.quantity; l.product = product(byCode(x.code)); }
+      }
+      return send(res, 200, extraOut(x));
+    }
+    if ((g = path.match(/^\/weeks\/([\d-]+)\/nights$/))) {
+      const w = g[1];
+      const days = new Set<number>();
+      for (const k of db.nights.keys()) if (k.startsWith(`${w}|`)) days.add(Number(k.split("|")[1]));
+      for (const x of db.extras) if (x.week === w && x.day != null) days.add(x.day);
+      return send(res, 200, [...days].sort().map((d) => ({ day: d, title: db.nights.get(`${w}|${d}`) ?? null,
+        items: db.extras.filter((x) => x.week === w && x.day === d).sort((a, b) => a.id - b.id).map(extraOut) })));
+    }
+    if ((g = path.match(/^\/weeks\/([\d-]+)\/nights\/(-?\d+)$/))) {
+      if (!can("plan.edit")) return send(res, 403, { detail: "You need the plan.edit permission for this." });
+      const w = g[1], d = Number(g[2]);
+      if (badDay(d)) return send(res, 422, { detail: "day must be 0 (Sun) … 6 (Sat)" });
+      if (m === "DELETE") { db.nights.delete(`${w}|${d}`); return send(res, 204); }
+      const raw = (body as { title?: string | null } | null)?.title ?? "";
+      if (raw.length > 200) return send(res, 422, { detail: "title" });
+      const title = raw.trim().replace(/\s+/g, " ");
+      if (title.length > 60) return send(res, 422, { detail: "a night's name is at most 60 characters" });
+      if (title) db.nights.set(`${w}|${d}`, title); else db.nights.delete(`${w}|${d}`);
+      return send(res, 200, { week: w, day: d, title: title || null });
+    }
     if (path === "/weeks") {
       const from = url.searchParams.get("from") ?? sunday(), n = Number(url.searchParams.get("count") ?? 8);
       return send(res, 200, Array.from({ length: n }, (_, i) => {
         const w = iso(addDays(sunday(new Date(from + "T12:00")), 7 * i));
         const sent = db.drafts.find((d) => d.status === "sent" && d.weeks.includes(w));
-        return { week: w, entries: db.entries.filter((e) => e.week === w).length, carted: !!sent, cart_stale: false };
+        return { week: w, entries: db.entries.filter((e) => e.week === w).length, extras: db.extras.filter((x) => x.week === w).length,
+          named_nights: [...db.nights.keys()].filter((k) => k.startsWith(`${w}|`)).length, carted: !!sent, cart_stale: false };
       }));
     }
     if (path === "/cart/default-week") {
-      const w = [...new Set(db.entries.map((e) => e.week))].sort().find((w) => w >= sunday() &&
+      const w = [...new Set([...db.entries.map((e) => e.week), ...db.extras.map((x) => x.week)])].sort().find((w) => w >= sunday() &&
         !db.drafts.some((d) => d.status === "sent" && d.weeks.includes(w)));
       return send(res, 200, { week: w ?? null });
     }
@@ -351,7 +426,10 @@ export function mockApi(): Plugin {
       }
       if (rest === "/lines" && m === "POST") {
         const b = body as { term: string; product_code: string; quantity: number };
-        d.lines.push(line(++db.nextId, b.term, b.term[0].toUpperCase() + b.term.slice(1), null, null, b.product_code, b.quantity || 1, "user", ["Added"], db.nextId));
+        const x: MockExtra = { id: ++db.nextId, week: d.weeks[0], day: null, term: b.term, code: b.product_code, quantity: b.quantity || 1,
+          created_at: new Date().toISOString() };
+        db.extras.push(x);
+        d.lines.push(line(++db.nextId, b.term, b.term[0].toUpperCase() + b.term.slice(1), null, null, b.product_code, b.quantity || 1, "user", ["Added"], x.id));
         return send(res, 201, d.lines[d.lines.length - 1]);   // like the server: the added line, not the draft
       }
       if ((h = rest.match(/^\/lines\/(\d+)$/))) {
@@ -361,6 +439,13 @@ export function mockApi(): Plugin {
         if (b.quantity != null) l.quantity = b.quantity;
         if (b.removed != null) l.removed = b.removed;
         if (b.product_code) { l.product = product(byCode(b.product_code)); l.source = "user"; }
+        if (l.extra_id != null) {   // as the server (_mirror_extra): an added item follows its line; removing deletes it
+          const x = db.extras.find((y) => y.id === l.extra_id);
+          if (l.removed) db.extras = db.extras.filter((y) => y.id !== l.extra_id);
+          else if (x) { x.quantity = l.quantity ?? x.quantity; x.code = l.product?.code ?? x.code; }
+          else db.extras.push({ id: l.extra_id, week: d.weeks[0], day: l.day, term: l.name, code: l.product!.code, quantity: l.quantity ?? 1,
+            created_at: new Date().toISOString() });
+        }
         return send(res, 200, l);   // like the server: the changed line, not the draft
       }
       if ((h = rest.match(/^\/lines\/(\d+)\/choices$/))) {
@@ -379,6 +464,8 @@ export function mockApi(): Plugin {
         d.status = "ready";
         d.lines = BUILD.map(([key, name, qty, unit, code, n, src], i) =>
           line(1000 + i, key, name, qty, unit, code, n, src, key === "milk" || key === "eggs" ? ["Staples"] : recipesFor(db.recipes, key), null));
+        db.extras.filter((x) => d.weeks.includes(x.week)).sort((a, b) => a.week.localeCompare(b.week) || a.id - b.id)
+          .forEach((x, i) => d.lines.push(line(1500 + i, `${x.term}|each`, x.term, null, null, x.code, x.quantity, "user", ["Added"], x.id, x.day)));
       } else {
         return { ...base(d), progress: { done, total: d.total } };
       }
@@ -393,11 +480,16 @@ export function mockApi(): Plugin {
   }
 
   function line(id: number, key: string, name: string, qty: number | null, unit: string | null, code: string, n: number, src: string,
-    recipes: string[], extra: number | null): Line {
+    recipes: string[], extra: number | null, day: number | null = null): Line {
     const p = byCode(code);
     return { id, item_key: key, name, qty, unit, recipes, product: product(p), quantity: n, source: src, alternatives: [], removed: false,
-      status: "matched", staple: recipes.includes("Staples"), pinned: false, extra_id: extra, needs_check: false,
+      status: "matched", staple: recipes.includes("Staples"), pinned: false, extra_id: extra, day, needs_check: false,
       note: key === "green onion" ? "Need 4 → 1 bunch (about 6)" : null, why: null };
+  }
+
+  function extraOut(x: MockExtra) {
+    return { id: x.id, week: x.week, day: x.day, term: x.term, key: `${x.term.toLowerCase()}|each`, product: product(byCode(x.code)),
+      quantity: x.quantity, created_at: x.created_at };
   }
 
   function choices(term: string, current?: string) {

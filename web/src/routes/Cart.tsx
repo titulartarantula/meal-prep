@@ -8,7 +8,7 @@ import { Handoff } from "../components/Handoff";
 import { ProductChooser } from "../components/ProductChooser";
 import { Button, ErrorNote, IconButton, Loading, Menu, MenuItem, Stepper, useToast } from "../components/ui";
 import { amount, agoInline, formatMoney } from "../lib/format";
-import { weekName } from "../lib/weeks";
+import { DAYS, DAYS_LONG, weekName } from "../lib/weeks";
 import { useCompact, useMedia } from "../lib/media";
 
 type Filter = "all" | "new" | "added" | "removed" | "check";
@@ -204,7 +204,7 @@ function Row({ l, editable, onQty, onRemove, onSwap }: { l: DraftLine; editable:
           <span className="pm-text" title={l.recipes.join(", ")}>{[need && `Need ${need}`, l.recipes.filter((r) => r !== "Staples").join(", ")].filter(Boolean).join(" · ") || l.name}</span>
           {l.staple && <span className="tag staple">Staple</span>}
           {l.source === "ai" && !l.removed && <span className="tag neutral">New pick</span>}
-          {l.extra_id != null && <span className="tag neutral">Added</span>}
+          {l.extra_id != null && <AddedTag day={l.day} />}
           {l.pinned && <span className="tag neutral"><Icon name="pin2" size={12} />Always</span>}
           {p?.deal_text && <span className="tag deal">{p.deal_text}</span>}
         </div>
@@ -244,7 +244,7 @@ function LineItem({ l, editable, onQty, onRemove, onSwap }: { l: DraftLine; edit
           <div className="c-tags">
             {l.staple && <span className="tag staple">Staple</span>}
             {l.source === "ai" && !l.removed && <span className="tag neutral">New pick</span>}
-            {l.extra_id != null && <span className="tag neutral">Added</span>}
+            {l.extra_id != null && <AddedTag day={l.day} />}
             {l.pinned && <span className="tag neutral"><Icon name="pin2" size={12} />Always</span>}
             {p?.deal_text && <span className="tag deal">{p.deal_text}</span>}
           </div>
@@ -274,4 +274,10 @@ function LineItem({ l, editable, onQty, onRemove, onSwap }: { l: DraftLine; edit
       </div>
     </li>
   );
+}
+
+/** An added item's tag: "Added", or "Added · Thu" for one added to a night on This week. */
+function AddedTag({ day }: { day?: number | null }) {
+  if (day == null) return <span className="tag neutral">Added</span>;
+  return <span className="tag neutral" title={`Added for ${DAYS_LONG[day]}`}>Added · <abbr title={DAYS_LONG[day]}>{DAYS[day]}</abbr></span>;
 }

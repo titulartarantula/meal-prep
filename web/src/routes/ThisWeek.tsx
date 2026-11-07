@@ -1,11 +1,14 @@
 import { useMemo, useState, type DragEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  useCan, useMemberId, useMoveEntry, useRecipes, useRemoveEntry, useWeek, useWeekDraft, useWeeks,
+  useCan, useMemberId, useMoveEntry, useNameNight, useNightItems, useNights, useRecipes, useRemoveEntry, useWeek, useWeekDraft,
+  useWeeks,
 } from "../api/queries";
-import type { PlanEntry, Recipe } from "../api/types";
+import type { Extra, PlanEntry, Recipe } from "../api/types";
 import { Icon, Star } from "../components/Icon";
 import { AddRecipeDialog } from "../components/AddRecipeDialog";
+import { NameNightDialog, NightStore, itemName } from "../components/NightExtras";
+import { ProductChooser } from "../components/ProductChooser";
 import { MiniStars, PeopleRatings, RateDialog, RatingBanner, pendingEntry, usePendingBanner } from "../components/Rating";
 import { Button, ErrorNote, IconButton, Loading, Menu, MenuItem, Photo, useToast } from "../components/ui";
 import { formatAvg, formatMinutes } from "../lib/format";
@@ -30,6 +33,12 @@ export function ThisWeek() {
   const [adding, setAdding] = useState<number | null | "tray">(null);
   const [rating, setRating] = useState<PlanEntry | null>(null);
   const [dragOver, setDragOver] = useState<number | "tray" | null>(null);
+  const [naming, setNaming] = useState<number | null>(null);
+  const [shopping, setShopping] = useState<number | null>(null);      // the night the product chooser adds to
+  const [shopStatus, setShopStatus] = useState<string | null>(null);
+  const nightInfo = useNights(week);
+  const nameNight = useNameNight(week);
+  const store = useNightItems(week);
 
   const byId = useMemo(() => new Map((recipes.data ?? []).map((r) => [r.id, r])), [recipes.data]);
   const list = entries.data ?? [];
@@ -41,6 +50,8 @@ export function ThisWeek() {
   const compact = useCompact();
   const drag = editable && !compact;
   const canRate = can("rate.self");
+  const canShop = can("cart.build");
+  const extrasOf = (d: number) => nightInfo.data?.find((n) => n.day === d);
   const me = useMemberId();
   const [pending, rateLater] = usePendingBanner(canRate);
 
@@ -64,10 +75,30 @@ export function ThisWeek() {
     remove.mutate(e.id, { onSuccess: () => toast({ text: `Removed ${e.title ?? "the recipe"} from the week` }) });
   }
 
+  const onErr = (what: string) => (err: Error) => toast({ text: `Couldn't ${what}: ${err.message}` });
+  function addItem(day: number, code: string, quantity: number, term: string) {
+    setShopStatus(null);
+    store.add.mutate({ day, term, product_code: code, quantity }, {
+      onSuccess: (e) => setShopStatus(`Added ${itemName(e)} to ${DAYS_LONG[day]}. Search for another, or choose Done.`),
+      onError: onErr("add it"),
+    });
+  }
+  const itemQty = (e: Extra, quantity: number) => store.change.mutate({ id: e.id, quantity }, { onError: onErr("change it") });
+  const itemMove = (e: Extra, day: number | null) => store.change.mutate({ id: e.id, day }, {
+    onSuccess: () => toast({ text: `Moved ${itemName(e)} to ${day == null ? "the whole week" : DAYS_LONG[day]}` }),
+    onError: onErr("move it"),
+  });
+  const itemRemove = (e: Extra) => store.remove.mutate(e.id, {
+    onSuccess: () => toast({ text: `Removed ${itemName(e)}` }), onError: onErr("remove it"),
+  });
+
+  // A night with only a name or store items counts as planned (for display only: ratings stay with recipes).
+  const nightsWithStuff = nightInfo.data?.length ?? 0;
+  const hasItems = (nightInfo.data ?? []).some((n) => n.items.length) || (summary?.extras ?? 0) > 0;
   const cartStep = summary?.carted ? "done" : summary?.cart_stale ? "stale" : "todo";
   // The week's one main action; on a phone it is docked above the tab bar, like the Android app's.
   const size = compact ? "lg" : undefined;
-  const action = list.length === 0 ? (
+  const action = list.length === 0 && !hasItems ? (
     editable ? <Button kind="primary" size={size} icon="plus" onClick={() => setAdding("tray")}>Add recipes</Button> : null
   ) : summary?.carted && draft ? (
     <Button kind="outline" size={size} iconAfter="arrow" onClick={() => navigate(`/cart/${draft.id}`)}>View cart</Button>
@@ -94,7 +125,7 @@ export function ThisWeek() {
         </div>
         <div className="top-right">
           <ol className="steps" aria-label="Week status">
-            <li className={list.length ? "done" : ""}><Icon name={list.length ? "check" : "minus"} size={15} />Planned</li>
+            <li className={list.length || nightsWithStuff ? "done" : ""}><Icon name={list.length || nightsWithStuff ? "check" : "minus"} size={15} />Planned</li>
             <li className="step-line" aria-hidden="true" />
             <li className={cartStep === "done" ? "done" : cartStep === "stale" ? "warn" : ""}>
               <Icon name={cartStep === "done" ? "check" : cartStep === "stale" ? "alert" : "minus"} size={15} />
@@ -113,6 +144,21 @@ export function ThisWeek() {
             const date = nightDate(week, d);
             const tonight = isSameDay(date, today);
             const past = date < today && !tonight;
+            const extra = extrasOf(d);
+            const name = extra?.title ?? null;
+            const items = extra?.items ?? [];
+            const nightMenu = (editable || canShop) && (
+              <Menu label={`Options for ${DAYS_LONG[d]}`}>
+                {(close) => (
+                  <>
+                    {editable && <MenuItem icon="edit" onSelect={() => { close(); setNaming(d); }}>{name ? "Rename night" : "Name this night"}</MenuItem>}
+                    {editable && name && <MenuItem icon="x" onSelect={() => { close(); nameNight.mutate({ day: d, title: "" }, { onError: onErr("clear the name") }); }}>Clear name</MenuItem>}
+                    {canShop && <MenuItem icon="bag" onSelect={() => { close(); setShopStatus(null); setShopping(d); }}>Add store items</MenuItem>}
+                    {editable && <MenuItem icon="plus" onSelect={() => { close(); setAdding(d); }}>Add a recipe</MenuItem>}
+                  </>
+                )}
+              </Menu>
+            );
             return (
               <article key={d} className={["night", tonight && "tonight", dragOver === d && "over"].filter(Boolean).join(" ")}
                 aria-label={`${DAYS_LONG[d]} ${shortDate(date)}`} {...dropProps(d)}>
@@ -120,8 +166,16 @@ export function ThisWeek() {
                   <span className="dow">{DAYS[d]}</span><span className="date">{shortDate(date)}</span>
                   {tonight && <span className="pill tonight">Tonight</span>}
                   {!tonight && es[0]?.rating_count ? <span className="tag-quiet"><Icon name="check" size={14} />Rated</span> : null}
+                  {nightMenu && <span className="night-menu">{nightMenu}</span>}
                 </div>
-                {es.length === 0 ? (
+                {name && (
+                  editable ? (
+                    <button type="button" className="night-name" onClick={() => setNaming(d)} aria-label={`${name}. Rename ${DAYS_LONG[d]}`}>{name}</button>
+                  ) : <p className="night-name">{name}</p>
+                )}
+                {es.length === 0 && (name || items.length) ? (
+                  editable && <button type="button" className="link-btn night-add-recipe" onClick={() => setAdding(d)}><Icon name="plus" size={14} />Add a recipe</button>
+                ) : es.length === 0 ? (
                   <button type="button" className="empty" onClick={() => setAdding(d)} disabled={!editable}>
                     <span className="plus"><Icon name="plus" size={18} /></span>
                     <b>No dinner yet</b>
@@ -136,6 +190,8 @@ export function ThisWeek() {
                     ))}
                   </div>
                 )}
+                <NightStore day={d} items={items} canEdit={canShop} onAdd={() => { setShopStatus(null); setShopping(d); }}
+                  onQty={itemQty} onMove={itemMove} onRemove={itemRemove} />
               </article>
             );
           })}
@@ -185,6 +241,16 @@ export function ThisWeek() {
       <AddRecipeDialog open={adding !== null} week={week} day={typeof adding === "number" ? adding : null}
         onClose={() => setAdding(null)} />
       <RateDialog entry={rating} onClose={() => setRating(null)} />
+      <NameNightDialog day={naming} title={naming == null ? null : extrasOf(naming)?.title ?? null} onClose={() => setNaming(null)}
+        onSave={(title) => naming != null && nameNight.mutate({ day: naming, title }, {
+          onSuccess: () => toast({ text: title ? `${DAYS_LONG[naming]} is “${title}”` : `Cleared the name of ${DAYS_LONG[naming]}` }),
+          onError: onErr("save the name"),
+        })} />
+      {shopping != null && (
+        <ProductChooser line={null} title={`Add to ${DAYS_LONG[shopping]}${extrasOf(shopping)?.title ? ` · ${extrasOf(shopping)!.title}` : ""}`}
+          status={shopStatus} onClose={() => setShopping(null)}
+          onPick={(code, qty, term) => addItem(shopping, code, qty, term)} />
+      )}
       {compact && action && (
         <div className="dock">
           <span className="dock-text"><b>{placed}</b> {placed === 1 ? "dinner" : "dinners"} placed</span>

@@ -61,8 +61,31 @@ export interface Me {
 export interface WeekSummary {
   week: string;
   entries: number;
+  /** Items added by search (for the week or one night): something to shop for without a recipe. */
+  extras?: number;
+  /** Nights with a name ("Pizza night"). */
+  named_nights?: number;
   carted: boolean;
   cart_stale: boolean;
+}
+
+/** GET /extras: an item added by search for a week, or one night of it (day 0 = Sun … 6 = Sat; null = the week). */
+export interface Extra {
+  id: number;
+  week: string;
+  day: number | null;
+  term: string;
+  key: string;
+  product: Product | null;
+  quantity: number;
+  created_at: string;
+}
+
+/** GET /weeks/{week}/nights: a night with a name or store items. */
+export interface Night {
+  day: number;
+  title: string | null;
+  items: Extra[];
 }
 
 export interface Product {
@@ -110,6 +133,8 @@ export interface DraftLine {
   pinned?: boolean;
   note?: string | null;
   extra_id?: number | null;
+  /** An added item's night (0 = Sun … 6 = Sat); null = for the week. */
+  day?: number | null;
 }
 
 export interface Draft {

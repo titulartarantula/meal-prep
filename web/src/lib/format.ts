@@ -56,3 +56,9 @@ export function agoInline(iso: string | null | undefined, now: Date = new Date()
 export function initials(name: string | null | undefined): string {
   return (name ?? "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "?";
 }
+
+/** "2 recipes · 3 added items", "3 added items", "nothing planned". */
+export function weekWhat(entries: number, extras: number): string {
+  const parts = [entries && `${entries} recipe${entries > 1 ? "s" : ""}`, extras && `${extras} added item${extras > 1 ? "s" : ""}`].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "nothing planned";
+}

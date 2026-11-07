@@ -357,6 +357,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/weeks/{week}/nights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Nights
+         * @description The week's nights that have a name or store items (Sunday first). A night with no recipe still counts as
+         *     planned for display; it never asks for a rating.
+         */
+        get: operations["get_nights_weeks__week__nights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/weeks/{week}/nights/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Night
+         * @description Name or rename a night (trimmed, at most 60 characters); an empty name clears it.
+         */
+        put: operations["put_night_weeks__week__nights__day__put"];
+        post?: never;
+        /**
+         * Delete Night
+         * @description Clear a night's name (its store items stay).
+         */
+        delete: operations["delete_night_weeks__week__nights__day__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/weeks/{week}/entries": {
         parameters: {
             query?: never;
@@ -1440,6 +1485,8 @@ export interface components {
              * @default 1
              */
             quantity: number;
+            /** Day */
+            day?: number | null;
         };
         /** ExtraPatch */
         ExtraPatch: {
@@ -1447,6 +1494,8 @@ export interface components {
             product_code?: string | null;
             /** Quantity */
             quantity?: number | null;
+            /** Day */
+            day?: number | null;
         };
         /** FridgeIn */
         FridgeIn: {
@@ -1693,6 +1742,8 @@ export interface components {
             product_code?: string | null;
             /** Quantity */
             quantity?: number | null;
+            /** Day */
+            day?: number | null;
             /** Fridge */
             fridge?: ("covered" | "partial" | "check") | null;
             /** Fridge Qty */
@@ -1727,6 +1778,31 @@ export interface components {
             birth_year?: number | null;
             /** Email */
             email?: string | null;
+        };
+        /** Night */
+        Night: {
+            /** Day */
+            day: number;
+            /** Title */
+            title: string | null;
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** NightIn */
+        NightIn: {
+            /** Title */
+            title?: string | null;
+        };
+        /** NightTitle */
+        NightTitle: {
+            /** Week */
+            week: string;
+            /** Day */
+            day: number;
+            /** Title */
+            title: string | null;
         };
         /** PackIn */
         PackIn: {
@@ -2837,6 +2913,103 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PlanEntry"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_nights_weeks__week__nights_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                week: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Night"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_night_weeks__week__nights__day__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                week: string;
+                day: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NightIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NightTitle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_night_weeks__week__nights__day__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                week: string;
+                day: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

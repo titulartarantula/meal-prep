@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { makeList, useCan, useCreateDraft, useDefaultCartWeek, useStaples, useWeekDraft, useWeeks } from "../api/queries";
-import type { ListItem } from "../api/types";
+import { makeList, useCan, useCreateDraft, useDefaultCartWeek, useExtras, useStaples, useWeekDraft, useWeeks } from "../api/queries";
+import type { Extra, ListItem } from "../api/types";
 import { Icon } from "../components/Icon";
 import { Button, ErrorNote, Loading } from "../components/ui";
-import { amount, agoInline } from "../lib/format";
+import { amount, agoInline, weekWhat } from "../lib/format";
 import { useCompact } from "../lib/media";
-import { weekName, weekNameInline, weekOf, weekRange } from "../lib/weeks";
+import { DAYS_LONG, weekName, weekNameInline, weekOf, weekRange } from "../lib/weeks";
+import { itemName, itemQty } from "../components/NightExtras";
 
 export function Shopping() {
   const [params] = useSearchParams();
@@ -33,12 +34,14 @@ export function Shopping() {
     enabled: sel.length > 0 && (ticked !== null || staples.length >= 0),
   });
   const existing = useWeekDraft(sel.length === 1 ? sel[0] : null).data;
+  // Items added by search (on This week, for a night or the week): the cart gets them as they are.
+  const added = useExtras(sel, can("cart.build")).data ?? [];
 
   const items = useMemo(() => (list.data ?? []).map((i) => ({ ...i, needed: needed[i.key] ?? i.needed })), [list.data, needed]);
   const toBuy = items.filter((i) => i.needed && !(i.staple && i.recipes.every((r) => r === "Staples")));
   const stapleLines = items.filter((i) => i.staple && i.recipes.every((r) => r === "Staples"));
   const have = items.filter((i) => !i.needed);
-  const count = items.filter((i) => i.needed).length;
+  const count = items.filter((i) => i.needed).length + added.length;
 
   const toggleWeek = (w: string) => setChosen(sel.includes(w) ? sel.filter((x) => x !== w) : [...sel, w].sort());
   const build = () => create.mutate({ items: items as ListItem[], weeks: sel }, { onSuccess: (d) => navigate(`/cart/${d.id}`) });
@@ -48,11 +51,11 @@ export function Shopping() {
       <h2>Shop for</h2>
       <div className="week-chips">
         {/* phones list only the weeks that have something to shop for */}
-        {weeks.filter((w) => !compact || w.entries || sel.includes(w.week)).map((w) => (
+        {weeks.filter((w) => !compact || w.entries || w.extras || sel.includes(w.week)).map((w) => (
           <button key={w.week} type="button" className={`chip-btn${sel.includes(w.week) ? " on" : ""}`} aria-pressed={sel.includes(w.week)}
-            onClick={() => toggleWeek(w.week)} disabled={!w.entries && !sel.includes(w.week)}>
+            onClick={() => toggleWeek(w.week)} disabled={!w.entries && !w.extras && !sel.includes(w.week)}>
             {sel.includes(w.week) && <Icon name="check" size={14} />}
-            <span><b>{weekName(w.week)}</b><small>{weekRange(w.week)} · {w.entries ? `${w.entries} recipe${w.entries > 1 ? "s" : ""}` : "nothing planned"}{w.carted ? " · cart sent" : ""}</small></span>
+            <span><b>{weekName(w.week)}</b><small>{weekRange(w.week)} · {weekWhat(w.entries, w.extras ?? 0)}{w.carted ? " · cart sent" : ""}</small></span>
           </button>
         ))}
       </div>
@@ -90,6 +93,7 @@ export function Shopping() {
         </div>
       )}
       <ListSection title="To buy" items={toBuy} onToggle={(k, v) => setNeeded((n) => ({ ...n, [k]: v }))} />
+      <AddedSection items={added} weeks={sel} />
       {stapleLines.length > 0 && <ListSection title="Staples" items={stapleLines} onToggle={(k, v) => setNeeded((n) => ({ ...n, [k]: v }))} />}
       <ListSection title="Probably have" hint="Pantry items and anything you unticked. Tick one to buy it." items={have}
         onToggle={(k, v) => setNeeded((n) => ({ ...n, [k]: v }))} />
@@ -168,6 +172,28 @@ function ListSection({ title, hint, items, onToggle }: { title: string; hint?: s
               <span className="li-amt">{amount(i.qty, i.unit) || (i.staple_packs ? `${i.staple_packs} pack` : "")}</span>
               <span className="li-recipes">{i.recipes.join(", ")}</span>
             </label>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Items added by search for the chosen weeks (a night's store items say which night). They go into the cart as
+ * chosen; change them on This week or on the cart. */
+function AddedSection({ items, weeks }: { items: Extra[]; weeks: string[] }) {
+  if (!items.length) return null;
+  const when = (e: Extra) => [weeks.length > 1 && weekName(e.week), e.day != null ? DAYS_LONG[e.day] : "For the week"].filter(Boolean).join(", ");
+  return (
+    <section className="list-sec" aria-label="Added items">
+      <h2 className="list-h">Added items <span className="count">{items.length}</span></h2>
+      <p className="muted small">Products you chose. They go into the cart as they are; change them on This week or on the cart.</p>
+      <ul className="list added-list">
+        {items.map((e) => (
+          <li key={e.id}>
+            <span className="li-name">{itemName(e)}</span>
+            <span className="li-amt">{itemQty(e)}</span>
+            <span className="li-recipes">{when(e)}</span>
           </li>
         ))}
       </ul>

@@ -532,6 +532,89 @@ test.describe("signed in", () => {
     await expect(dlg).toContainText("Done: 2 added", { timeout: 10_000 });
   });
 
+  test("a night without a recipe: name it, add store items from the chooser, change and remove them; the list and the cart show the night", async ({ page }) => {
+    // two weeks ahead: nothing planned yet
+    await page.getByRole("button", { name: "Next week" }).click();
+    await page.getByRole("button", { name: "Next week" }).click();
+    await expect(page.getByRole("article", { name: /^Thursday/ })).toContainText("No dinner yet");
+    const week = new URL(page.url()).pathname.split("/").pop()!;
+    const thu = page.getByRole("article", { name: /^Thursday/ });
+
+    await thu.getByRole("button", { name: "Options for Thursday" }).click();
+    await page.getByRole("menu").getByRole("menuitem", { name: "Name this night" }).click();
+    const naming = page.getByRole("dialog", { name: "Name Thursday" });
+    await naming.getByLabel("Name of the night").fill("x".repeat(61));
+    await expect(naming.getByRole("button", { name: "Save" })).toBeDisabled();
+    await naming.getByLabel("Name of the night").fill("  Pizza   night ");
+    await axe(page);
+    await phoneChecks(page);
+    await naming.getByRole("button", { name: "Save" }).click();
+    await expect(naming).toBeHidden();
+    await expect(thu.getByRole("button", { name: /^Pizza night\. Rename Thursday/ })).toBeVisible();
+    await expect(thu).not.toContainText("No dinner yet");                      // a named night counts as planned
+
+    await thu.getByRole("button", { name: "Add items" }).click();
+    const chooser = page.getByRole("dialog", { name: "Add to Thursday · Pizza night" });
+    const search = async (term: string) => {
+      await chooser.getByRole("searchbox", { name: "Search Loblaws" }).fill(term);
+      await chooser.getByRole("button", { name: "Search", exact: true }).click();
+    };
+    await search("pizza");
+    await chooser.getByRole("button", { name: /Hearthstone Pepperoni Pizza/ }).click();
+    await expect(chooser.getByRole("status")).toContainText("Added Hearthstone Pepperoni Pizza, Rising Crust to Thursday");
+    await search("caesar salad");
+    await chooser.getByRole("button", { name: /Greenfield Caesar Salad Kit/ }).click();
+    await expect(chooser.getByRole("status")).toContainText("Added Greenfield Caesar Salad Kit");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "14-night-chooser");
+    await chooser.getByRole("button", { name: "Done" }).click();
+
+    const store = thu.getByRole("group", { name: "From the store, Thursday" });
+    await expect(store).toContainText("Hearthstone Pepperoni Pizza");
+    await expect(store).toContainText("Greenfield Caesar Salad Kit");
+    await store.getByRole("button", { name: /^Options for Hearthstone/ }).click();
+    await page.getByRole("menu").getByRole("menuitem", { name: "Add one more" }).click();
+    await expect(store.getByRole("listitem").filter({ hasText: "Hearthstone" })).toContainText("×2");
+    await store.getByRole("button", { name: /^Options for Greenfield/ }).click();
+    await page.getByRole("menu").getByRole("menuitem", { name: "Remove" }).click();
+    await expect(store).not.toContainText("Caesar");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "15-night-items");
+    // dark mode: the night's name and store items keep their contrast
+    await page.getByRole("button", { name: "Account and settings" }).click();
+    await page.getByRole("menuitem", { name: "Dark mode" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await axe(page);
+    await shot(page, "16-night-items-dark");
+
+    // the shopping list offers the week (it has something to buy) and lists the item with its night
+    await page.goto(`/shopping?week=${week}`);
+    const added = page.getByRole("region", { name: "Added items" });
+    await expect(added).toContainText("Hearthstone Pepperoni Pizza");
+    await expect(added).toContainText("×2");
+    await expect(added).toContainText("Thursday");
+    await axe(page);
+    await phoneChecks(page);
+    await page.getByRole("button", { name: "Build cart" }).click();
+    await expect(page.getByRole("heading", { name: "Review your cart" })).toBeVisible({ timeout: 10_000 });
+    await expect(cartLine(page, /Hearthstone Pepperoni Pizza/)).toContainText("Added · Thu");
+    await axe(page);
+
+    // back on the week: the item is still on Thursday; rename, then clear the name
+    await page.goto(`/week/${week}`);
+    await thu.getByRole("button", { name: /^Pizza night/ }).click();
+    const rename = page.getByRole("dialog", { name: "Rename Thursday" });
+    await rename.getByLabel("Name of the night").fill("Movie night");
+    await rename.getByRole("button", { name: "Save" }).click();
+    await expect(thu.getByRole("button", { name: /^Movie night/ })).toBeVisible();
+    await thu.getByRole("button", { name: "Options for Thursday" }).click();
+    await page.getByRole("menu").getByRole("menuitem", { name: "Clear name" }).click();
+    await expect(thu.getByRole("button", { name: /^Movie night/ })).toHaveCount(0);
+    await expect(store).toContainText("Hearthstone Pepperoni Pizza");
+  });
+
   test("shopping list → build cart → review, swap, add, send → handoff", async ({ page }) => {
     await page.getByRole("link", { name: "Shopping" }).click();
     await expect(page.getByRole("region", { name: "To buy" })).toContainText("Rice noodles");

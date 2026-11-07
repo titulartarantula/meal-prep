@@ -129,6 +129,8 @@ export const PRODUCTS: MockProduct[] = [
   { code: "P14", name: "Organic Firm Tofu", brand: "Soyganic", package_size: "350 g", price: 3.99, unit_price: 1.14, unit_price_unit: "100 g", color: "#F4EEDF" },
   { code: "P15", name: "Natural Peanut Butter", brand: "Kraft", package_size: "750 g", price: 5.99, unit_price: 0.8, unit_price_unit: "100 g", color: "#B88449" },
   { code: "P16", name: "Strawberries", package_size: "454 g", price: 4.99, unit_price: 1.1, unit_price_unit: "100 g", color: "#D9443A" },
+  { code: "P17", name: "Pepperoni Pizza, Rising Crust", brand: "Hearthstone", package_size: "800 g", price: 6.99, unit_price: 0.87, unit_price_unit: "100 g", color: "#D7774A" },
+  { code: "P18", name: "Caesar Salad Kit", brand: "Greenfield", package_size: "300 g", price: 4.49, unit_price: 1.5, unit_price_unit: "100 g", color: "#9FBF6A", deal_text: "2 for $8.00" },
 ];
 
 /** Cart lines a build produces for next week: item key → [product code, quantity, source]. */

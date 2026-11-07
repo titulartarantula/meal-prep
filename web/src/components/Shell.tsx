@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useMe, useSignOut, useSwitchHousehold, useWeeks } from "../api/queries";
-import { initials } from "../lib/format";
+import { initials, weekWhat } from "../lib/format";
+import type { WeekSummary } from "../api/types";
 import { weekName, weekOf, weekRange } from "../lib/weeks";
 import { Icon } from "./Icon";
 import { Menu, MenuItem } from "./ui";
@@ -81,10 +82,10 @@ export function Shell() {
         <nav className="nav weeklist" aria-labelledby="weeks-h">
           {weeks.map((w) => (
             <NavLink key={w.week} to={w.week === thisWeek ? "/week" : `/week/${w.week}`} end
-              title={`${weekName(w.week)} · ${w.entries} recipe${w.entries === 1 ? "" : "s"}${w.carted ? " · cart sent" : ""}`}>
+              title={`${weekName(w.week)} · ${weekWhat(w.entries, w.extras ?? 0)}${w.carted ? " · cart sent" : ""}`}>
               <span>{weekRange(w.week)}</span>
-              <span className={`dot${w.carted ? " sent" : w.entries ? " planned" : ""}`}
-                aria-label={w.carted ? "cart sent" : w.entries ? `${w.entries} planned` : "empty"} />
+              <span className={`dot${w.carted ? " sent" : planned(w) ? " planned" : ""}`}
+                aria-label={w.carted ? "cart sent" : w.entries ? `${w.entries} planned` : planned(w) ? "planned" : "empty"} />
             </NavLink>
           ))}
         </nav>
@@ -101,3 +102,6 @@ export function Shell() {
 
 const ROLE_NAMES: Record<string, string> = { owner: "Owner", approver: "Approver", planner: "Planner", contributor: "Contributor", child: "Child" };
 const roleName = (r: string) => ROLE_NAMES[r] ?? r;
+
+/** A week counts as planned with a recipe, a store item or a named night. */
+const planned = (w: WeekSummary) => w.entries > 0 || (w.extras ?? 0) > 0 || (w.named_nights ?? 0) > 0;

@@ -842,6 +842,152 @@
     }
    }
   },
+  "/weeks/{week}/nights": {
+   "get": {
+    "summary": "Get Nights",
+    "description": "The week's nights that have a name or store items (Sunday first). A night with no recipe still counts as\nplanned for display; it never asks for a rating.",
+    "operationId": "get_nights_weeks__week__nights_get",
+    "parameters": [
+     {
+      "name": "week",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "date",
+       "title": "Week"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Night"
+         },
+         "title": "Response Get Nights Weeks  Week  Nights Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/weeks/{week}/nights/{day}": {
+   "put": {
+    "summary": "Put Night",
+    "description": "Name or rename a night (trimmed, at most 60 characters); an empty name clears it.",
+    "operationId": "put_night_weeks__week__nights__day__put",
+    "parameters": [
+     {
+      "name": "week",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "date",
+       "title": "Week"
+      }
+     },
+     {
+      "name": "day",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Day"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NightIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/NightTitle"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Night",
+    "description": "Clear a night's name (its store items stay).",
+    "operationId": "delete_night_weeks__week__nights__day__delete",
+    "parameters": [
+     {
+      "name": "week",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "date",
+       "title": "Week"
+      }
+     },
+     {
+      "name": "day",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Day"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/weeks/{week}/entries": {
    "post": {
     "summary": "Add Entry",
@@ -3814,6 +3960,19 @@
       "exclusiveMinimum": 0.0,
       "title": "Quantity",
       "default": 1
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 6.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
      }
     },
     "type": "object",
@@ -3851,6 +4010,19 @@
        }
       ],
       "title": "Quantity"
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 6.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
      }
     },
     "type": "object",
@@ -4553,6 +4725,17 @@
       ],
       "title": "Quantity"
      },
+     "day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
      "fridge": {
       "anyOf": [
        {
@@ -4700,6 +4883,88 @@
     },
     "type": "object",
     "title": "MemberPatch"
+   },
+   "Night": {
+    "properties": {
+     "day": {
+      "type": "integer",
+      "title": "Day"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "items": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Items"
+     }
+    },
+    "type": "object",
+    "required": [
+     "day",
+     "title",
+     "items"
+    ],
+    "title": "Night"
+   },
+   "NightIn": {
+    "properties": {
+     "title": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     }
+    },
+    "type": "object",
+    "title": "NightIn"
+   },
+   "NightTitle": {
+    "properties": {
+     "week": {
+      "type": "string",
+      "title": "Week"
+     },
+     "day": {
+      "type": "integer",
+      "title": "Day"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     }
+    },
+    "type": "object",
+    "required": [
+     "week",
+     "day",
+     "title"
+    ],
+    "title": "NightTitle"
    },
    "PackIn": {
     "properties": {
