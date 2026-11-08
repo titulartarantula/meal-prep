@@ -27,6 +27,7 @@ from ..importers.nyt import _servings, extract_nyt_url
 from ..importers.structure import _ref_page
 from ..ingredients import BASE, COUNT_UNITS, clean_ingredient, likely_on_hand, parse_amount
 from ..models import Ingredient, Recipe, RecipeOut
+from ..sources import NYT_SITE, kind_in
 from . import durations
 
 CONTEXT = ["https://schema.org", {"mealprep": "https://github.com/titulartarantula/meal-prep/ns/v1#"}]
@@ -110,8 +111,6 @@ def _instructions(r: RecipeOut) -> list[dict]:
 
 
 def _based_on(r: RecipeOut):
-    if r.source_kind == "nyt":
-        return r.source_url
     if r.source_kind == "book" and r.source_title:
         b = {"@type": "Book", "name": r.source_title, "author": r.source_author, "isbn": r.source_isbn,
              "mealprep:page": r.source_ref}
@@ -487,7 +486,10 @@ def _extra(node: dict, warnings: list[str]) -> dict:
 def _foreign_source(node: dict, url: str | None, warnings: list[str]) -> dict:
     """source_kind/title/ref/author/isbn (+ source_url) from url, isBasedOn, publisher and author."""
     if url and _host(url) in ("cooking.nytimes.com",) and extract_nyt_url(url):
-        return {"source_kind": "nyt", "source_url": extract_nyt_url(url)}
+        # NYT Cooking is a website like any other (2026-11-08); the author when the file names one
+        author = _names(node.get("author"))
+        return {"source_kind": "web", "source_url": extract_nyt_url(url), "source_title": NYT_SITE,
+                "source_author": None if author and author.casefold() == NYT_SITE.casefold() else author}
     based = node.get("isBasedOn")
     if isinstance(based, list):
         based = next((b for b in based if isinstance(b, dict)), based[0] if based else None)
@@ -591,7 +593,7 @@ def _from_block(node: dict, block: dict, warnings: list[str]) -> Incoming:
     if url is not None and not safe_url(url):
         warnings.append(DROPPED_LINK)
         url = None
-    kind = src.get("kind") if src.get("kind") in ("nyt", "book", "other", "web") else None
+    kind = kind_in(src.get("kind")) if src.get("kind") in ("nyt", "book", "other", "web") else None   # nyt = a website
     isbn = None
     if src.get("isbn"):
         try:
@@ -625,7 +627,7 @@ def _from_block(node: dict, block: dict, warnings: list[str]) -> Incoming:
             bad += 1
     if bad:
         warnings.append(f"Left out {bad} rating{'s' if bad > 1 else ''} that couldn't be read")
-    link = extract_nyt_url(url) if url and kind == "nyt" and extract_nyt_url(url) else url
+    link = extract_nyt_url(url) if url and kind == "web" and extract_nyt_url(url) else url
     summary = rblock.get("summary") if isinstance(rblock.get("summary"), dict) else {}
     company = summary.get("company") if summary.get("company") in ("yes", "no") else None   # yes / no only
     return Incoming(recipe=r, ratings=ratings, company=company, warnings=warnings, origin="mealprep", link=link)

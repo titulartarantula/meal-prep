@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 def missing(conn) -> list[tuple[int, str]]:
     """(id, link) of NYT recipes without a photo link, every household (the login role sees them all)."""
     return conn.execute(
-        "SELECT id, source_url FROM recipes WHERE source_kind = 'nyt' AND source_url LIKE %s "
+        "SELECT id, source_url FROM recipes WHERE source_kind IN ('web', 'nyt') AND source_url LIKE %s "
         "AND coalesce(data->>'image', '') = '' ORDER BY id", (f"{BASE}/recipes/%",)).fetchall()
 
 

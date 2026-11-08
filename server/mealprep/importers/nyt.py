@@ -154,6 +154,20 @@ def parse_nyt_html(html: str, url: str):
     return htmllib.unescape(n.get("name", "")), _servings(n.get("recipeYield")), ings, _steps(n.get("recipeInstructions"))
 
 
+def parse_nyt_author(html: str) -> str | None:
+    """The recipe's author(s) from the page's JSON-LD ("Melissa Clark"; several joined with " and "), or None. The
+    site itself ("NYT Cooking", "The New York Times") is not an author."""
+    n = _recipe_node(html)
+    a = n.get("author") if n else None
+    names = []
+    for x in (a if isinstance(a, list) else [a])[:5]:
+        name = x.get("name") if isinstance(x, dict) else x
+        name = " ".join(htmllib.unescape(name).split()) if isinstance(name, str) else ""
+        if name and name.casefold() not in ("nyt cooking", "the new york times", "new york times") and name not in names:
+            names.append(name[:100])
+    return " and ".join(names)[:200] or None
+
+
 # NYT publishes each photo in several crops (the "#<crop>" end of an ImageObject's @id, also in the file name). A card
 # wants a mid-sized landscape one: 4:3 at 800 × 600 first, then 3:2, then whatever is closest to 800 px wide.
 _CROPS = ("googleFourByThree", "threeByTwoMediumAt2X", "threeByTwoLargeAt2X", "threeByTwoSmallAt2X")

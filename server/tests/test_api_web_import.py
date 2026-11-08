@@ -145,7 +145,8 @@ def test_nyt_links_still_use_the_nyt_importer(conn, fetched, monkeypatch):
     calls, _ = fetched
     monkeypatch.setattr(api_mod, "fetch_nyt_recipe", lambda url: (FIX.read_text(), url))
     rec = share(client(conn), "https://cooking.nytimes.com/recipes/1015819-x").json()["recipe"]
-    assert rec["source_kind"] == "nyt" and calls == []
+    # NYT Cooking is a website (2026-11-08): its own importer, the site's name, the author from the page
+    assert (rec["source_kind"], rec["source_title"], rec["source"]) == ("web", "NYT Cooking", "nyt") and calls == []
 
 
 def test_web_recipe_round_trips_through_export(conn, fetched):

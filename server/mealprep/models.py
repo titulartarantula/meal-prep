@@ -1,8 +1,10 @@
 import hashlib
 import json
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, BeforeValidator, model_validator
+
+from .sources import NYT_SITE, is_nyt_url, kind_in
 
 
 class Ingredient(BaseModel):
@@ -17,7 +19,8 @@ class Ingredient(BaseModel):
     expanded: bool = False         # a "…, page 191" line whose sub-recipe was attached: not bought itself
 
 
-SourceKind = Literal["nyt", "book", "other", "web"]
+# Website, Book or Other (2026-11-08); the retired "nyt" is read as a website (sources.py)
+SourceKind = Annotated[Literal["web", "book", "other"], BeforeValidator(kind_in)]
 SOURCE_FIELDS = {"source_kind", "source_title", "source_ref", "source_author", "source_isbn"}   # stored in recipes columns, not in `data`
 COLUMN_FIELDS = SOURCE_FIELDS | {"uid"}   # every Recipe field kept in a recipes column (never inside `data`)
 
@@ -30,10 +33,10 @@ class Recipe(BaseModel):
     servings: int | None = None
     ingredients: list[Ingredient]
     steps: list[str]
-    # Where the recipe comes from (columns on recipes, editable with PATCH /recipes/{id}): NYT Cooking, a cookbook
-    # (source_title = the book, null = not known yet; source_ref = page(s), free text), a web page ("web", 2026-11-08:
-    # source_title = the site's name, source_author = the recipe's author, source_url = its canonical link) or
-    # something else.
+    # Where the recipe comes from (columns on recipes, editable with PATCH /recipes/{id}), one of three kinds: a web
+    # page ("web", 2026-11-08: source_title = the site's name, NYT Cooking included; source_author = the recipe's
+    # author, source_url = its canonical link), a cookbook (source_title = the book, null = not known yet;
+    # source_ref = page(s), free text) or something else ("other").
     source_kind: SourceKind | None = None   # None only before saving: save_recipe derives it (default_kind)
     source_title: str | None = None
     source_ref: str | None = None
@@ -54,10 +57,16 @@ class Recipe(BaseModel):
     image: str | None = None         # an http(s) link, kept as text, never fetched (the web app hotlinks it)
     schema_extra: dict = {}          # whitelisted schema.org keys passed through (recipeCuisine, keywords …)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _nyt_is_a_website(cls, d):
+        """A stored or incoming "nyt" source is the website NYT Cooking."""
+        if isinstance(d, dict) and d.get("source_kind") == "nyt":
+            d = {**d, "source_kind": "web", "source_title": d.get("source_title") or NYT_SITE}
+        return d
+
     def default_kind(self) -> str:
-        if self.source_url and "nytimes.com" in self.source_url:
-            return "nyt"
-        if self.source == "web":
+        if self.source in ("web", "nyt") or is_nyt_url(self.source_url):
             return "web"
         return "book" if self.source == "photo" else "other"
 

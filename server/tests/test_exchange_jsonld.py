@@ -121,7 +121,7 @@ def test_book_bad_isbn_dropped_with_warning():
 
 def test_nyt_url_normalised():
     inc = one("nyt_url.json")
-    assert inc.recipe.source_kind == "nyt" and inc.recipe.source_title is None
+    assert inc.recipe.source_kind == "web" and inc.recipe.source_title == "NYT Cooking"
     assert inc.recipe.source_url == inc.link == "https://cooking.nytimes.com/recipes/1099999-test-lentil-soup"
 
 

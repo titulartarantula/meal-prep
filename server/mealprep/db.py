@@ -10,6 +10,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .models import COLUMN_FIELDS, PlanEntry, Rating, Recipe
+from .sources import KINDS, NYT_SITE, is_nyt_url
 
 SCHEMA = (Path(__file__).parent / "schema.sql").read_text()
 
@@ -80,7 +81,8 @@ def save_recipe(conn, r: Recipe, ai_provider: str | None = None) -> int:
         if row:
             return row[0]
     kind = r.source_kind or r.default_kind()
-    title, ref, author, isbn = _source(kind, r.source_title, r.source_ref, r.source_author, r.source_isbn)
+    stitle = r.source_title or (NYT_SITE if kind == "web" and is_nyt_url(r.source_url) else None)
+    title, ref, author, isbn = _source(kind, stitle, r.source_ref, r.source_author, r.source_isbn)
     return conn.execute(
         "INSERT INTO recipes(source, source_url, title, servings, data, ai_provider, source_kind, source_title, source_ref, "
         "source_author, source_isbn, uid) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,COALESCE(%s::uuid, gen_random_uuid())) "
@@ -90,10 +92,8 @@ def save_recipe(conn, r: Recipe, ai_provider: str | None = None) -> int:
 
 
 def _source(kind, title, ref, author, isbn) -> tuple:
-    """An NYT recipe has no book, page, author or ISBN; an author/ISBN belongs to a known book title only (an "other"
-    source, e.g. "Mum's recipes", is a name and a note: no author/ISBN); a web page has its site and author only."""
-    if kind == "nyt":
-        return None, None, None, None
+    """An author/ISBN belongs to a known book title only (an "other" source, e.g. "Mum's recipes", is a name and a
+    note: no author/ISBN); a web page (NYT Cooking included) has its site and author only."""
     if kind == "other":
         return title, ref, None, None
     if kind == "web":   # the site and the recipe's author; no page or ISBN
@@ -139,14 +139,16 @@ def update_source(conn, rid: int, kind: str, title: str | None, ref: str | None,
 
 
 def source_filter(source: str | None) -> tuple[str, dict]:
-    """SQL condition for GET /recipes?source=: "nyt", "book" (every book), "other" (every other source), "web" (every
-    web page), "book:<title>" / "other:<name>" / "web:<site>" (case-insensitive, spacing ignored), "book:" (book not
+    """SQL condition for GET /recipes?source=: "web" (every website), "book" (every book), "other" (every other
+    source), "book:<title>" / "other:<name>" / "web:<site>" (case-insensitive, spacing ignored), "book:" (book not
     known yet), "other:" (other source without a name), "web:" (a page without a site name); any other value is a
-    book title."""
+    book title. "nyt" (apps before 2026-11-08) = "web:NYT Cooking"."""
     if not source:
         return "", {}
     s = source.strip()
-    if s in ("nyt", "book", "other", "web"):
+    if s == "nyt":
+        s = f"web:{NYT_SITE}"
+    if s in KINDS:
         return " WHERE source_kind = %(kind)s", {"kind": s}
     low = s.lower()
     kind = "other" if low.startswith("other:") else "web" if low.startswith("web:") else "book"
@@ -163,17 +165,15 @@ def list_recipes(conn, source: str | None = None) -> list[Recipe]:
 
 
 def recipe_sources(conn) -> list[dict]:
-    """Distinct sources with counts: NYT Cooking, each book and each named other source ("Mum's recipes") A–Z, each web
-    site A–Z
-    (titles grouped case-insensitively, the newest recipe's spelling shown), Unknown book, Other (no name). `key` is
-    the GET /recipes?source= value that lists them."""
+    """Distinct sources with counts: each book and each named other source ("Mum's recipes") A–Z, each website A–Z
+    (NYT Cooking among them; titles grouped case-insensitively, the newest recipe's spelling shown), Websites (no site
+    name), Unknown book, Other (no name). Every entry's `kind` is web, book or other; `key` is the GET /recipes?source=
+    value that lists them."""
     rows = conn.execute(
         "SELECT source_kind, (array_agg(source_title ORDER BY id DESC))[1], count(*), "
         "(array_agg(source_author ORDER BY id DESC) FILTER (WHERE source_author IS NOT NULL))[1], "
         "(array_agg(source_isbn ORDER BY id DESC) FILTER (WHERE source_isbn IS NOT NULL))[1] FROM recipes "
         "GROUP BY source_kind, lower(source_title)").fetchall()
-    nyt = [{"key": "nyt", "kind": "nyt", "title": None, "label": "NYT Cooking", "count": n}
-           for k, _, n, _, _ in rows if k == "nyt"]
     # a book's author/ISBN = the newest recipe's that has one
     books = [{"key": f"book:{t}", "kind": "book", "title": t, "label": t, "count": n, "author": a, "isbn": i}
              for k, t, n, a, i in rows if k == "book" and t is not None]
@@ -188,7 +188,7 @@ def recipe_sources(conn) -> list[dict]:
                for k, t, n, _, _ in rows if k == "book" and t is None]
     other = [{"key": "other:", "kind": "other", "title": None, "label": "Other", "count": n}
              for k, t, n, _, _ in rows if k == "other" and t is None]
-    return nyt + sorted(books + named, key=lambda b: (b["title"].lower(), b["kind"])) + sites + unnamed_web + unknown + other
+    return sorted(books + named, key=lambda b: (b["title"].lower(), b["kind"])) + sites + unnamed_web + unknown + other
 
 
 def get_pick(conn, key: str) -> str | None:

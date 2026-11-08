@@ -197,7 +197,7 @@ def test_duplicate_by_link(conn):
         source_url="https://cooking.nytimes.com/recipes/1099999-test-lentil-soup")
     [it] = post(client(conn), "nyt_url.json").json()["items"]
     assert it["status"] == "duplicate" and it["match"]["by"] == "link" and it["match"]["title"] == "Lentil soup"
-    assert it["source"] == "NYT Cooking"
+    assert it["source"] == "Website · NYT Cooking"
 
 
 def test_duplicate_by_title_and_source(conn):

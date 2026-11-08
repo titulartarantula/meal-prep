@@ -29,6 +29,7 @@ from .. import db
 from ..importers import document as docsplit
 from ..importers.structure import structure_ingredients
 from ..models import Recipe
+from ..sources import NYT_SITE
 from . import documents, extract, jsonld
 from .safe import Unreadable, decode, loads_limited
 
@@ -117,14 +118,12 @@ def title_key(t: str | None) -> str:
 
 
 def _source_key(kind, title):
-    if kind == "nyt":
-        return ("nyt",)
+    if kind == "nyt":   # a library row not migrated yet (sources.py): the website NYT Cooking
+        kind, title = "web", title or NYT_SITE
     return (kind, title_key(title)) if title else None
 
 
 def source_label(r: Recipe) -> str:
-    if r.source_kind == "nyt":
-        return "NYT Cooking"
     if r.source_kind == "book":
         return f"Book · {r.source_title}" if r.source_title else "Unknown book"
     if r.source_kind == "web":
@@ -181,7 +180,7 @@ def _content(r: Recipe, origin: str) -> dict:
 
 
 def _has_source(r: Recipe) -> bool:
-    return bool(r.source_kind == "nyt" or r.source_title or r.source_url)
+    return bool(r.source_title or r.source_url)
 
 
 # --- preview ------------------------------------------------------------------------------------------------------

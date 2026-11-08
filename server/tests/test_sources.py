@@ -1,4 +1,5 @@
-"""Recipe sources (0.4.2): source_kind nyt | book | other, source_title (the book), source_ref (page). Invented data."""
+"""Recipe sources (0.4.2): source_kind book | other | web (2026-11-08: NYT Cooking is a website; "nyt" is read as
+web + NYT Cooking), source_title (the book / the site), source_ref (page). Invented data."""
 from datetime import date
 
 from psycopg.types.json import Jsonb
@@ -49,8 +50,9 @@ def test_save_derives_kind_and_nyt_has_no_book(conn):
     c = db.save_recipe(conn, book("Test Card", kind="other", source_title="Index card"))
     weird = db.save_recipe(conn, nyt("Test Soup", 8).model_copy(update={"source_title": "x", "source_ref": "1"}))
     got = {r.id: (r.source_kind, r.source_title, r.source_ref) for r in db.list_recipes(conn)}
-    assert got == {a: ("nyt", None, None), b: ("book", "Invented Bakes", "p. 40"), c: ("other", "Index card", None),
-                   weird: ("nyt", None, None)}
+    assert got == {a: ("web", "NYT Cooking", None), b: ("book", "Invented Bakes", "p. 40"),
+                   c: ("other", "Index card", None), weird: ("web", "x", None)}   # a website keeps its site, no page
+    assert conn.execute("SELECT source_kind FROM recipes WHERE id=%s", (a,)).fetchone()[0] == "web"   # stored as web
     assert "source_kind" not in conn.execute("SELECT data FROM recipes WHERE id=%s", (b,)).fetchone()[0]
 
 
@@ -73,7 +75,7 @@ def test_recipes_filter_by_source(conn):
         r = c.get("/recipes", headers=H, params={"source": source})
         assert r.status_code == 200
         return {x["id"] for x in r.json()}
-    assert got("nyt") == {ids["noodles"]}
+    assert got("nyt") == got("web") == got("web:nyt cooking") == {ids["noodles"]}   # "nyt" from an older app
     assert got("book") == {ids["tart"], ids["bun"], ids["stew"], ids["salad"]}
     assert got("other") == {ids["card"]}
     assert got("book:INVENTED BAKES") == got("Invented  Bakes") == {ids["tart"], ids["bun"]}   # any case/spacing
@@ -81,15 +83,16 @@ def test_recipes_filter_by_source(conn):
     assert got("No Such Book") == set()
     assert len(c.get("/recipes", headers=H).json()) == 6
     row = next(x for x in c.get("/recipes", headers=H, params={"source": "nyt"}).json())
-    assert (row["source_kind"], row["source_title"], row["source_ref"]) == ("nyt", None, None)
+    assert (row["source_kind"], row["source_title"], row["source_ref"]) == ("web", "NYT Cooking", None)
 
 
 def test_sources_list_with_counts(conn):
     setup_library(conn)
     got = client(conn).get("/recipes/sources", headers=H).json()
     assert [(s["key"], s["label"], s["count"]) for s in got] == [
-        ("nyt", "NYT Cooking", 1), ("book:A Made-Up Garden", "A Made-Up Garden", 1),
-        ("book:Invented Bakes", "Invented Bakes", 2), ("book:", "Unknown book", 1), ("other:", "Other", 1)]
+        ("book:A Made-Up Garden", "A Made-Up Garden", 1), ("book:Invented Bakes", "Invented Bakes", 2),
+        ("web:NYT Cooking", "NYT Cooking", 1), ("book:", "Unknown book", 1), ("other:", "Other", 1)]
+    assert {s["kind"] for s in got} == {"web", "book", "other"}
     assert client(conn).get("/recipes/sources", headers=H).status_code == 200
 
 
@@ -115,9 +118,12 @@ def test_patch_recipe_source_and_title(conn):
     assert conn.execute("SELECT title FROM recipes WHERE id=%s", (stew,)).fetchone()[0] == "Test Winter Stew"
     # back to unknown book
     assert c.patch(f"/recipes/{stew}", headers=H, json={"source_title": ""}).json()["source_title"] is None
-    # to NYT: the book and page go
-    c.patch(f"/recipes/{ids['tart']}", headers=H, json={"source_kind": "nyt"})
-    assert db.get_recipe(conn, ids["tart"]).source_title is None
+    # an older app's "nyt" = a website: no page
+    body = c.patch(f"/recipes/{ids['tart']}", headers=H, json={"source_kind": "nyt"}).json()
+    assert (body["source_kind"], body["source_ref"]) == ("web", None)
+    # an NYT recipe without a site name sent keeps NYT Cooking
+    body = c.patch(f"/recipes/{ids['noodles']}", headers=H, json={"source_kind": "nyt", "source_title": None}).json()
+    assert (body["source_kind"], body["source_title"]) == ("web", "NYT Cooking")
 
 
 def test_patch_recipe_rejects_bad_input(conn):
@@ -129,7 +135,7 @@ def test_patch_recipe_rejects_bad_input(conn):
     assert c.patch(f"/recipes/{rid}", headers=H, json={"source_kind": None}).status_code == 422
     assert c.patch(f"/recipes/{rid}", headers=H, json={"title": "  "}).status_code == 422
     assert c.patch(f"/recipes/{rid}", headers=H, json={"source_ref": "x" * 51}).status_code == 422
-    assert c.patch(f"/recipes/{ids['noodles']}", headers=H, json={"source_title": "Invented Bakes"}).status_code == 422
+    assert c.patch(f"/recipes/{ids['noodles']}", headers=H, json={"source_ref": "p. 3"}).json()["source_ref"] is None
     assert c.patch(f"/recipes/{rid}", json={"source_title": "X"}).status_code == 401
     assert db.get_recipe(conn, rid).source_title == "invented bakes"
 
@@ -171,7 +177,19 @@ def test_share_nyt_sets_kind(conn, monkeypatch):
     from test_api import FIX
     monkeypatch.setattr(api_mod, "fetch_nyt_recipe", lambda url: (FIX.read_text(), url))
     rec = client(conn).post("/recipes/share", headers=H, json={"text": "https://cooking.nytimes.com/recipes/1015819-x"}).json()["recipe"]
-    assert (rec["source_kind"], rec["source_title"], rec["source_ref"]) == ("nyt", None, None)
+    assert (rec["source_kind"], rec["source_title"], rec["source_ref"], rec["source_author"]) == \
+        ("web", "NYT Cooking", None, "Example Kitchen")   # a website; the author from the page's JSON-LD
+
+
+def test_nyt_author_from_the_page():
+    from mealprep.importers.nyt import parse_nyt_author
+    page = lambda a: ('<script type="application/ld+json">' + __import__("json").dumps(
+        {"@type": "Recipe", "name": "X", "author": a}) + "</script>")
+    assert parse_nyt_author(page({"@type": "Person", "name": "Pat  Example"})) == "Pat Example"
+    assert parse_nyt_author(page([{"name": "Pat Example"}, "Sam Sample", {"name": "NYT Cooking"}])) == \
+        "Pat Example and Sam Sample"
+    assert parse_nyt_author(page({"name": "The New York Times"})) is None
+    assert parse_nyt_author(page(None)) is None and parse_nyt_author("<p>no recipe</p>") is None
 
 
 # --- book author / ISBN (0.4.3) ---
@@ -216,9 +234,10 @@ def test_patch_author_isbn_follow_the_book(conn):
     assert (body["source_author"], body["source_isbn"]) == (None, None)
     body = c.patch(f"/recipes/{rid}", headers=H, json={"source_author": "Basil Thyme"}).json()
     assert body["source_author"] == "Basil Thyme"
-    # unknown book or NYT: none
+    # unknown book: none; a website (NYT Cooking) keeps the recipe's author but no ISBN
     assert c.patch(f"/recipes/{rid}", headers=H, json={"source_title": None}).json()["source_author"] is None
-    assert c.patch(f"/recipes/{ids['noodles']}", headers=H, json={"source_author": "Ada Pepper"}).status_code == 422
+    body = c.patch(f"/recipes/{ids['noodles']}", headers=H, json={"source_author": "Ada Pepper"}).json()
+    assert (body["source_title"], body["source_author"], body["source_isbn"]) == ("NYT Cooking", "Ada Pepper", None)
     assert c.patch(f"/recipes/{rid}", headers=H, json={"source_isbn": "97800000000"}).status_code == 422
     assert c.patch(f"/recipes/{rid}", headers=H, json={"source_author": "x" * 201}).status_code == 422
 
@@ -260,9 +279,10 @@ def test_sources_list_named_others_sorted_with_books(conn):
     setup_others(conn)
     got = client(conn).get("/recipes/sources", headers=H).json()
     assert [(s["key"], s["kind"], s["label"], s["count"]) for s in got] == [
-        ("nyt", "nyt", "NYT Cooking", 1), ("book:A Made-Up Garden", "book", "A Made-Up Garden", 1),
+        ("book:A Made-Up Garden", "book", "A Made-Up Garden", 1),
         ("book:Invented Bakes", "book", "Invented Bakes", 2), ("other:Mum's Recipes", "other", "Mum's Recipes", 2),
-        ("other:Supper Club", "other", "Supper Club", 1), ("book:", "book", "Unknown book", 1),
+        ("other:Supper Club", "other", "Supper Club", 1), ("web:NYT Cooking", "web", "NYT Cooking", 1),
+        ("book:", "book", "Unknown book", 1),
         ("other:", "other", "Other", 1)]
     c = client(conn)
     for s in got:   # each key lists exactly its count

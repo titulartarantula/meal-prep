@@ -16,7 +16,7 @@ from .ai import AIError, get_provider
 from .ai.metered import Meter, Metered
 from .exchange import importer, jsonld, safe
 from .config import Settings
-from .importers.nyt import BASE as NYT_BASE, extract_nyt_url, fetch_nyt_recipe, parse_nyt_html, parse_nyt_image, \
+from .importers.nyt import BASE as NYT_BASE, extract_nyt_url, fetch_nyt_recipe, parse_nyt_author, parse_nyt_html, parse_nyt_image, \
     recipe_id as nyt_id
 from .importers import web
 from .importers.photo import import_photo, import_subrecipe
@@ -24,6 +24,7 @@ from .importers.web import fetch_page
 from .importers.structure import structure_ingredients
 from .matcher import fill_cart
 from .models import EDITABLE_FIELDS, FridgeItem, ListItem, PlanEntry, Recipe, RecipeDetail, RecipeOut, SourceKind, Staple, recipe_revision
+from .sources import NYT_SITE, is_nyt_url
 from .pcx import Pcx
 from .shopping import build_list
 
@@ -736,12 +737,14 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             html, url = fetch_nyt_recipe(url)   # a wrong slug or id-only link resolves to the canonical one
             title, servings, lines, steps = parse_nyt_html(html, url)
             image = parse_nyt_image(html)   # a link to NYT's photo (hotlinked, never downloaded)
+            author = parse_nyt_author(html)
             ings = structure_ingredients(metered(ai, s, "share"), lines)
         except Exception as e:   # NytFetchError, NotARecipe, AIError
             log.warning("share import of %s failed: %s: %s", url, type(e).__name__, str(e)[:300])
             raise HTTPException(502, f"import failed: {type(e).__name__}: {str(e)[:200]}")
+        # a website like any other (2026-11-08): the site NYT Cooking and the recipe's author
         r = Recipe(title=title, source="nyt", source_url=url, servings=servings, ingredients=ings, steps=steps,
-                   image=image)
+                   image=image, source_kind="web", source_title=NYT_SITE, source_author=author)
         return _save_and_plan(c, r, body.week)
 
     @app.post("/recipes/photo", dependencies=A)
@@ -779,7 +782,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     def patch_recipe(recipe_id: int, body: RecipePatch, c=Depends(get_conn),
                      s: Scope = Depends(household_scope)) -> RecipeOut:
         """Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it
-        comes from. An NYT recipe has no book title or page. A different book title sent without an author/ISBN clears
+        comes from (web, book or other; "nyt" from an older app = the website NYT Cooking). A different book title sent without an author/ISBN clears
         them (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else
         the deterministic clean-up). The id, uid, plan entries and ratings stay; a cart made from the old
         lines goes stale (db.plan_fingerprint)."""
@@ -811,9 +814,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             same_book = (title or "").lower() == (r.source_title or "").lower() or (kind == "web" == r.source_kind)
             author = fields.get("source_author", r.source_author if same_book else None)
             isbn = fields.get("source_isbn", r.source_isbn if same_book else None)
-            if kind == "nyt":
-                if any(fields.get(f) for f in ("source_title", "source_ref", "source_author", "source_isbn")):
-                    raise HTTPException(422, "an NYT Cooking recipe has no book title or page")
+            if kind == "web" and not title and is_nyt_url(r.source_url):
+                title = NYT_SITE   # an old app's "nyt" (= web without a site name) keeps the site's name
             db.update_source(c, recipe_id, kind, title, ref, author, isbn)
             if content:
                 db.update_recipe(c, recipe_id, r.model_copy(update=content))
@@ -821,8 +823,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.get("/recipes/sources", dependencies=A)
     def recipe_sources(c=Depends(get_conn)):
-        """NYT Cooking, each cookbook and named other source, "Unknown book", "Other", with counts; `key` is the
-        GET /recipes?source= value."""
+        """Each cookbook and named other source, each website (NYT Cooking among them), "Websites", "Unknown book",
+        "Other", with counts; every `kind` is web, book or other; `key` is the GET /recipes?source= value."""
         return db.recipe_sources(c)
 
     @app.get("/books/search", dependencies=A)

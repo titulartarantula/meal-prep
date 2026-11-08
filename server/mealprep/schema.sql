@@ -699,6 +699,9 @@ END $$;
 
 -- Any-site import (2026-11-08): source_kind 'web' = a recipe imported from a web page (source_title = the site's
 -- name, source_author = the recipe's author, source_url = the page's canonical link). Widen the check once.
+-- Three kinds (2026-11-08, later): web / book / other — NYT Cooking is a website ('web', source_title 'NYT Cooking');
+-- 'nyt' rows were moved by `python -m mealprep.three_sources` (logged, --revert) and are read as web until then, so the
+-- check still allows 'nyt' (a revert needs it); nothing writes it any more.
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'recipes_source_kind_check'
              AND pg_get_constraintdef(oid) NOT LIKE '%web%') THEN

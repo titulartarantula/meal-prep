@@ -90,8 +90,10 @@ def test_book_source_is_based_on():
 
 def test_nyt_source_url():
     url = "https://cooking.nytimes.com/recipes/1234-test-soup"
-    n = jsonld.to_jsonld(recipe(source="nyt", source_kind="nyt", source_url=url), [])
-    assert n["url"] == url and n["isBasedOn"] == url
+    n = jsonld.to_jsonld(recipe(source="nyt", source_kind="nyt", source_url=url), [])   # an old "nyt" = a website
+    assert n["url"] == url and n["isBasedOn"] == {"@type": "WebPage", "url": url,
+                                                  "publisher": {"@type": "Organization", "name": "NYT Cooking"}}
+    assert n["mealprep:recipe"]["source"]["kind"] == "web"
 
 
 def test_other_named_source():
