@@ -10,7 +10,8 @@ class SourcesTest {
         Recipe(id, "Recipe $id", source, url, sourceKind = kind, sourceTitle = title, sourceRef = ref)
 
     @Test fun `labels read like a citation`() {
-        assertEquals("NYT Cooking", Sources.label(r(1, "nyt", source = "nyt")))
+        assertEquals("NYT Cooking", Sources.label(r(1, "web", "NYT Cooking", source = "nyt")))
+        assertEquals("NYT Cooking", Sources.label(r(1, "nyt", source = "nyt", url = "https://cooking.nytimes.com/recipes/1-x")))   // an older server's copy
         assertEquals("Invented Bakes, p. 123", Sources.label(r(2, "book", "Invented Bakes", "123")))
         assertEquals("Invented Bakes, pp. 12–13", Sources.label(r(3, "book", "Invented Bakes", "12 - 13")))
         assertEquals("Invented Bakes, near the back", Sources.label(r(4, "book", "Invented Bakes", "near the back")))
@@ -31,25 +32,31 @@ class SourcesTest {
         val all = listOf(page, r(23, "web", "example  KITCHEN", source = "web"), r(24, "book", "Invented Bakes"), unnamed,
             r(25, "web", "Weeknight Pots", source = "web"))
         assertEquals(listOf(
-            Sources.Option(Sources.ALL, "All sources", 5), Sources.Option("web:example kitchen", "Example Kitchen", 2),
-            Sources.Option("book:invented bakes", "Invented Bakes", 1), Sources.Option("web:weeknight pots", "Weeknight Pots", 1),
-            Sources.Option("web:", Sources.WEBSITES, 1)), Sources.options(all))
+            Sources.Option(Sources.ALL, "All sources", 5), Sources.Option("web", "Website", 4), Sources.Option("book", "Book", 1),
+            Sources.Option("other", "Other", 0), Sources.Option("web:example kitchen", "Example Kitchen", 2),
+            Sources.Option("book:invented bakes", "Invented Bakes", 1), Sources.Option("web:weeknight pots", "Weeknight Pots", 1)),
+            Sources.options(all))   // a site without a name is under Website only
     }
 
     @Test fun `a saved copy from before sources still has a kind`() {
-        assertEquals(Sources.NYT, Sources.kind(r(1, null, source = "nyt", url = "https://cooking.nytimes.com/recipes/1-x")))
+        assertEquals(Sources.WEB, Sources.kind(r(1, null, source = "nyt", url = "https://cooking.nytimes.com/recipes/1-x")))
+        assertEquals("NYT Cooking", Sources.site(r(1, null, source = "nyt", url = "https://cooking.nytimes.com/recipes/1-x")))
         assertEquals(Sources.BOOK, Sources.kind(r(2, null)))
         assertEquals("Unknown book", Sources.label(r(2, null)))
     }
 
-    @Test fun `filter options list each source once with counts`() {
-        val all = listOf(r(1, "nyt", source = "nyt"), r(2, "book", "Invented Bakes"), r(3, "book", "invented  bakes "),
-            r(4, "book", "A Made-Up Garden"), r(5, "book"), r(6, "nyt", source = "nyt"))
+    @Test fun `filter options are Website, Book, Other, then each source once with counts`() {
+        val nyt = "https://cooking.nytimes.com/recipes/1-x"
+        val all = listOf(r(1, "web", "NYT Cooking", source = "nyt", url = nyt), r(2, "book", "Invented Bakes"), r(3, "book", "invented  bakes "),
+            r(4, "book", "A Made-Up Garden"), r(5, "book"), r(6, "nyt", source = "nyt", url = nyt))   // 6 = an older server's copy
         assertEquals(listOf(
-            Sources.Option(Sources.ALL, "All sources", 6), Sources.Option("nyt", "NYT Cooking", 2),
-            Sources.Option("book:a made-up garden", "A Made-Up Garden", 1), Sources.Option("book:invented bakes", "Invented Bakes", 2),
+            Sources.Option(Sources.ALL, "All sources", 6), Sources.Option("web", "Website", 2), Sources.Option("book", "Book", 4),
+            Sources.Option("other", "Other", 0), Sources.Option("book:a made-up garden", "A Made-Up Garden", 1),
+            Sources.Option("book:invented bakes", "Invented Bakes", 2), Sources.Option("web:nyt cooking", "NYT Cooking", 2),
             Sources.Option("book:", "Unknown book", 1)), Sources.options(all))
         assertEquals("book:invented bakes", Sources.key(all[2]))
+        assertEquals(listOf(1, 6), all.filter { Sources.matches(it, Sources.WEB) }.map { it.id })
+        assertEquals(listOf(5), all.filter { Sources.matches(it, "book:") }.map { it.id })
     }
 
     @Test fun `a known author follows the book title`() {
@@ -71,12 +78,13 @@ class SourcesTest {
 
     @Test fun `each named other source gets its own filter entry, A-Z with the books`() {
         val all = listOf(r(1, "book", "Invented Bakes"), r(2, "other", "Mum's recipes"), r(3, "other", "mum's  RECIPES"),
-            r(4, "other", "Allotment Club"), r(5, "other"), r(6, "book"), r(7, "other", "Invented Bakes"), r(8, "nyt", source = "nyt"))
+            r(4, "other", "Allotment Club"), r(5, "other"), r(6, "book"), r(7, "other", "Invented Bakes"), r(8, "web", "NYT Cooking", source = "nyt"))
         assertEquals(listOf(
-            Sources.Option(Sources.ALL, "All sources", 8), Sources.Option("nyt", "NYT Cooking", 1),
+            Sources.Option(Sources.ALL, "All sources", 8), Sources.Option("web", "Website", 1), Sources.Option("book", "Book", 2),
+            Sources.Option("other", "Other", 5),
             Sources.Option("other:allotment club", "Allotment Club", 1), Sources.Option("book:invented bakes", "Invented Bakes", 1),
             Sources.Option("other:invented bakes", "Invented Bakes", 1), Sources.Option("other:mum's recipes", "Mum's recipes", 2),
-            Sources.Option("book:", "Unknown book", 1), Sources.Option("other:", "Other", 1)), Sources.options(all))
+            Sources.Option("web:nyt cooking", "NYT Cooking", 1), Sources.Option("book:", "Unknown book", 1)), Sources.options(all))
     }
 
     @Test fun `the household's other names are suggested and keep their spelling`() {

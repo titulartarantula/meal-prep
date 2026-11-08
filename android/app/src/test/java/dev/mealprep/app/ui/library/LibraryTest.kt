@@ -82,14 +82,17 @@ class LibraryTest {
         assertEquals(listOf(10), filterRecipes(mixed, "", LibrarySort.NEWEST, "other:mum's recipes").map { it.id })
         assertEquals(listOf(13), filterRecipes(mixed, "", LibrarySort.NEWEST, "other:").map { it.id })
         val labels = Sources.options(mixed).map { it.label }
-        assertEquals(listOf("All sources", "Invented Pantry Book", "Mum's recipes", "Unknown book", "Other"), labels)
+        assertEquals(listOf("All sources", "Website", "Book", "Other", "Invented Pantry Book", "Mum's recipes", "Unknown book"), labels)
+        assertEquals(listOf(10, 13), filterRecipes(mixed, "", LibrarySort.NEWEST, Sources.OTHER).map { it.id }.sorted())
     }
 
     @Test fun `the source filter narrows the list, unknown books included`() {
-        assertEquals(listOf(10), filterRecipes(lib, "", LibrarySort.NEWEST, "nyt").map { it.id })
+        assertEquals(listOf(10), filterRecipes(lib, "", LibrarySort.NEWEST, Sources.WEB).map { it.id })
+        assertEquals(listOf(10), filterRecipes(lib, "", LibrarySort.NEWEST, "web:nyt cooking").map { it.id })
+        assertEquals(listOf(11, 12), filterRecipes(lib, "", LibrarySort.NEWEST, Sources.BOOK).map { it.id }.sorted())
         assertEquals(listOf(11), filterRecipes(lib, "", LibrarySort.NEWEST, "book:").map { it.id })
         assertEquals(listOf(12), filterRecipes(lib, "soup", LibrarySort.NEWEST, "book:invented pantry book").map { it.id })
-        assertEquals(emptyList<Int>(), filterRecipes(lib, "crepe", LibrarySort.NEWEST, "nyt").map { it.id })
+        assertEquals(emptyList<Int>(), filterRecipes(lib, "crepe", LibrarySort.NEWEST, Sources.WEB).map { it.id })
     }
 
     @Test fun `rows say where each recipe is from and the filter picks Unknown book`() {
@@ -113,8 +116,9 @@ class LibraryTest {
 
     @Test fun `the filter summary says the sort, the source and good for company`() {
         assertEquals("Newest first · all sources", filterSummary(LibraryState()))
-        assertEquals("A–Z · NYT Cooking · good for company",
-            filterSummary(LibraryState(lib, sort = LibrarySort.AZ, source = Sources.NYT, company = true)))
+        assertEquals("A–Z · Website · good for company",
+            filterSummary(LibraryState(lib, sort = LibrarySort.AZ, source = Sources.WEB, company = true)))
+        assertEquals("Newest first · NYT Cooking", filterSummary(LibraryState(lib, source = "web:nyt cooking")))
         assertEquals("Favourites first · all sources", filterSummary(LibraryState(sort = LibrarySort.FAVOURITES)))
     }
 

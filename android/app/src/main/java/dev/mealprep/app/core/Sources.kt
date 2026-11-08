@@ -4,29 +4,42 @@ import dev.mealprep.app.data.api.Recipe
 import dev.mealprep.app.data.api.RecipeSource
 
 /**
- * Where a recipe comes from (server columns source_kind / source_title / source_ref, since 0.4.2): NYT Cooking, a
- * cookbook (title null = not known yet, "Unknown book"; ref = page(s) as typed) or something else (0.7.1: title = a
+ * Where a recipe comes from (server columns source_kind / source_title / source_ref, since 0.4.2), one of three kinds
+ * (0.20.0): a website (title = the site's name, NYT Cooking included; author = the recipe's author; url = the page),
+ * a cookbook (title null = not known yet, "Unknown book"; ref = page(s) as typed) or something else (0.7.1: title = a
  * name like "Mum's recipes", ref = an optional note shown after it; no name = just "Other").
  */
 object Sources {
-    const val NYT = "nyt"; const val BOOK = "book"; const val OTHER = "other"
-    /** A recipe from a web page (0.20.0): title = the site's name, author = the recipe's author, url = the page. */
-    const val WEB = "web"
-    const val WEBSITES = "Websites"
+    const val WEB = "web"; const val BOOK = "book"; const val OTHER = "other"
+    /** The site name of NYT Cooking recipes (the server stored them as kind "nyt" before 0.20.0). */
+    const val NYT_SITE = "NYT Cooking"
+    /** The three kinds as the library filter names them. */
+    val KIND_LABELS = linkedMapOf(WEB to "Website", BOOK to "Book", OTHER to "Other")
     /** The library filter's "everything" (not a server key). */
     const val ALL = ""
     const val UNKNOWN_BOOK = "Unknown book"
 
-    /** The kind, also for a saved copy from before 0.4.2 (no source_kind): an NYT link, or a photo = a book. */
-    fun kind(r: Recipe): String = r.sourceKind ?: when {
-        r.sourceUrl?.contains("nytimes.com") == true -> NYT
-        r.source == "photo" -> BOOK
-        r.source == "web" -> WEB
-        else -> OTHER
+    /** Website, Book or Other, also for a saved copy from an older server: "nyt" (or, before 0.4.2, no kind and an
+     *  NYT link) = a website; a photo = a book. */
+    fun kind(r: Recipe): String = when (val k = r.sourceKind.orEmpty()) {
+        WEB, BOOK, OTHER -> k
+        "nyt" -> WEB
+        else -> when {
+            isNyt(r.sourceUrl) || r.source == "web" -> WEB
+            r.source == "photo" -> BOOK
+            else -> OTHER
+        }
     }
 
+    private fun isNyt(url: String?) = url?.let { runCatching { java.net.URI(it).host }.getOrNull() }
+        ?.let { it == "nytimes.com" || it.endsWith(".nytimes.com") } == true
+
+    /** A website recipe's site name as saved (an NYT link without one: NYT Cooking), or null. */
+    private fun siteName(r: Recipe): String? = r.sourceTitle?.let(::clean)?.ifEmpty { null }
+        ?: if (kind(r) == WEB && isNyt(r.sourceUrl)) NYT_SITE else null
+
     /** A website recipe's site: its saved name, else the link's domain without "www.". */
-    fun site(r: Recipe): String = r.sourceTitle?.let(::clean)?.ifEmpty { null }
+    fun site(r: Recipe): String = siteName(r)
         ?: r.sourceUrl?.let { runCatching { java.net.URI(it).host?.removePrefix("www.") }.getOrNull() }?.ifEmpty { null }
         ?: "A website"
 
@@ -44,22 +57,20 @@ object Sources {
         }
     }
 
-    /** "NYT Cooking", "Salt Fat Acid Heat · Samin Nosrat, p. 123" (the author when known), "Unknown book",
-     *  "Unknown book, p. 12", "Mum's recipes, the blue binder" (the note as typed), "Other". */
+    /** "NYT Cooking · by J. Cook" (a website), "Salt Fat Acid Heat · Samin Nosrat, p. 123" (the author when known),
+     *  "Unknown book", "Unknown book, p. 12", "Mum's recipes, the blue binder" (the note as typed), "Other". */
     fun label(r: Recipe): String = when (kind(r)) {
-        NYT -> "NYT Cooking"
         BOOK -> listOfNotNull(r.sourceTitle?.let { t -> listOfNotNull(t, Books.shortAuthor(r.sourceAuthor)).joinToString(" · ") }
             ?: UNKNOWN_BOOK, page(r.sourceRef)).joinToString(", ")
         WEB -> listOfNotNull(site(r), r.sourceAuthor?.let(::clean)?.ifEmpty { null }?.let { "by $it" }).joinToString(" · ")
         else -> listOfNotNull(r.sourceTitle ?: "Other", r.sourceRef?.trim()?.ifEmpty { null }).joinToString(", ")
     }
 
-    /** The filter key, same as the server's GET /recipes?source= value: nyt, book:<title> / other:<name> (any case),
-     *  book: (unknown book), other: (no name). */
+    /** The source's own key, same as the server's GET /recipes?source= value: web:<site> / book:<title> /
+     *  other:<name> (any case), web: (no site name), book: (unknown book), other: (no name). */
     fun key(r: Recipe): String = when (kind(r)) {
-        NYT -> NYT
         BOOK -> "book:" + (r.sourceTitle?.let(::fold) ?: "")
-        WEB -> "web:" + (r.sourceTitle?.let(::fold) ?: "")
+        WEB -> "web:" + (siteName(r)?.let(::fold) ?: "")
         else -> "other:" + (r.sourceTitle?.let(::fold) ?: "")
     }
 
@@ -87,16 +98,18 @@ object Sources {
 
     data class Option(val key: String, val label: String, val count: Int)
 
-    /** Filter choices for the recipes present: All, NYT Cooking, each book, named other source and website A–Z,
-     *  Unknown book, Websites (no site name), Other (no name), with counts. */
+    /** Does [r] pass the library filter [filter]: ALL, a kind (web / book / other) or one source's [key]? */
+    fun matches(r: Recipe, filter: String): Boolean = filter == ALL || filter == kind(r) || filter == key(r)
+
+    /** Filter choices for the recipes present: All sources; Website, Book, Other (always all three); then each site,
+     *  book and named other source A–Z, and Unknown book; with counts. */
     fun options(all: List<Recipe>): List<Option> {
         val byKey = all.groupBy(::key)
-        fun opt(k: String, label: String) = byKey[k]?.let { Option(k, label, it.size) }
-        val named = byKey.keys.filter { (it.startsWith("book:") && it != "book:") || (it.startsWith("other:") && it != "other:") ||
-            (it.startsWith("web:") && it != "web:") }
-            .map { k -> Option(k, clean(byKey.getValue(k).first().sourceTitle!!), byKey.getValue(k).size) }
+        val kinds = KIND_LABELS.map { (k, label) -> Option(k, label, all.count { kind(it) == k }) }
+        val named = byKey.keys.filter { it.substringAfter(":").isNotEmpty() }
+            .map { k -> byKey.getValue(k).first().let { r -> Option(k, if (kind(r) == WEB) site(r) else clean(r.sourceTitle!!), byKey.getValue(k).size) } }
             .sortedWith(compareBy({ it.label.lowercase() }, { it.key }))
-        return listOfNotNull(Option(ALL, "All sources", all.size), opt(NYT, "NYT Cooking")) + named +
-            listOfNotNull(opt("book:", UNKNOWN_BOOK), opt("web:", WEBSITES), opt("other:", "Other"))
+        return listOf(Option(ALL, "All sources", all.size)) + kinds + named +
+            listOfNotNull(byKey["book:"]?.let { Option("book:", UNKNOWN_BOOK, it.size) })
     }
 }

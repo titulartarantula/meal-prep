@@ -10,7 +10,7 @@
                   {"raw": "1 lemon", "name": "lemon", "qty": 1.0}],
   "steps": ["Crêpe batter: whisk.", "Cook the crêpes.", "Squeeze lemon over."],
   "ratings": {"times_cooked": 0, "times_rated": 0, "notes": []}, "planned_weeks": []},
- {"id": 10, "source_kind": "nyt", "source_title": null, "source_ref": null, "title": "Apple Crumble", "source": "nyt", "source_url": "https://cooking.nytimes.com/recipes/1-apple-crumble", "servings": 6,
+ {"id": 10, "source_kind": "web", "source_title": "NYT Cooking", "source_ref": null, "title": "Apple Crumble", "source": "nyt", "source_url": "https://cooking.nytimes.com/recipes/1-apple-crumble", "servings": 6,
   "ingredients": [{"raw": "4 apples", "name": "apple", "qty": 4.0}], "steps": ["Bake."],
   "ratings": {"times_cooked": 2, "times_rated": 2, "avg_family": 5.0, "last_family": 5, "company": "yes",
               "notes": [{"note": "more cinnamon", "date": "2026-09-30", "rated_at": "2026-10-01T12:00:00+00:00"}]},

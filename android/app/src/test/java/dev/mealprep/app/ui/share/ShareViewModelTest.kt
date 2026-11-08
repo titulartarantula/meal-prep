@@ -127,7 +127,7 @@ class ShareViewModelTest {
     }
 
     @Test fun `scanned pages ask which book, default to the last one, and send book and page`() = runTest {
-        env.on("GET", "/recipes/sources", body = """[{"key":"nyt","kind":"nyt","label":"NYT Cooking","count":2},
+        env.on("GET", "/recipes/sources", body = """[{"key":"web:NYT Cooking","kind":"web","title":"NYT Cooking","label":"NYT Cooking","count":2},
             {"key":"book:Invented Bakes","kind":"book","title":"Invented Bakes","label":"Invented Bakes","count":1},
             {"key":"book:","kind":"book","label":"Unknown book","count":1}]""")
         env.on("POST", "/recipes/photo", body = fixture("share_result_library.json"))

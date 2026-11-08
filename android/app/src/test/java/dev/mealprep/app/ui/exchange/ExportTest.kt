@@ -181,7 +181,8 @@ class ExportTest {
 
     @Test fun `the link button says where it goes`() {
         val nyt = Recipe(1, "Chili", "nyt", sourceUrl = "https://cooking.nytimes.com/recipes/1-chili", sourceKind = "nyt")
-        assertEquals("Open on NYT Cooking", sourceLinkLabel(nyt))
+        assertEquals("Open on NYT Cooking", sourceLinkLabel(nyt))                                       // an older server's copy
+        assertEquals("Open on NYT Cooking", sourceLinkLabel(nyt.copy(sourceKind = "web", sourceTitle = "NYT Cooking")))
         assertEquals("Open the recipe's web page", sourceLinkLabel(Recipe(2, "Soup", "import", sourceUrl = "https://recipes.example.org/soup")))
         assertNull(sourceLinkLabel(Recipe(3, "Soup", "import", sourceUrl = "javascript:alert(1)")))
         assertEquals("Open on Example Kitchen", sourceLinkLabel(Recipe(5, "Soup", "web", sourceUrl = "https://kitchen.example.com/soup",

@@ -10,7 +10,7 @@ import org.junit.Test
 
 class BooksTest {
     private val yours = Books.yours(listOf(
-        RecipeSource("nyt", "nyt", label = "NYT Cooking", count = 2),
+        RecipeSource("web:NYT Cooking", "web", "NYT Cooking", "NYT Cooking", 2),
         RecipeSource("book:Invented Bakes", "book", "Invented Bakes", "Invented Bakes", 2, author = "Ada Pepper", isbn = "9780000000017"),
         RecipeSource("book:A Made-Up Garden", "book", "A Made-Up Garden", "A Made-Up Garden", 1),
         RecipeSource("book:", "book", label = "Unknown book", count = 1)))

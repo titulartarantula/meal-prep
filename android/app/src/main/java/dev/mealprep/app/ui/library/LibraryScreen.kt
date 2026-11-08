@@ -209,8 +209,8 @@ fun FileImportCard(w: WatchedImport, onOpen: () -> Unit) {
 
 const val NO_COMPANY = "None marked good for company yet. When rating a dinner, an Owner can answer “Yes” to “Good for company?”."
 
-const val EMPTY_LIBRARY = "No recipes yet. Tap Add recipe to scan a cookbook page, choose photos or paste an NYT " +
-    "Cooking link — or share a recipe from the NYT Cooking app."
+const val EMPTY_LIBRARY = "No recipes yet. Tap Add recipe to scan a cookbook page, choose photos or paste a recipe " +
+    "link — or share a recipe page from your browser or a recipe app."
 
 const val SHOW_FILTERS = "Sort and filter"
 const val HIDE_FILTERS = "Hide sort and filters"
@@ -246,7 +246,7 @@ private fun RecipeRow(r: Recipe, today: LocalDate, onClick: () -> Unit) {
     }
 }
 
-/** One line, "From: All sources ▾" (like the shopping list's week line): NYT Cooking, each book and named other source, Unknown book, Other. */
+/** One line, "From: All sources ▾" (like the shopping list's week line): Website, Book, Other, then each site, book and named other source, Unknown book. */
 @Composable
 private fun SourceFilter(options: List<Sources.Option>, selected: String, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }

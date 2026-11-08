@@ -41,7 +41,7 @@ data class LibraryState(
     val all: List<Recipe> = emptyList(),
     val query: String = "",
     val sort: LibrarySort = LibrarySort.NEWEST,
-    /** Sources.ALL or a source key (Sources.key): NYT, one book or named other source, Unknown book, Other. */
+    /** Sources.ALL, a kind (Website / Book / Other) or one source's key (Sources.key): a site, book or named other source, Unknown book. */
     val source: String = Sources.ALL,
     /** Only recipes whose latest company verdict is "yes" (rated good for guests). */
     val company: Boolean = false,
@@ -61,7 +61,7 @@ private fun fold(s: String) = Normalizer.normalize(s.lowercase(), Normalizer.For
 fun filterRecipes(all: List<Recipe>, query: String, sort: LibrarySort, source: String = Sources.ALL, company: Boolean = false): List<Recipe> {
     val words = fold(query).split(Regex("\\s+")).filter { it.isNotEmpty() }
     val hits = all.filter { r ->
-        (source == Sources.ALL || Sources.key(r) == source) && (!company || r.ratings.company == "yes") &&
+        Sources.matches(r, source) && (!company || r.ratings.company == "yes") &&
             fold(r.title).let { t -> words.all { it in t } }
     }
     return if (sort == LibrarySort.AZ) hits.sortedBy { fold(it.title) } else hits
