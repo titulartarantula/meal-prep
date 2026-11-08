@@ -608,7 +608,7 @@ tr.removed .pth { opacity: .45; }
   .search { height: 48px; }
   .select-wrap select { height: 48px; }
   .seg { padding: 2px; }
-  .seg button { min-height: 48px; }
+  .seg button { min-height: 48px; min-width: 48px; }   /* five source filters wrap rather than squeeze "All" */
   .stars-input button { padding: 11px; }
   .chip-btn { min-height: 52px; }
   .nav a { height: 48px; }

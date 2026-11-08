@@ -30,7 +30,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Share */
+        /**
+         * Share
+         * @description Import the recipe at the first link in `text`: an NYT Cooking recipe link (its own importer: slug repair,
+         *     photo crops) or any other web page (importers/web.py: JSON-LD, microdata, else the AI on the page's text;
+         *     attributed to the site and author). A link already in the library (same NYT id, or the same page) returns
+         *     that recipe with existing = true instead of importing it again. 422 = no link / not a public web page / no
+         *     recipe on it; 502 = the site couldn't be read (blocked, paywall, down) or the AI failed.
+         */
         post: operations["share_recipes_share_post"];
         delete?: never;
         options?: never;
@@ -1384,7 +1391,7 @@ export interface components {
              * @default book
              * @enum {string}
              */
-            source_kind: "nyt" | "book" | "other";
+            source_kind: "nyt" | "book" | "other" | "web";
             /** Source Title */
             source_title?: string | null;
             /** Source Ref */
@@ -2017,7 +2024,7 @@ export interface components {
             /** Steps */
             steps: string[];
             /** Source Kind */
-            source_kind?: ("nyt" | "book" | "other") | null;
+            source_kind?: ("nyt" | "book" | "other" | "web") | null;
             /** Source Title */
             source_title?: string | null;
             /** Source Ref */
@@ -2101,7 +2108,7 @@ export interface components {
             /** Steps */
             steps: string[];
             /** Source Kind */
-            source_kind?: ("nyt" | "book" | "other") | null;
+            source_kind?: ("nyt" | "book" | "other" | "web") | null;
             /** Source Title */
             source_title?: string | null;
             /** Source Ref */
@@ -2164,7 +2171,7 @@ export interface components {
             /** Title */
             title?: string | null;
             /** Source Kind */
-            source_kind?: ("nyt" | "book" | "other") | null;
+            source_kind?: ("nyt" | "book" | "other" | "web") | null;
             /** Source Title */
             source_title?: string | null;
             /** Source Ref */

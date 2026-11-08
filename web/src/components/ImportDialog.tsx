@@ -4,11 +4,13 @@ import { getImport, importFile, keys, useShareImport } from "../api/queries";
 import type { ImportReport } from "../api/types";
 import { Icon } from "./Icon";
 import { Button, ErrorNote, Modal, Spinner } from "./ui";
+import { sourceLabel } from "../lib/sources";
 
 type Stage = { kind: "idle" } | { kind: "reading"; id: number } | { kind: "preview"; report: ImportReport; file: File }
   | { kind: "applying"; id: number } | { kind: "done"; report: ImportReport };
 
-/** Add recipes: an NYT Cooking link, or a file (JSON-LD, saved page, PDF, Word, text) previewed before import. */
+/** Add recipes: a link to a recipe page on any site (NYT Cooking or anywhere else), or a file (JSON-LD, saved page, PDF,
+ *  Word, text) previewed before import. */
 export function ImportDialog({ open, onClose, onOpenRecipe }: { open: boolean; onClose: () => void; onOpenRecipe: (id: number) => void }) {
   const [tab, setTab] = useState<"link" | "file">("link");
   const [link, setLink] = useState("");
@@ -79,7 +81,7 @@ export function ImportDialog({ open, onClose, onOpenRecipe }: { open: boolean; o
       </> : undefined}>
       <div className="seg tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "link"} className={tab === "link" ? "on" : ""} onClick={() => setTab("link")}>
-          <Icon name="link" size={15} />NYT Cooking link</button>
+          <Icon name="link" size={15} />Web link</button>
         <button type="button" role="tab" aria-selected={tab === "file"} className={tab === "file" ? "on" : ""} onClick={() => setTab("file")}>
           <Icon name="upload" size={15} />From a file</button>
       </div>
@@ -88,14 +90,16 @@ export function ImportDialog({ open, onClose, onOpenRecipe }: { open: boolean; o
         <form className="import-link" onSubmit={(e) => { e.preventDefault(); share.mutate(link); }}>
           <label className="field">
             <span>Paste the recipe's link</span>
-            <input type="url" inputMode="url" required placeholder="https://cooking.nytimes.com/recipes/…" value={link}
+            <input type="url" inputMode="url" required placeholder="https://…" value={link} aria-describedby="link-hint"
               onChange={(e) => { setLink(e.target.value); share.reset(); }} />
           </label>
+          <p className="muted small" id="link-hint">From NYT Cooking or any recipe site. The recipe is saved with the site's name and a link back to it.</p>
           {share.isPending && <p className="working"><Spinner />Reading the recipe… this takes about half a minute.</p>}
           {share.data ? (
             <div className="note ok">
               <Icon name="check" size={17} />
-              <span><b>{share.data.recipe.title}</b> {share.data.existing ? "is already in your library." : "is in your library."}</span>
+              <span><b>{share.data.recipe.title}</b> {share.data.existing ? "is already in your library" : "is in your library"}
+                {share.data.recipe.source_kind === "web" ? <> (from {sourceLabel(share.data.recipe)})</> : null}.</span>
               <Button size="sm" kind="outline" onClick={() => onOpenRecipe(share.data!.recipe.id)}>Open</Button>
             </div>
           ) : (

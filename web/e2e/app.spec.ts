@@ -532,6 +532,54 @@ test.describe("signed in", () => {
     await expect(dlg).toContainText("Done: 2 added", { timeout: 10_000 });
   });
 
+  test("import a recipe from any site: attributed to the site and author, filtered as Websites, not imported twice", async ({ page }) => {
+    await page.getByRole("link", { name: "Recipes" }).click();
+    await page.getByRole("button", { name: "Add recipe" }).click();
+    const dlg = page.getByRole("dialog", { name: "Add a recipe" });
+    await expect(dlg.getByRole("tab", { name: "Web link" })).toHaveAttribute("aria-selected", "true");
+    const link = dlg.getByLabel("Paste the recipe's link");
+    // a LAN link and a site that blocks the server say why
+    await link.fill("http://192.168.1.50/recipes/x");
+    await dlg.getByRole("button", { name: "Import recipe" }).click();
+    await expect(dlg).toContainText("private network");
+    await link.fill("https://blocked.example.net/recipes/soup");
+    await dlg.getByRole("button", { name: "Import recipe" }).click();
+    await expect(dlg).toContainText("blocks automated readers");
+    await link.fill("https://www.kitchen.example.com/recipes/invented-apple-crumble?utm_source=share");
+    await dlg.getByRole("button", { name: "Import recipe" }).click();
+    await expect(dlg).toContainText("Invented apple crumble is in your library (from Example Kitchen · by Pat Example).");
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "07b-import-web");
+    await dlg.getByRole("button", { name: "Open" }).click();
+    const drawer = page.getByRole("dialog", { name: "Invented apple crumble" });
+    await expect(drawer).toContainText(/From Example Kitchen( \(the original recipe, opens in a new tab\))? · by Pat Example/);
+    const original = drawer.getByRole("link", { name: /^Example Kitchen/ });
+    await expect(original).toHaveAttribute("href", "https://kitchen.example.com/recipes/invented-apple-crumble");
+    await expect(original).toHaveAttribute("target", "_blank");
+    await expect(drawer.getByRole("link", { name: /^Open on Example Kitchen/ })).toBeVisible();
+    await expect(drawer.getByRole("button", { name: "Edit source" })).toHaveCount(0);   // where the page came from
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "07c-web-recipe");
+    await drawer.getByRole("button", { name: "Close" }).click();
+
+    // the Websites filter shows it (and only website recipes); the tile names the site; search finds the site
+    await page.getByRole("button", { name: "Websites" }).click();
+    const grid = page.getByRole("list", { name: "Recipes" });
+    await expect(grid.getByRole("listitem")).toHaveCount(1);
+    await expect(grid).toContainText("Example Kitchen");
+    await page.getByRole("button", { name: "All", exact: true }).click();
+    await page.getByRole("searchbox", { name: "Search recipes" }).fill("example kitchen");
+    await expect(grid.getByRole("listitem")).toHaveCount(1);
+
+    // the same page again (another form of the link) opens the saved recipe
+    await page.getByRole("button", { name: "Add recipe" }).click();
+    await link.fill("http://kitchen.example.com/recipes/invented-apple-crumble/");
+    await dlg.getByRole("button", { name: "Import recipe" }).click();
+    await expect(dlg).toContainText("Invented apple crumble is already in your library (from Example Kitchen · by Pat Example).");
+  });
+
   test("a night without a recipe: name it, add store items from the chooser, change and remove them; the list and the cart show the night", async ({ page }) => {
     // two weeks ahead: nothing planned yet
     await page.getByRole("button", { name: "Next week" }).click();

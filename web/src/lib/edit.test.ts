@@ -3,6 +3,7 @@ import type { Recipe } from "../api/types";
 import { changes, editMessage, fromRecipe, ingredientText, problems } from "./recipeDraft";
 import {
   otherNames, page, resolveBook, resolveName, sameTitle, savedBook, sourceLabel, suggestBooks, suggestNames, typedBook,
+  webSource,
 } from "./sources";
 
 const ing = (raw: string, extra: Partial<Recipe["ingredients"][number]> = {}) =>
@@ -96,5 +97,15 @@ describe("sources and books", () => {
       .toBe("Invented Pantry Book · Ada Example, p. 88");
     expect(sourceLabel({ source_kind: "book", source_title: null, source_ref: null })).toBe("Unknown book");
     expect(sourceLabel({ source_kind: "other", source_title: null, source_ref: "blue binder" })).toBe("Other, blue binder");
+  });
+
+  it("labels a web recipe with its site and author", () => {
+    expect(sourceLabel({ source_kind: "web", source_title: "Example Kitchen", source_author: "Pat Example", source_ref: null }))
+      .toBe("Example Kitchen · by Pat Example");
+    expect(sourceLabel({ source_kind: "web", source_title: "Example Kitchen", source_ref: null })).toBe("Example Kitchen");
+    // no saved site name: the link's domain
+    expect(webSource({ source_title: null, source_author: null, source_url: "https://www.pots.example.org/stew" }))
+      .toEqual({ site: "pots.example.org", author: null });
+    expect(webSource({ source_title: " ", source_author: "", source_url: "not a link" })).toEqual({ site: "A website", author: null });
   });
 });

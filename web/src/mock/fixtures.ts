@@ -6,7 +6,8 @@ export interface MockRecipe {
   minutes: number;
   servings: number;
   source: string;
-  source_kind: "nyt" | "book" | "other";
+  source_kind: "nyt" | "book" | "other" | "web";
+  source_url?: string;              // a web recipe's page (NYT links are made up from the id)
   source_title?: string;
   source_ref?: string;
   source_author?: string;

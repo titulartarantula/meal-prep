@@ -247,10 +247,34 @@ export function mockApi(): Plugin {
           title: db.recipes.find((r) => r.id === e.recipe_id)?.title ?? "", multiplier: e.multiplier })));
     }
     if (path === "/recipes/share") {
+      // like the server: NYT links → the NYT importer (here: always an existing recipe); any other public page →
+      // a website recipe with the site's name and author; the same page again → the saved one (existing)
       const text = String((body as { text?: string })?.text ?? "");
-      if (!/cooking\.nytimes\.com\/recipes\//.test(text)) return send(res, 422, { detail: "no NYT Cooking link found" });
-      const r = db.recipes[8];
-      return send(res, 200, { recipe: recipeOut(r, db.entries, db.rated, db.company.get(r.id)), entry: null, existing: true });
+      if (/cooking\.nytimes\.com\/recipes\//.test(text)) {
+        const r = db.recipes[8];
+        return send(res, 200, { recipe: recipeOut(r, db.entries, db.rated, db.company.get(r.id)), entry: null, existing: true });
+      }
+      const m = text.match(/https?:\/\/[^\s<>"']+/i);
+      if (!m) return send(res, 422, { detail: "No web link found. Share or paste the recipe page's link." });
+      let u: URL;
+      try { u = new URL(m[0]); } catch { return send(res, 422, { detail: "That link isn't a web address." }); }
+      if (/^(localhost|127\.|10\.|192\.168\.|\[::1\])/.test(u.hostname) || !u.hostname.includes(".")) {
+        return send(res, 422, { detail: "That link points into a private network, not the public web." });
+      }
+      if (u.hostname.startsWith("blocked.")) {
+        return send(res, 502, { detail: `${u.hostname} refused to show that page to the Meal Prep server (it blocks automated readers). Save the page from your browser and import the file instead.` });
+      }
+      const link = `https://${u.hostname.replace(/^www\./, "")}${u.pathname.replace(/\/$/, "")}`;
+      const same = db.recipes.find((r) => r.source_url === link);
+      if (same) return send(res, 200, { recipe: recipeOut(same, db.entries, db.rated, db.company.get(same.id)), entry: null, existing: true });
+      const slug = u.pathname.split("/").filter(Boolean).pop() ?? "recipe";
+      const title = slug.replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase());
+      const r = { id: ++db.nextId, title, minutes: 40, servings: 4, source: "web", source_kind: "web" as const, source_url: link,
+        source_title: SITES[u.hostname.replace(/^www\./, "")] ?? u.hostname.replace(/^www\./, ""), source_author: "Pat Example",
+        photo: null, avg: null, cooked: 0, revision: 1,
+        ingredients: [[2, "cup", "flour"], [1, null, "apple"]] as MockRecipe["ingredients"], steps: ["Mix.", "Bake."] };
+      db.recipes.push(r);   // (push: the NYT branch above finds its recipe by position)
+      return send(res, 200, { recipe: recipeOut(r, db.entries, db.rated, db.company.get(r.id)), entry: null, existing: false });
     }
     if (path === "/recipes/import") {
       const dry = !/name="dry_run"\r\n\r\nfalse/.test(String(body));
@@ -513,6 +537,9 @@ function recipesFor(recipes: MockRecipe[], key: string): string[] {
   return recipes.filter((r) => r.ingredients.some(([, , n]) => n.includes(key.split(" ")[0]))).map((r) => r.title).slice(0, 2);
 }
 
+/** Invented sites' names, as their pages' og:site_name would give them (the mock's web import). */
+const SITES: Record<string, string> = { "kitchen.example.com": "Example Kitchen" };
+
 function recipeOut(r: MockRecipe & { revision?: number; notesText?: string | null }, entries: Entry[], own: Rated[] = [], v?: Verdict) {
   // the household's own ratings (every time cooked with one, dinners and days rated from the recipe) on top of the
   // invented history
@@ -522,7 +549,8 @@ function recipeOut(r: MockRecipe & { revision?: number; notesText?: string | nul
     ...[...new Set(own.filter((x) => x.recipe_id === r.id).map((x) => x.cooked_on))]
       .map((d): [string, PR[]] => [d, own.filter((x) => x.recipe_id === r.id && x.cooked_on === d)]),
   ];
-  return { id: r.id, title: r.title, source: r.source, source_url: r.source_kind === "nyt" ? `https://cooking.nytimes.com/recipes/${1000 + r.id}` : null,
+  return { id: r.id, title: r.title, source: r.source,
+    source_url: r.source_kind === "nyt" ? `https://cooking.nytimes.com/recipes/${1000 + r.id}` : r.source_url ?? null,
     servings: r.servings || null, source_kind: r.source_kind, source_title: r.source_title ?? null, source_ref: r.source_ref ?? null,
     source_author: r.source_author ?? null, source_isbn: null, notes: r.notesText ?? null,
     total_minutes: r.minutes, image: r.photo ? `/api/_mock/photo/${r.photo}.svg` : null, description: r.description ?? null,

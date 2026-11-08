@@ -216,7 +216,7 @@ export interface PendingRating {
 /** GET /recipes/sources: NYT Cooking, each book and named other source, Unknown book, Other. */
 export interface RecipeSource {
   key: string;
-  kind: "nyt" | "book" | "other";
+  kind: "nyt" | "book" | "other" | "web";
   title: string | null;
   label: string;
   count: number;

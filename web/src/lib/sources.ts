@@ -97,9 +97,23 @@ export function page(ref?: string | null): string | null {
   return t;
 }
 
-/** "NYT Cooking", "Salt Fat Acid Heat · Samin Nosrat, p. 123", "Unknown book", "Mum's recipes, the blue binder". */
-export function sourceLabel(r: Pick<Recipe, "source_kind" | "source_title" | "source_ref" | "source_author">): string {
+/** A web recipe's site (its saved name, else the link's domain without www.) and author, as Android shows them. */
+export function webSource(r: Pick<Recipe, "source_title" | "source_author" | "source_url">): { site: string; author: string | null } {
+  let site = r.source_title?.trim() || "";
+  if (!site && r.source_url) {
+    try { site = new URL(r.source_url).hostname.replace(/^www\./, ""); } catch { /* not a link */ }
+  }
+  return { site: site || "A website", author: r.source_author?.trim() || null };
+}
+
+/** "NYT Cooking", "Salt Fat Acid Heat · Samin Nosrat, p. 123", "Unknown book", "Mum's recipes, the blue binder",
+ *  "Serious Eats · by J. Cook" (a web page). */
+export function sourceLabel(r: Pick<Recipe, "source_kind" | "source_title" | "source_ref" | "source_author"> & { source_url?: string | null }): string {
   if (r.source_kind === "nyt") return "NYT Cooking";
+  if (r.source_kind === "web") {
+    const w = webSource({ source_title: r.source_title, source_author: r.source_author, source_url: r.source_url ?? null });
+    return w.author ? `${w.site} · by ${w.author}` : w.site;
+  }
   if (r.source_kind === "book") {
     const a = r.source_author?.trim();
     const short = a && (a.length <= 30 || !a.includes(",") ? a : a.split(",")[0].trim() + " et al.");

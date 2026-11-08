@@ -24,6 +24,7 @@
   "/recipes/share": {
    "post": {
     "summary": "Share",
+    "description": "Import the recipe at the first link in `text`: an NYT Cooking recipe link (its own importer: slug repair,\nphoto crops) or any other web page (importers/web.py: JSON-LD, microdata, else the AI on the page's text;\nattributed to the site and author). A link already in the library (same NYT id, or the same page) returns\nthat recipe with existing = true instead of importing it again. 422 = no link / not a public web page / no\nrecipe on it; 502 = the site couldn't be read (blocked, paywall, down) or the AI failed.",
     "operationId": "share_recipes_share_post",
     "requestBody": {
      "content": {
@@ -3620,7 +3621,8 @@
       "enum": [
        "nyt",
        "book",
-       "other"
+       "other",
+       "web"
       ],
       "title": "Source Kind",
       "default": "book"
@@ -5636,7 +5638,8 @@
         "enum": [
          "nyt",
          "book",
-         "other"
+         "other",
+         "web"
         ]
        },
        {
@@ -5912,7 +5915,8 @@
         "enum": [
          "nyt",
          "book",
-         "other"
+         "other",
+         "web"
         ]
        },
        {
@@ -6120,7 +6124,8 @@
         "enum": [
          "nyt",
          "book",
-         "other"
+         "other",
+         "web"
         ]
        },
        {
