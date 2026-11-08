@@ -10,6 +10,9 @@ import dev.mealprep.app.data.api.RecipeSource
  */
 object Sources {
     const val NYT = "nyt"; const val BOOK = "book"; const val OTHER = "other"
+    /** A recipe from a web page (0.20.0): title = the site's name, author = the recipe's author, url = the page. */
+    const val WEB = "web"
+    const val WEBSITES = "Websites"
     /** The library filter's "everything" (not a server key). */
     const val ALL = ""
     const val UNKNOWN_BOOK = "Unknown book"
@@ -18,8 +21,18 @@ object Sources {
     fun kind(r: Recipe): String = r.sourceKind ?: when {
         r.sourceUrl?.contains("nytimes.com") == true -> NYT
         r.source == "photo" -> BOOK
+        r.source == "web" -> WEB
         else -> OTHER
     }
+
+    /** A website recipe's site: its saved name, else the link's domain without "www.". */
+    fun site(r: Recipe): String = r.sourceTitle?.let(::clean)?.ifEmpty { null }
+        ?: r.sourceUrl?.let { runCatching { java.net.URI(it).host?.removePrefix("www.") }.getOrNull() }?.ifEmpty { null }
+        ?: "A website"
+
+    /** "From Serious Eats · by J. Cook" (the author when the page names one). */
+    fun attribution(r: Recipe): String =
+        "From " + listOfNotNull(site(r), r.sourceAuthor?.let(::clean)?.ifEmpty { null }?.let { "by $it" }).joinToString(" · ")
 
     /** "p. 123", "pp. 12–13"; anything else as typed. */
     fun page(ref: String?): String? {
@@ -37,6 +50,7 @@ object Sources {
         NYT -> "NYT Cooking"
         BOOK -> listOfNotNull(r.sourceTitle?.let { t -> listOfNotNull(t, Books.shortAuthor(r.sourceAuthor)).joinToString(" · ") }
             ?: UNKNOWN_BOOK, page(r.sourceRef)).joinToString(", ")
+        WEB -> listOfNotNull(site(r), r.sourceAuthor?.let(::clean)?.ifEmpty { null }?.let { "by $it" }).joinToString(" · ")
         else -> listOfNotNull(r.sourceTitle ?: "Other", r.sourceRef?.trim()?.ifEmpty { null }).joinToString(", ")
     }
 
@@ -45,6 +59,7 @@ object Sources {
     fun key(r: Recipe): String = when (kind(r)) {
         NYT -> NYT
         BOOK -> "book:" + (r.sourceTitle?.let(::fold) ?: "")
+        WEB -> "web:" + (r.sourceTitle?.let(::fold) ?: "")
         else -> "other:" + (r.sourceTitle?.let(::fold) ?: "")
     }
 
@@ -72,15 +87,16 @@ object Sources {
 
     data class Option(val key: String, val label: String, val count: Int)
 
-    /** Filter choices for the recipes present: All, NYT Cooking, each book and named other source A–Z, Unknown book,
-     *  Other (no name), with counts. */
+    /** Filter choices for the recipes present: All, NYT Cooking, each book, named other source and website A–Z,
+     *  Unknown book, Websites (no site name), Other (no name), with counts. */
     fun options(all: List<Recipe>): List<Option> {
         val byKey = all.groupBy(::key)
         fun opt(k: String, label: String) = byKey[k]?.let { Option(k, label, it.size) }
-        val named = byKey.keys.filter { (it.startsWith("book:") && it != "book:") || (it.startsWith("other:") && it != "other:") }
+        val named = byKey.keys.filter { (it.startsWith("book:") && it != "book:") || (it.startsWith("other:") && it != "other:") ||
+            (it.startsWith("web:") && it != "web:") }
             .map { k -> Option(k, clean(byKey.getValue(k).first().sourceTitle!!), byKey.getValue(k).size) }
             .sortedWith(compareBy({ it.label.lowercase() }, { it.key }))
         return listOfNotNull(Option(ALL, "All sources", all.size), opt(NYT, "NYT Cooking")) + named +
-            listOfNotNull(opt("book:", UNKNOWN_BOOK), opt("other:", "Other"))
+            listOfNotNull(opt("book:", UNKNOWN_BOOK), opt("web:", WEBSITES), opt("other:", "Other"))
     }
 }

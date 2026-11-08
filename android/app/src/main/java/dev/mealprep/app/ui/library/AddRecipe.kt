@@ -32,7 +32,7 @@ import dev.mealprep.app.core.ShareParser
 /** The ways to add a recipe from the Recipes tab (a file: a recipe document, a recipe or a whole library exported from
  *  another app, or photos of a recipe's pages from Files or a cloud drive). */
 enum class AddWay(val label: String) {
-    CAMERA("Scan with camera"), PHOTOS("Choose photos"), LINK("Paste an NYT link"), FILE("Import from a file"),
+    CAMERA("Scan with camera"), PHOTOS("Choose photos"), LINK("Paste a recipe link"), FILE("Import from a file"),
 }
 
 /** "Add recipe" (bottom right, in thumb reach) and its menu. */
@@ -53,31 +53,34 @@ fun AddRecipeButton(onPick: (AddWay) -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
-/** The NYT Cooking link on the clipboard, if it holds one (read only when the paste dialog opens). */
-fun clipboardNytLink(ctx: Context): String? = runCatching {
+/** The recipe link on the clipboard (NYT Cooking or any web page), if it holds one (read only when the paste dialog
+ *  opens). */
+fun clipboardLink(ctx: Context): String? = runCatching {
     val clip = ctx.getSystemService(ClipboardManager::class.java)?.primaryClip ?: return null
-    (0 until clip.itemCount).firstNotNullOfOrNull { i -> ShareParser.nytUrl(clip.getItemAt(i).coerceToText(ctx)?.toString()) }
+    (0 until clip.itemCount).firstNotNullOfOrNull { i -> ShareParser.recipeUrl(clip.getItemAt(i).coerceToText(ctx)?.toString()) }
 }.getOrNull()
 
-const val NOT_NYT_LINK = "That isn't an NYT Cooking recipe link (cooking.nytimes.com/recipes/…)."
+const val NOT_A_LINK = "That isn't a web link (https://…)."
+const val LINK_HINT = "From NYT Cooking or any recipe site. It's saved with the site's name and a link back."
 
-/** Paste or type an NYT Cooking link; [copied] (from the clipboard) is offered with one tap. Save → [onSave] (url). */
+/** Paste or type a recipe page's link (NYT Cooking or any site); [copied] (from the clipboard) is offered with one
+ *  tap. Save → [onSave] (url). */
 @Composable
 fun PasteLinkDialog(copied: String?, onSave: (String) -> Unit, onDismiss: () -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
-    val url = ShareParser.nytUrl(text)
+    val url = ShareParser.recipeUrl(text)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Paste an NYT link") },
+        title = { Text("Paste a recipe link") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 copied?.let { c ->
                     Text("You copied a recipe link:", style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton({ text = c }) { Text("Use ${c.removePrefix("https://")}", maxLines = 2) }
                 }
-                OutlinedTextField(text, { text = it }, label = { Text("NYT Cooking link") }, singleLine = true,
+                OutlinedTextField(text, { text = it }, label = { Text("Recipe link") }, singleLine = true,
                     isError = text.isNotBlank() && url == null,
-                    supportingText = { if (text.isNotBlank() && url == null) Text(NOT_NYT_LINK) })
+                    supportingText = { Text(if (text.isNotBlank() && url == null) NOT_A_LINK else LINK_HINT) })
             }
         },
         confirmButton = { TextButton({ url?.let(onSave) }, enabled = url != null) { Text("Save to Recipes") } },

@@ -17,7 +17,7 @@ class ShareParserTest {
 
     @Test fun `NYT app share text gives the clean recipe url`() {
         val t = "Best Chocolate Chip Cookies https://cooking.nytimes.com/recipes/1015819-chocolate-chip-cookies?smid=ck-recipe-iOS-share"
-        assertEquals(ShareInput.NytLink("https://cooking.nytimes.com/recipes/1015819-chocolate-chip-cookies", t),
+        assertEquals(ShareInput.Link("https://cooking.nytimes.com/recipes/1015819-chocolate-chip-cookies", t),
             ShareParser.parse(text(t)))
     }
 
@@ -25,11 +25,26 @@ class ShareParserTest {
         assertEquals("https://cooking.nytimes.com/recipes/12-x", ShareParser.nytUrl("http://www.cooking.nytimes.com/recipes/12-x"))
     }
 
-    @Test fun `news link and plain text are not recipes`() {
+    @Test fun `any web page's link is a recipe link, plain text is not`() {
         val news = "https://www.nytimes.com/2026/10/01/dining/fall-soups.html"
-        assertEquals(ShareInput.NotARecipe(news), ShareParser.parse(text(news)))
+        assertEquals(ShareInput.Link(news, news), ShareParser.parse(text(news)))   // the server says if it has no recipe
+        val blog = "Look at this! https://kitchen.example.com/recipes/apple-crumble/?utm_source=share."
+        val link = ShareParser.parse(text(blog)) as ShareInput.Link
+        assertEquals("https://kitchen.example.com/recipes/apple-crumble/?utm_source=share", link.url)
+        assertEquals(false, link.nyt)
         assertEquals(ShareInput.NotARecipe("make soup"), ShareParser.parse(text("make soup")))
         assertNull(ShareParser.nytUrl("https://cooking.nytimes.com/"))
+    }
+
+    @Test fun `web links are cut like the server cuts them`() {
+        assertEquals("https://a.example.com/x", ShareParser.webUrl("(see https://a.example.com/x)"))
+        assertEquals("https://en.example.org/wiki/Stew_(dish)", ShareParser.webUrl("https://en.example.org/wiki/Stew_(dish)"))
+        assertNull(ShareParser.webUrl("http://nas/recipes"))          // no dot: not a public site
+        assertNull(ShareParser.webUrl("ftp://example.com/x"))
+        // an NYT recipe link wins over another link in the same text, normalised
+        assertEquals("https://cooking.nytimes.com/recipes/12-x",
+            ShareParser.recipeUrl("https://example.com/a and http://www.cooking.nytimes.com/recipes/12-x"))
+        assertEquals(true, ShareInput.Link("https://cooking.nytimes.com/recipes/12-x", "").nyt)
     }
 
     @Test fun `single and multiple images`() {
@@ -49,7 +64,7 @@ class ShareParserTest {
         val t = SpannableString("Chili https://cooking.nytimes.com/recipes/1015819-chili")
         t.setSpan(StyleSpan(Typeface.BOLD), 0, 5, 0)
         val i = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t as CharSequence)
-        assertEquals(ShareInput.NytLink("https://cooking.nytimes.com/recipes/1015819-chili", t.toString()), ShareParser.parse(i))
+        assertEquals(ShareInput.Link("https://cooking.nytimes.com/recipes/1015819-chili", t.toString()), ShareParser.parse(i))
     }
 
     @Test fun `recipe files shared from another app`() {
@@ -61,10 +76,14 @@ class ShareParserTest {
         // A file manager that shares a .json as text/plain with only the stream.
         val plain = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, u)
         assertEquals(ShareInput.RecipeFile(u, "text/plain"), ShareParser.parse(plain))
-        // A text share that also carries a stream stays a text share.
+        // A text share that also carries a stream stays a text share (an NYT link); another page's link with a recipe
+        // file is the file.
+        val page = Intent(Intent.ACTION_SEND).setType("text/html").putExtra(Intent.EXTRA_STREAM, u)
+            .putExtra(Intent.EXTRA_TEXT, "https://kitchen.example.com/recipes/soup")
+        assertEquals(ShareInput.RecipeFile(u, "text/html"), ShareParser.parse(page))
         val both = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, u)
             .putExtra(Intent.EXTRA_TEXT, "https://cooking.nytimes.com/recipes/12-x")
-        assertEquals(ShareInput.NytLink("https://cooking.nytimes.com/recipes/12-x", "https://cooking.nytimes.com/recipes/12-x"), ShareParser.parse(both))
+        assertEquals(ShareInput.Link("https://cooking.nytimes.com/recipes/12-x", "https://cooking.nytimes.com/recipes/12-x"), ShareParser.parse(both))
     }
 
     @Test fun `open with from Files is a recipe file`() {

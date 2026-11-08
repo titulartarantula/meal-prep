@@ -5,7 +5,10 @@ import android.net.Uri
 import java.io.File
 
 sealed interface ShareInput {
-    data class NytLink(val url: String, val text: String) : ShareInput
+    /** A recipe page's link: NYT Cooking or any other site (0.20.0; the server fetches and reads it). */
+    data class Link(val url: String, val text: String) : ShareInput {
+        val nyt: Boolean get() = ShareParser.nytUrl(url) != null
+    }
     /** Images shared from another app — content URIs, only readable while the receiving activity lives. */
     data class Photos(val uris: List<Uri>) : ShareInput
     /** Pages already copied into the app's own storage (in-app camera, or Photos after copying). */
@@ -30,9 +33,24 @@ object ShareParser {
     val RECIPE_FILE_TYPES = setOf("application/json", "application/ld+json", "text/html", "application/pdf", DOCX, "text/plain")
     fun isRecipeFileType(type: String?) = type?.substringBefore(';')?.trim()?.lowercase() in RECIPE_FILE_TYPES
 
-    private val LINK = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
-    /** A shared text with a web link in it (not an NYT Cooking recipe): only a file can bring that recipe in. */
+    private val LINK = Regex("""https?://[^\s<>"'`]+""", RegexOption.IGNORE_CASE)
     fun hasLink(text: String) = LINK.containsMatchIn(text)
+
+    /** The first web link in a text ("Look at this! https://…"), trailing punctuation dropped; a host without a dot
+     *  (a typo, or a home-network name the server refuses anyway) is no link. Same rules as the server's
+     *  importers/web.extract_url, so the app sends what the server takes. */
+    fun webUrl(text: String?): String? {
+        var url = text?.let { LINK.find(it)?.value } ?: return null
+        while (url.isNotEmpty() && url.last() in ".,;:!?)]}»”’") {
+            if (url.last() == ')' && url.count { it == '(' } >= url.count { it == ')' }) break
+            url = url.dropLast(1)
+        }
+        val host = runCatching { java.net.URI(url).host }.getOrNull() ?: return null
+        return url.takeIf { '.' in host || ':' in host }
+    }
+
+    /** The recipe link to import: NYT Cooking's (normalised) when the text has one, else the first web link. */
+    fun recipeUrl(text: String?): String? = nytUrl(text) ?: webUrl(text)
 
     fun parse(intent: Intent): ShareInput? = when (intent.action) {
         Intent.ACTION_SEND ->
@@ -47,10 +65,11 @@ object ShareParser {
                 val stream = intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
                 when {
                     // A file: a recipe type, or a share that carries only a file (some file managers). A shared NYT link
-                    // that happens to come with a file (a text/plain share with both) stays a link.
+                    // that happens to come with a file (a text/plain share with both) stays a link; any other page's
+                    // link with a file is the file (a saved page has what the site may not show the server).
                     stream != null && (isRecipeFileType(intent.type) || intent.getCharSequenceExtra(Intent.EXTRA_TEXT) == null) &&
                         nytUrl(text) == null -> ShareInput.RecipeFile(stream, intent.type)
-                    else -> nytUrl(text)?.let { ShareInput.NytLink(it, text) } ?: ShareInput.NotARecipe(text)
+                    else -> recipeUrl(text)?.let { ShareInput.Link(it, text) } ?: ShareInput.NotARecipe(text)
                 }
             }
         // "Open with" from Files / Drive (the manifest's VIEW filter: content URIs of the recipe file types).

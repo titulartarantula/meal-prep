@@ -117,7 +117,7 @@ fun LibraryScreen(
             when (w) {
                 AddWay.CAMERA -> onOpen(CameraRoute())
                 AddWay.PHOTOS -> picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                AddWay.LINK -> paste = clipboardNytLink(ctx) ?: ""
+                AddWay.LINK -> paste = clipboardLink(ctx) ?: ""
                 AddWay.FILE -> pickFile()
             }
         })

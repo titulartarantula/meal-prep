@@ -184,6 +184,8 @@ class ExportTest {
         assertEquals("Open on NYT Cooking", sourceLinkLabel(nyt))
         assertEquals("Open the recipe's web page", sourceLinkLabel(Recipe(2, "Soup", "import", sourceUrl = "https://recipes.example.org/soup")))
         assertNull(sourceLinkLabel(Recipe(3, "Soup", "import", sourceUrl = "javascript:alert(1)")))
+        assertEquals("Open on Example Kitchen", sourceLinkLabel(Recipe(5, "Soup", "web", sourceUrl = "https://kitchen.example.com/soup",
+            sourceKind = "web", sourceTitle = "Example Kitchen")))
         assertNull(sourceLinkLabel(Recipe(4, "Soup", "photo")))
     }
 

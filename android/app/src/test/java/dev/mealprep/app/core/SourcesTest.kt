@@ -19,6 +19,23 @@ class SourcesTest {
         assertEquals("Other", Sources.label(r(7, "other", source = "x")))
     }
 
+    @Test fun `a website recipe reads as its site and author and is filtered by site`() {
+        val page = r(20, "web", "Example Kitchen", source = "web", url = "https://www.kitchen.example.com/soup").copy(sourceAuthor = "Pat Example")
+        assertEquals("Example Kitchen · by Pat Example", Sources.label(page))
+        assertEquals("From Example Kitchen · by Pat Example", Sources.attribution(page))
+        assertEquals("web:example kitchen", Sources.key(page))
+        val unnamed = r(21, "web", source = "web", url = "https://www.pots.example.org/stew")
+        assertEquals("pots.example.org", Sources.site(unnamed))                       // no site name saved: the domain
+        assertEquals("From pots.example.org", Sources.attribution(unnamed))
+        assertEquals(Sources.WEB, Sources.kind(r(22, null, source = "web")))         // a saved copy without the kind
+        val all = listOf(page, r(23, "web", "example  KITCHEN", source = "web"), r(24, "book", "Invented Bakes"), unnamed,
+            r(25, "web", "Weeknight Pots", source = "web"))
+        assertEquals(listOf(
+            Sources.Option(Sources.ALL, "All sources", 5), Sources.Option("web:example kitchen", "Example Kitchen", 2),
+            Sources.Option("book:invented bakes", "Invented Bakes", 1), Sources.Option("web:weeknight pots", "Weeknight Pots", 1),
+            Sources.Option("web:", Sources.WEBSITES, 1)), Sources.options(all))
+    }
+
     @Test fun `a saved copy from before sources still has a kind`() {
         assertEquals(Sources.NYT, Sources.kind(r(1, null, source = "nyt", url = "https://cooking.nytimes.com/recipes/1-x")))
         assertEquals(Sources.BOOK, Sources.kind(r(2, null)))

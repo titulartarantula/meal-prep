@@ -63,9 +63,15 @@ class ImportWorker(
             e is ApiError.Http && e.code == 502 && kind == PHOTO -> PHOTO_UNREADABLE
             e is ApiError.Http && e.code == 502 && kind == PAGES -> PAGE_UNREADABLE
             alreadyAttached(e, kind) -> ALREADY_ATTACHED
+            // a link the server couldn't read says why (the site blocks automated readers, wants a subscription …)
+            e is ApiError.Http && e.code == 502 && kind == LINK && siteReason(e.detail) != null -> siteReason(e.detail)!!
             e is ApiError.Http && e.code == 502 -> "Couldn't read that recipe. Try again later."
             else -> e.userMessage()
         }
+
+        /** The server's sentence for a site it couldn't read (0.20.0); its older "import failed: …" is too technical. */
+        private fun siteReason(detail: String?): String? =
+            detail?.trim()?.takeIf { it.isNotEmpty() && !it.startsWith("import failed") && it.length <= 400 }
 
         /** POST /recipes/{id}/pages answers 409 "line N already has its sub-recipe attached" (nothing to retry). */
         private fun alreadyAttached(e: ApiError, kind: String?) =

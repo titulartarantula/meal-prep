@@ -66,7 +66,7 @@ class BarsTest {
     @Test fun `settings`() = pushed("Settings") { b -> SettingsContent(onBack = b, extra = { Text("Notifications") }, server = {}) }
 
     @Test fun `share`() = pushed("Save a recipe") { b ->
-        ShareContent(ShareState(ShareInput.NytLink("https://cooking.nytimes.com/recipes/1015819-chili", "")), {}, b, {})
+        ShareContent(ShareState(ShareInput.Link("https://cooking.nytimes.com/recipes/1015819-chili", "")), {}, b, {})
     }
 }
 

@@ -69,7 +69,7 @@ class ShareViewModelTest {
         withTimeout(5_000) { while (!wm.getWorkInfoById(id).get()!!.state.isFinished) delay(20) }
         wm.getWorkInfoById(id).get()!!
     }
-    private val nyt = ShareInput.NytLink("https://cooking.nytimes.com/recipes/1015819-x", "Cookies https://cooking.nytimes.com/recipes/1015819-x")
+    private val nyt = ShareInput.Link("https://cooking.nytimes.com/recipes/1015819-x", "Cookies https://cooking.nytimes.com/recipes/1015819-x")
 
     @Test fun `an NYT link is saved to Recipes without asking for a week`() = runTest {
         env.on("POST", "/recipes/share", body = fixture("share_result_library.json"))
@@ -90,8 +90,8 @@ class ShareViewModelTest {
 
     @Test fun `not a recipe shows the message and queues nothing`() {
         val vm = vm()
-        vm.start(ShareInput.NotARecipe("https://www.nytimes.com/2026/10/01/dining/fall-soups.html"))
-        assertEquals(ShareViewModel.NOT_NYT_LINK, vm.state.value.message)      // a link: import it as a file instead
+        vm.start(ShareInput.NotARecipe("just some words"))
+        assertEquals(ShareViewModel.NOT_A_RECIPE, vm.state.value.message)
         assertFalse(vm.state.value.canConfirm)
         assertNull(vm.confirm())
         assertTrue(wm.getWorkInfosByTag(ImportQueue.TAG).get().isEmpty())

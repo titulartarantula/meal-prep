@@ -289,24 +289,31 @@ class LibraryTest {
         assertEquals(LocalDate.parse("2026-10-11") to 5, added)
     }
 
-    @Test fun `paste dialog takes only NYT recipe links and offers the copied one`() {
+    @Test fun `paste dialog takes any web link and offers the copied one`() {
         var saved: String? = null
         compose.setContent { PasteLinkDialog("https://cooking.nytimes.com/recipes/1015819-x", onSave = { saved = it }, onDismiss = {}) }
         compose.onNodeWithText("Save to Recipes").assertIsNotEnabled()
-        compose.onNodeWithText("NYT Cooking link").performTextInput("https://example.com/soup")
-        compose.onNodeWithText(NOT_NYT_LINK).assertExists()
+        compose.onNodeWithText(LINK_HINT).assertExists()
+        compose.onNodeWithText("Recipe link").performTextInput("apple crumble")
+        compose.onNodeWithText(NOT_A_LINK).assertExists()
         compose.onNodeWithText("Save to Recipes").assertIsNotEnabled()
+        compose.onNodeWithText("Recipe link").performTextClearance()
+        compose.onNodeWithText("Recipe link").performTextInput("https://kitchen.example.com/recipes/apple-crumble")
+        compose.onNodeWithText("Save to Recipes").performClick()
+        assertEquals("https://kitchen.example.com/recipes/apple-crumble", saved)
         compose.onNodeWithText("Use cooking.nytimes.com/recipes/1015819-x").performClick()
         compose.onNodeWithText("Save to Recipes").performClick()
         assertEquals("https://cooking.nytimes.com/recipes/1015819-x", saved)
     }
 
-    @Test fun `an NYT link on the clipboard is found, anything else is not`() {
+    @Test fun `a recipe link on the clipboard is found, plain text is not`() {
         val cm = env.context.getSystemService(ClipboardManager::class.java)
         cm.setPrimaryClip(ClipData.newPlainText("x", "Try https://www.cooking.nytimes.com/recipes/1015819-x?smid=ck"))
-        assertEquals("https://cooking.nytimes.com/recipes/1015819-x", clipboardNytLink(env.context))
-        cm.setPrimaryClip(ClipData.newPlainText("x", "https://example.com/soup"))
-        assertNull(clipboardNytLink(env.context))
+        assertEquals("https://cooking.nytimes.com/recipes/1015819-x", clipboardLink(env.context))
+        cm.setPrimaryClip(ClipData.newPlainText("x", "https://kitchen.example.com/soup"))
+        assertEquals("https://kitchen.example.com/soup", clipboardLink(env.context))
+        cm.setPrimaryClip(ClipData.newPlainText("x", "soup on sunday"))
+        assertNull(clipboardLink(env.context))
     }
 
     @Test fun `a recipe saved in the background reloads the library`() = runTest {
@@ -396,6 +403,22 @@ class LibraryTest {
         assertNull(book)
         assertEquals(emptyList<String>(), typed)                                // no book search for Other
         compose.onNodeWithText("Where is it from?").assertDoesNotExist()
+    }
+
+    @Test fun `a website recipe shows the site and author, opens the original page, and has no Edit source`() {
+        val page = fixture("recipe_11.json").replace(
+            "\"source_kind\": \"book\", \"source_title\": null, \"source_ref\": null",
+            "\"source_kind\": \"web\", \"source_title\": \"Example Kitchen\", \"source_ref\": null, \"source_author\": \"Pat Example\"")
+            .replace("\"source\": \"photo\", \"source_url\": null",
+                "\"source\": \"web\", \"source_url\": \"https://kitchen.example.com/recipes/crepes\"")
+        val r = Http.json.decodeFromString(Recipe.serializer(), page)
+        compose.setContent {
+            RecipeContent(RecipeState(r, loading = false), onAdd = { _, _ -> }, onWeek = {}, onOpen = {}, onDismissAdded = {},
+                today = today, onEditSource = { _, _, _ -> })
+        }
+        compose.onNodeWithText("From Example Kitchen · by Pat Example").assertExists()
+        compose.onNodeWithText("Open on Example Kitchen").assertExists()
+        compose.onNodeWithText("Edit source").assertDoesNotExist()
     }
 
     @Test fun `an other source shows its name and opens on Other, and Book keeps the book fields apart`() {

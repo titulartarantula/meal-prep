@@ -56,7 +56,7 @@ data class ShareState(
     val canConfirm: Boolean get() = canSave && !(isPhotos && kind == Sources.OTHER && otherName.isBlank())
     /** Save is enabled: everything but an other source's name is there (a tap without the name says so). */
     val canSave: Boolean get() = configured && !queued && when {
-        input is ShareInput.NytLink -> true
+        input is ShareInput.Link -> true
         isPhotos -> !copying && dir != null && pages.pages.isNotEmpty() && !pages.tooMany
         else -> false
     }
@@ -78,11 +78,8 @@ class ShareViewModel(
     private val rememberBook: (String) -> Unit = {},
 ) : ViewModel() {
     companion object {
-        const val NOT_A_RECIPE = "That isn't an NYT Cooking recipe link. Share a recipe from the NYT Cooking app or " +
-            "site, or a photo of a cookbook page."
-        /** A shared web link that isn't NYT Cooking: the app never fetches other sites, so a file has to bring it in. */
-        const val NOT_NYT_LINK = "Only NYT Cooking links can be imported from a link. Save the recipe's web page " +
-            "(or export it from the other app), then import the file: Recipes → More options → Import recipes from a file."
+        const val NOT_A_RECIPE = "There's no recipe link in that. Share a recipe's page from your browser or a recipe " +
+            "app, or a photo of a cookbook page."
         const val TOO_MANY = "A recipe can have up to 10 pages. Delete the extras first."
         const val UNREADABLE = "Couldn't open those photos. Choose them again, or save them to your phone first and " +
             "choose them from there."
@@ -106,11 +103,7 @@ class ShareViewModel(
         abandon()
         lookup.typed("")   // a new share starts without the last one's search rows
         val notRecipe = input is ShareInput.NotARecipe
-        val message = when {
-            input is ShareInput.NotARecipe && ShareParser.hasLink(input.text) -> NOT_NYT_LINK
-            notRecipe -> NOT_A_RECIPE
-            else -> null
-        }
+        val message = if (notRecipe) NOT_A_RECIPE else null
         _state.value = ShareState(input, message, configured = configured())
         if (notRecipe) return
         when (input) {
@@ -178,7 +171,7 @@ class ShareViewModel(
             return null
         }
         val id = when (val input = s.input) {
-            is ShareInput.NytLink -> imports.enqueueLink(input.url)
+            is ShareInput.Link -> imports.enqueueLink(input.url)
             else -> {
                 val dir = s.dir!!
                 // The pages are numbered in the order shown; the folder then belongs to the import job.

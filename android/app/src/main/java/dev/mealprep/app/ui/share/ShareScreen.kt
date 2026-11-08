@@ -67,7 +67,7 @@ private fun ColumnScope.ShareBody(
 ) {
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        (state.input as? ShareInput.NytLink)?.let { Text("NYT Cooking · ${it.url.substringAfterLast('/')}") }
+        (state.input as? ShareInput.Link)?.let { Text(linkLine(it)) }
         if (!state.configured) {
             Text("Sign in to Meal Prep first.")
             Button(onClick = onSetup) { Text("Sign in") }
@@ -90,7 +90,7 @@ private fun ColumnScope.ShareBody(
             }
         }
         MessageText(state.message)
-        if (state.input is ShareInput.NytLink || (state.isPhotos && state.pages.pages.isNotEmpty())) {
+        if (state.input is ShareInput.Link || (state.isPhotos && state.pages.pages.isNotEmpty())) {
             Text("It goes into Recipes. Add it to a week from there when you plan.", style = MaterialTheme.typography.bodyMedium)
             Button(onClick = onConfirm, enabled = state.canSave, modifier = Modifier.fillMaxWidth()) { Text(SAVE) }
             if (state.isPhotos) Text("Reading pages takes about a minute. You can leave the app; it will let you know.",
@@ -114,4 +114,12 @@ fun ShareScreen(graph: AppGraph, onQueued: () -> Unit, onBack: () -> Unit, onSet
     LaunchedEffect(state.queued) { if (state.queued) onQueued() }
     ShareContent(state, { vm.confirm() }, onBack, onSetup, vm::setTitle, vm::movePage, vm::removePage, vm::setBook, vm::setPage,
         vm::pickBook, vm::setKind, vm::setOtherName, vm::setNote, onRestore = vm::restorePage)
+}
+
+/** "NYT Cooking · 1015819-chili" or "kitchen.example.com · apple-crumble": where the shared link goes. */
+fun linkLine(link: ShareInput.Link): String {
+    val last = link.url.substringBefore('?').substringBefore('#').trimEnd('/').substringAfterLast('/')
+    if (link.nyt) return "NYT Cooking · $last"
+    val host = runCatching { java.net.URI(link.url).host }.getOrNull()?.removePrefix("www.") ?: link.url
+    return if (last.isEmpty() || last == host || "/" !in link.url.substringAfter("://")) host else "$host · $last"
 }

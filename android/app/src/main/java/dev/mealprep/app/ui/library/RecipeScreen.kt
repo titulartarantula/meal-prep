@@ -237,13 +237,16 @@ private fun ColumnScope.RecipeBody(
     }
 }
 
-/** The recipe's link button: NYT Cooking says so; another web page (an imported recipe's) is "the recipe's web
- *  page"; anything that isn't a plain web address gets no button. */
+/** The recipe's link button: NYT Cooking says so; a website recipe names its site ("Open on Serious Eats"); another
+ *  web page (an imported recipe's) is "the recipe's web page"; anything that isn't a plain web address gets no button. */
 fun sourceLinkLabel(r: Recipe): String? {
     val url = r.sourceUrl ?: return null
     if (!url.startsWith("https://", ignoreCase = true) && !url.startsWith("http://", ignoreCase = true)) return null
-    return if (Sources.kind(r) == Sources.NYT || dev.mealprep.app.core.ShareParser.nytUrl(url) != null) "Open on NYT Cooking"
-        else "Open the recipe's web page"
+    return when {
+        Sources.kind(r) == Sources.NYT || dev.mealprep.app.core.ShareParser.nytUrl(url) != null -> "Open on NYT Cooking"
+        Sources.kind(r) == Sources.WEB -> "Open on ${Sources.site(r)}"
+        else -> "Open the recipe's web page"
+    }
 }
 
 /** "Prep 10 min · Cook 1 h 30 min · Makes 24 cookies" from what an imported recipe brought; null when nothing. */
@@ -305,13 +308,14 @@ fun AddToWeekDialog(
 }
 
 /** "From: Salt Fat Acid Heat, p. 123" (or Unknown book, or "Mum's recipes") with Edit source; an NYT recipe just
- *  says so. */
+ *  says so; a website recipe says "From Serious Eats · by J. Cook" (the link button opens the original page; its
+ *  source is where the page came from, so there is no Edit source). */
 @Composable
 private fun SourceLine(r: Recipe, onEdit: () -> Unit) {
     val kind = Sources.kind(r)
     // The button under the line: beside it, large text squeezed the source to a word or two a line.
-    Text("From: " + Sources.label(r), style = MaterialTheme.typography.bodyMedium)
-    if (kind != Sources.NYT && LocalAccess.current.canEditRecipes) TextButton(onEdit) { Text(if (kind == Sources.BOOK && r.sourceTitle == null) "Add book" else "Edit source") }
+    Text(if (kind == Sources.WEB) Sources.attribution(r) else "From: " + Sources.label(r), style = MaterialTheme.typography.bodyMedium)
+    if (kind != Sources.NYT && kind != Sources.WEB && LocalAccess.current.canEditRecipes) TextButton(onEdit) { Text(if (kind == Sources.BOOK && r.sourceTitle == null) "Add book" else "Edit source") }
 }
 
 /**

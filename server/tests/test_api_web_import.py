@@ -104,7 +104,7 @@ def test_site_filter_and_sources(conn, fetched):
     assert len(c.get("/recipes", headers=H, params={"source": "web"}).json()) == 2
 
 
-@pytest.mark.parametrize("text", ["http://127.0.0.1:8790/recipes", "http://192.168.1.1/", "file:///etc/passwd x",
+@pytest.mark.parametrize("text", ["http://127.0.0.1:8080/recipes", "http://192.168.1.1/", "file:///etc/passwd x",
                                   "http://localhost/admin", "https://[::1]/"])
 def test_private_or_odd_links_are_refused_before_any_fetch(conn, fetched, text):
     calls, _ = fetched
