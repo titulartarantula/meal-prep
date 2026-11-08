@@ -226,9 +226,9 @@ export function mockApi(): Plugin {
     if (path === "/recipes/sources") {
       const groups = new Map<string, { key: string; kind: string; title: string | null; label: string; count: number; author: string | null; isbn: null }>();
       for (const r of db.recipes) {
-        const t = r.source_kind === "nyt" ? null : r.source_title ?? null;
-        const key = r.source_kind === "nyt" ? "nyt" : `${r.source_kind}:${(t ?? "").toLowerCase()}`;
-        const label = r.source_kind === "nyt" ? "NYT Cooking" : t ?? (r.source_kind === "book" ? "Unknown book" : "Other");
+        const t = r.source_title ?? null;
+        const key = `${r.source_kind}:${(t ?? "").toLowerCase()}`;
+        const label = t ?? (r.source_kind === "book" ? "Unknown book" : r.source_kind === "web" ? "Websites" : "Other");
         const g0 = groups.get(key) ?? { key, kind: r.source_kind, title: t, label, count: 0, author: r.source_author ?? null, isbn: null };
         g0.count++;
         groups.set(key, g0);
@@ -550,7 +550,7 @@ function recipeOut(r: MockRecipe & { revision?: number; notesText?: string | nul
       .map((d): [string, PR[]] => [d, own.filter((x) => x.recipe_id === r.id && x.cooked_on === d)]),
   ];
   return { id: r.id, title: r.title, source: r.source,
-    source_url: r.source_kind === "nyt" ? `https://cooking.nytimes.com/recipes/${1000 + r.id}` : r.source_url ?? null,
+    source_url: r.source === "nyt" ? `https://cooking.nytimes.com/recipes/${1000 + r.id}` : r.source_url ?? null,
     servings: r.servings || null, source_kind: r.source_kind, source_title: r.source_title ?? null, source_ref: r.source_ref ?? null,
     source_author: r.source_author ?? null, source_isbn: null, notes: r.notesText ?? null,
     total_minutes: r.minutes, image: r.photo ? `/api/_mock/photo/${r.photo}.svg` : null, description: r.description ?? null,

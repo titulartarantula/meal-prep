@@ -97,7 +97,7 @@
   "/recipes/{recipe_id}": {
    "patch": {
     "summary": "Patch Recipe",
-    "description": "Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it\ncomes from. An NYT recipe has no book title or page. A different book title sent without an author/ISBN clears\nthem (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else\nthe deterministic clean-up). The id, uid, plan entries and ratings stay; a cart made from the old\nlines goes stale (db.plan_fingerprint).",
+    "description": "Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it\ncomes from (web, book or other; \"nyt\" from an older app = the website NYT Cooking). A different book title sent without an author/ISBN clears\nthem (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else\nthe deterministic clean-up). The id, uid, plan entries and ratings stay; a cart made from the old\nlines goes stale (db.plan_fingerprint).",
     "operationId": "patch_recipe_recipes__recipe_id__patch",
     "parameters": [
      {
@@ -184,7 +184,7 @@
   "/recipes/sources": {
    "get": {
     "summary": "Recipe Sources",
-    "description": "NYT Cooking, each cookbook and named other source, \"Unknown book\", \"Other\", with counts; `key` is the\nGET /recipes?source= value.",
+    "description": "Each cookbook and named other source, each website (NYT Cooking among them), \"Websites\", \"Unknown book\",\n\"Other\", with counts; every `kind` is web, book or other; `key` is the GET /recipes?source= value.",
     "operationId": "recipe_sources_recipes_sources_get",
     "responses": {
      "200": {
@@ -3619,10 +3619,9 @@
      "source_kind": {
       "type": "string",
       "enum": [
-       "nyt",
+       "web",
        "book",
-       "other",
-       "web"
+       "other"
       ],
       "title": "Source Kind",
       "default": "book"
@@ -5636,10 +5635,9 @@
        {
         "type": "string",
         "enum": [
-         "nyt",
+         "web",
          "book",
-         "other",
-         "web"
+         "other"
         ]
        },
        {
@@ -5913,10 +5911,9 @@
        {
         "type": "string",
         "enum": [
-         "nyt",
+         "web",
          "book",
-         "other",
-         "web"
+         "other"
         ]
        },
        {
@@ -6122,10 +6119,9 @@
        {
         "type": "string",
         "enum": [
-         "nyt",
+         "web",
          "book",
-         "other",
-         "web"
+         "other"
         ]
        },
        {

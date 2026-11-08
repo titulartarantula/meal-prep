@@ -213,10 +213,10 @@ export interface PendingRating {
   multiplier: number;
 }
 
-/** GET /recipes/sources: NYT Cooking, each book and named other source, Unknown book, Other. */
+/** GET /recipes/sources: each book and named other source, each website (NYT Cooking too), Websites, Unknown book, Other. */
 export interface RecipeSource {
   key: string;
-  kind: "nyt" | "book" | "other" | "web";
+  kind: "web" | "book" | "other";
   title: string | null;
   label: string;
   count: number;

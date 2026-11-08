@@ -79,7 +79,7 @@ export interface paths {
         /**
          * Patch Recipe
          * @description Edit a recipe (title, servings, ingredient lines, steps, notes, description, times, yield) or set where it
-         *     comes from. An NYT recipe has no book title or page. A different book title sent without an author/ISBN clears
+         *     comes from (web, book or other; "nyt" from an older app = the website NYT Cooking). A different book title sent without an author/ISBN clears
          *     them (they belonged to the old book). Changed ingredient lines are structured again (recipe_edit; the AI, else
          *     the deterministic clean-up). The id, uid, plan entries and ratings stay; a cart made from the old
          *     lines goes stale (db.plan_fingerprint).
@@ -96,8 +96,8 @@ export interface paths {
         };
         /**
          * Recipe Sources
-         * @description NYT Cooking, each cookbook and named other source, "Unknown book", "Other", with counts; `key` is the
-         *     GET /recipes?source= value.
+         * @description Each cookbook and named other source, each website (NYT Cooking among them), "Websites", "Unknown book",
+         *     "Other", with counts; every `kind` is web, book or other; `key` is the GET /recipes?source= value.
          */
         get: operations["recipe_sources_recipes_sources_get"];
         put?: never;
@@ -1391,7 +1391,7 @@ export interface components {
              * @default book
              * @enum {string}
              */
-            source_kind: "nyt" | "book" | "other" | "web";
+            source_kind: "web" | "book" | "other";
             /** Source Title */
             source_title?: string | null;
             /** Source Ref */
@@ -2024,7 +2024,7 @@ export interface components {
             /** Steps */
             steps: string[];
             /** Source Kind */
-            source_kind?: ("nyt" | "book" | "other" | "web") | null;
+            source_kind?: ("web" | "book" | "other") | null;
             /** Source Title */
             source_title?: string | null;
             /** Source Ref */
@@ -2108,7 +2108,7 @@ export interface components {
             /** Steps */
             steps: string[];
             /** Source Kind */
-            source_kind?: ("nyt" | "book" | "other" | "web") | null;
+            source_kind?: ("web" | "book" | "other") | null;
             /** Source Title */
             source_title?: string | null;
             /** Source Ref */
@@ -2171,7 +2171,7 @@ export interface components {
             /** Title */
             title?: string | null;
             /** Source Kind */
-            source_kind?: ("nyt" | "book" | "other" | "web") | null;
+            source_kind?: ("web" | "book" | "other") | null;
             /** Source Title */
             source_title?: string | null;
             /** Source Ref */

@@ -36,7 +36,7 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 |---|---|---|
 | Library list, search (case/accents) | Yes | Web searches title + book title. |
 | Sort Newest / Favourites / A–Z | Yes | |
-| Source filter (NYT, each book, Unknown book, named Other sources, with counts) | Partial | Web: All / NYT Cooking / Books / Other only; no per-book or per-source entries, no counts. |
+| Source filter (Website / Book / Other, then each site, book and named Other source, Unknown book, with counts) | Partial | Three kinds since 2026-11-08 (NYT Cooking is a website). Web: All / Website / Book / Other only; no per-site, per-book or per-source entries, no counts. Android 0.20.0: Website / Book / Other, then each source. |
 | "Good for company" filter | Yes | |
 | Rows: rating, "On the plan", "⚠ Page N missing" | Partial | Rating, times cooked, planned week; no missing-page warning. |
 | Recipe photos | Web only | NYT photo links (Android shows none). |
@@ -46,7 +46,7 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 | Edit source / Add book (Book · Other, "Used before") | Yes | |
 | Book search ("Which book?", Open Library / Google Books) | Yes | Your books first, then the server's search. |
 | Add photo of p.N (cross-referenced pages) | No | |
-| Import a recipe link (NYT Cooking or any site) | Yes (web + Android 0.20.0, 2026-11-08) | Any public recipe page: the server reads its JSON-LD / microdata, else the AI reads the page; saved as a website recipe ("From <site> · by <author>", link to the original, Websites / per-site filter). The same page again opens the saved one. |
+| Import a recipe link (NYT Cooking or any site) | Yes (web + Android 0.20.0, 2026-11-08) | Any public recipe page: the server reads its JSON-LD / microdata, else the AI reads the page; saved as a website recipe ("From <site> · by <author>", link to the original, Website / per-site filter). The same page again opens the saved one. |
 | Cookbook photo import (camera, multi-page, reorder/retake/delete, Which book? + page) | No | A phone browser could use `<input type=file capture>`; not built. |
 | Import from a file: JSON-LD / saved page | Yes | Preview + choices + apply. |
 | Import from a file: PDF / Word / text (several recipes per document) | Yes | Same dialog (read job, then preview). |

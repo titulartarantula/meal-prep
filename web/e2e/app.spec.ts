@@ -373,8 +373,9 @@ test.describe("signed in", () => {
     await page.getByRole("link", { name: "Recipes" }).click();
     await page.getByRole("button", { name: /^Red lentil dal/ }).click();
     const drawer = page.getByRole("dialog", { name: "Red lentil dal with spinach & garlic naan" });
-    await expect(drawer).toContainText("From: NYT Cooking");
-    await expect(drawer.getByRole("button", { name: "Edit source" })).toHaveCount(0);   // an NYT recipe has no book
+    await expect(drawer).toContainText("From NYT Cooking");   // NYT Cooking is a website
+    await expect(drawer.getByRole("link", { name: /^Open on NYT Cooking/ })).toBeVisible();
+    await expect(drawer.getByRole("button", { name: "Edit source" })).toHaveCount(0);   // a website has no book
     await drawer.getByRole("button", { name: "Edit recipe" }).click();
     const edit = page.getByRole("dialog", { name: "Edit recipe" });
     await expect(edit.getByLabel("Ingredients")).toHaveValue(/1\.5 cup red lentils/);
@@ -532,7 +533,7 @@ test.describe("signed in", () => {
     await expect(dlg).toContainText("Done: 2 added", { timeout: 10_000 });
   });
 
-  test("import a recipe from any site: attributed to the site and author, filtered as Websites, not imported twice", async ({ page }) => {
+  test("import a recipe from any site: attributed to the site and author, filtered as Website, not imported twice", async ({ page }) => {
     await page.getByRole("link", { name: "Recipes" }).click();
     await page.getByRole("button", { name: "Add recipe" }).click();
     const dlg = page.getByRole("dialog", { name: "Add a recipe" });
@@ -564,11 +565,19 @@ test.describe("signed in", () => {
     await shot(page, "07c-web-recipe");
     await drawer.getByRole("button", { name: "Close" }).click();
 
-    // the Websites filter shows it (and only website recipes); the tile names the site; search finds the site
-    await page.getByRole("button", { name: "Websites" }).click();
+    // three source filters: Website / Book / Other. Website shows it with the NYT recipes (only websites); the tile
+    // names the site; search finds the site
+    const sources = page.getByRole("group", { name: "Source" });
+    await expect(sources.getByRole("button")).toHaveText(["All", "Website", "Book", "Other"]);
+    await sources.getByRole("button", { name: "Website" }).click();
     const grid = page.getByRole("list", { name: "Recipes" });
-    await expect(grid.getByRole("listitem")).toHaveCount(1);
+    await expect(grid.getByRole("listitem")).toHaveCount(10);
     await expect(grid).toContainText("Example Kitchen");
+    await expect(grid).toContainText("NYT Cooking");
+    await expect(grid).not.toContainText("Chicken tinga tacos");   // a book
+    await sources.getByRole("button", { name: "Book" }).click();
+    await expect(grid).toContainText("Chicken tinga tacos");
+    await expect(grid).not.toContainText("Example Kitchen");
     await page.getByRole("button", { name: "All", exact: true }).click();
     await page.getByRole("searchbox", { name: "Search recipes" }).fill("example kitchen");
     await expect(grid.getByRole("listitem")).toHaveCount(1);

@@ -93,7 +93,7 @@ function Field({ label, value, onChange, problem, help, rows, number, optional }
   );
 }
 
-/** Edit source (Add book for an unknown book); mounted while open. NYT recipes have no source to edit. */
+/** Edit source (Add book for an unknown book); mounted while open. Website recipes (NYT Cooking too) have no source to edit. */
 export function EditSourceDialog({ recipe, onClose }: { recipe: Recipe; onClose: () => void }) {
   const edit = useEditRecipe(recipe.id!);
   const sources = useRecipeSources().data ?? [];

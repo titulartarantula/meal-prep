@@ -108,4 +108,10 @@ describe("sources and books", () => {
       .toEqual({ site: "pots.example.org", author: null });
     expect(webSource({ source_title: " ", source_author: "", source_url: "not a link" })).toEqual({ site: "A website", author: null });
   });
+
+  it("labels an NYT recipe as the website NYT Cooking", () => {
+    expect(sourceLabel({ source_kind: "web", source_title: "NYT Cooking", source_author: "Pat Example", source_ref: null,
+      source_url: "https://cooking.nytimes.com/recipes/1-invented" })).toBe("NYT Cooking · by Pat Example");
+    expect(sourceLabel({ source_kind: "web", source_title: "NYT Cooking", source_ref: null })).toBe("NYT Cooking");
+  });
 });

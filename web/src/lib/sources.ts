@@ -106,10 +106,9 @@ export function webSource(r: Pick<Recipe, "source_title" | "source_author" | "so
   return { site: site || "A website", author: r.source_author?.trim() || null };
 }
 
-/** "NYT Cooking", "Salt Fat Acid Heat · Samin Nosrat, p. 123", "Unknown book", "Mum's recipes, the blue binder",
- *  "Serious Eats · by J. Cook" (a web page). */
+/** "NYT Cooking · by J. Cook" / "Serious Eats" (a website), "Salt Fat Acid Heat · Samin Nosrat, p. 123", "Unknown book", "Mum's recipes, the blue binder",
+ *  — a recipe's source is a website, a book or other. */
 export function sourceLabel(r: Pick<Recipe, "source_kind" | "source_title" | "source_ref" | "source_author"> & { source_url?: string | null }): string {
-  if (r.source_kind === "nyt") return "NYT Cooking";
   if (r.source_kind === "web") {
     const w = webSource({ source_title: r.source_title, source_author: r.source_author, source_url: r.source_url ?? null });
     return w.author ? `${w.site} · by ${w.author}` : w.site;

@@ -6,8 +6,8 @@ export interface MockRecipe {
   minutes: number;
   servings: number;
   source: string;
-  source_kind: "nyt" | "book" | "other" | "web";
-  source_url?: string;              // a web recipe's page (NYT links are made up from the id)
+  source_kind: "web" | "book" | "other";   // a website (NYT Cooking too), a book or other
+  source_url?: string;              // a web recipe's page (NYT links, source "nyt", are made up from the id)
   source_title?: string;
   source_ref?: string;
   source_author?: string;
@@ -25,14 +25,14 @@ export interface MockRecipe {
 }
 
 export const RECIPES: MockRecipe[] = [
-  { id: 1, title: "Sheet-pan gnocchi with sausage & peppers", minutes: 35, servings: 4, source: "nyt", source_kind: "nyt",
+  { id: 1, title: "Sheet-pan gnocchi with sausage & peppers", minutes: 35, servings: 4, source: "nyt", source_kind: "web", source_title: "NYT Cooking",
     photo: "gnocchi", avg: 4.8, cooked: 6, company: "yes", notes: ["Double the peppers"],
     raters: { 1: [5, 5, 2, "yes"], 2: [4, 4.5, 2, "no"], 4: [5, 5, 1], family: [5, 4.8, 4, "yes"] },
     ingredients: [[500, "g", "potato gnocchi"], [500, "g", "mild Italian sausage"], [2, null, "bell peppers", "sliced"],
       [1, null, "red onion", "cut in wedges"], [2, "tbsp", "olive oil"], [null, null, "parmesan", "to serve"]],
     steps: ["Heat the oven to 425°F.", "Toss gnocchi, peppers and onion with oil on a sheet pan; nestle in the sausage.",
       "Roast 25 minutes, turning once, until the gnocchi are crisp.", "Finish with parmesan."] },
-  { id: 2, title: "Miso-glazed salmon with sesame greens", minutes: 25, servings: 4, source: "nyt", source_kind: "nyt",
+  { id: 2, title: "Miso-glazed salmon with sesame greens", minutes: 25, servings: 4, source: "nyt", source_kind: "web", source_title: "NYT Cooking",
     photo: "salmon", avg: 4.5, cooked: 4,
     ingredients: [[4, null, "salmon fillets"], [3, "tbsp", "white miso"], [1, "tbsp", "maple syrup"], [1, "tbsp", "rice vinegar"],
       [300, "g", "baby bok choy"], [1, "tbsp", "sesame seeds"]],
@@ -44,20 +44,20 @@ export const RECIPES: MockRecipe[] = [
       [12, null, "corn tortillas"], [1, null, "red onion", "thinly sliced"], [1, null, "lime"]],
     steps: ["Simmer the chicken with tomatoes and chipotle 20 minutes.", "Shred and return to the sauce.",
       "Quick-pickle the onion in lime juice and salt.", "Serve in warm tortillas."] },
-  { id: 4, title: "Red lentil dal with spinach & garlic naan", minutes: 45, servings: 4, source: "nyt", source_kind: "nyt",
+  { id: 4, title: "Red lentil dal with spinach & garlic naan", minutes: 45, servings: 4, source: "nyt", source_kind: "web", source_title: "NYT Cooking",
     photo: "dal", avg: 4.0, cooked: 3,
     ingredients: [[1.5, "cup", "red lentils"], [1, "can", "coconut milk"], [1, "tbsp", "curry powder"], [142, "g", "baby spinach"],
       [4, null, "naan"]],
     steps: ["Simmer lentils with coconut milk and spices until soft.", "Stir in the spinach.", "Warm the naan with garlic butter."] },
-  { id: 5, title: "Lemon orzo with peas, feta & mint", minutes: 30, servings: 4, source: "nyt", source_kind: "nyt",
+  { id: 5, title: "Lemon orzo with peas, feta & mint", minutes: 30, servings: 4, source: "nyt", source_kind: "web", source_title: "NYT Cooking",
     photo: "broken", avg: 3.8, cooked: 2,
     ingredients: [[2, "cup", "orzo"], [1.5, "cup", "frozen peas"], [200, "g", "feta"], [1, null, "lemon"], [0.25, "cup", "mint", "chopped"]],
     steps: ["Cook the orzo; add peas for the last 2 minutes.", "Toss with lemon, feta and mint."] },
-  { id: 6, title: "Green curry meatballs with jasmine rice", minutes: 35, servings: 4, source: "nyt", source_kind: "nyt",
+  { id: 6, title: "Green curry meatballs with jasmine rice", minutes: 35, servings: 4, source: "nyt", source_kind: "web", source_title: "NYT Cooking",
     photo: "curry", avg: null, cooked: 0,
     ingredients: [[500, "g", "ground pork"], [3, "tbsp", "green curry paste"], [1, "can", "coconut milk"], [1.5, "cup", "jasmine rice"]],
     steps: ["Roll the pork with 1 tbsp curry paste into meatballs.", "Simmer in coconut milk and the rest of the paste.", "Serve over rice."] },
-  { id: 7, title: "Mushroom bourguignon", minutes: 75, servings: 4, source: "nyt", source_kind: "nyt",
+  { id: 7, title: "Mushroom bourguignon", minutes: 75, servings: 4, source: "nyt", source_kind: "web", source_title: "NYT Cooking",
     photo: "bourguignon", avg: 4.6, cooked: 3,
     ingredients: [[900, "g", "cremini mushrooms"], [2, null, "carrots"], [1, "cup", "red wine"], [2, "tbsp", "tomato paste"]],
     steps: ["Brown the mushrooms in batches.", "Add carrots, wine and paste; simmer 45 minutes."] },
@@ -65,16 +65,16 @@ export const RECIPES: MockRecipe[] = [
     photo: null, avg: null, cooked: 0,
     ingredients: [[250, "g", "halloumi"], [1, "cup", "farro"], [1, null, "cucumber"], [1, "cup", "cherry tomatoes"]],
     steps: ["Cook the farro.", "Sear the halloumi.", "Build bowls."] },
-  { id: 9, title: "Crispy tofu with peanut noodles", minutes: 30, servings: 4, source: "nyt", source_kind: "nyt",
+  { id: 9, title: "Crispy tofu with peanut noodles", minutes: 30, servings: 4, source: "nyt", source_kind: "web", source_title: "NYT Cooking",
     photo: "noodles", avg: 4.3, cooked: 3, ingredients: [[1, "block", "extra-firm tofu"], [250, "g", "rice noodles"], [0.33, "cup", "peanut butter"]],
     steps: ["Press and pan-fry the tofu.", "Toss noodles in peanut sauce."] },
   { id: 10, title: "Turkey chili with cornbread", minutes: 60, servings: 6, source: "book", source_kind: "book",
     source_title: "Big Pot Suppers", source_ref: "41", photo: null, avg: 4.1, cooked: 4,
     notes: ["Kids wanted more cornbread", "A bit too spicy"],
     ingredients: [[700, "g", "ground turkey"], [2, "can", "kidney beans"], [1, "box", "cornbread mix"]], steps: ["Brown, simmer, bake."] },
-  { id: 11, title: "Shrimp fried rice", minutes: 20, servings: 4, source: "nyt", source_kind: "nyt",
+  { id: 11, title: "Shrimp fried rice", minutes: 20, servings: 4, source: "nyt", source_kind: "web", source_title: "NYT Cooking",
     photo: "rice", avg: 4.4, cooked: 5, ingredients: [[400, "g", "shrimp"], [3, "cup", "cooked rice"], [3, null, "eggs"]], steps: ["Stir-fry."] },
-  { id: 12, title: "Roast chicken with lemon potatoes", minutes: 90, servings: 4, source: "nyt", source_kind: "nyt",
+  { id: 12, title: "Roast chicken with lemon potatoes", minutes: 90, servings: 4, source: "nyt", source_kind: "web", source_title: "NYT Cooking",
     photo: null, avg: 4.9, cooked: 8, company: "yes", ingredients: [[1, null, "whole chicken"], [1, "kg", "yellow potatoes"], [2, null, "lemons"]],
     steps: ["Roast at 425°F about 75 minutes."] },
 ];

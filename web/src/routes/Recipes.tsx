@@ -20,7 +20,7 @@ export function Recipes() {
   const can = useCan();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<Sort>("newest");
-  const [source, setSource] = useState<"all" | "nyt" | "web" | "book" | "other">("all");
+  const [source, setSource] = useState<"all" | "web" | "book" | "other">("all");
   const [importing, setImporting] = useState(false);
   const [company, setCompany] = useState(false);
   const [rating, setRating] = useState<Recipe | null>(null);
@@ -51,9 +51,9 @@ export function Recipes() {
           <input type="search" placeholder="Search recipes, books or sites" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search recipes" />
         </label>
         <div className="seg" role="group" aria-label="Source">
-          {(["all", "nyt", "web", "book", "other"] as const).map((s) => (
+          {(["all", "web", "book", "other"] as const).map((s) => (
             <button key={s} type="button" className={source === s ? "on" : ""} aria-pressed={source === s} onClick={() => setSource(s)}>
-              {{ all: "All", nyt: "NYT Cooking", web: "Websites", book: "Books", other: "Other" }[s]}
+              {{ all: "All", web: "Website", book: "Book", other: "Other" }[s]}
             </button>
           ))}
         </div>
@@ -114,7 +114,6 @@ function RecipeTile({ r, onOpen, onRate }: { r: Recipe; onOpen: () => void; onRa
 }
 
 function sourceText(r: Recipe) {
-  if (r.source_kind === "nyt") return "NYT Cooking";
   if (r.source_kind === "book") return [r.source_title ?? "Unknown book", page(r.source_ref)].filter(Boolean).join(", ");
   if (r.source_kind === "web") return webSource(r).site;
   return r.source_title || "Other";
@@ -161,11 +160,11 @@ function RecipeDrawer({ id, onClose, onRate }: { id: number | null; onClose: () 
             {formatMinutes(d.total_minutes) && <span><Icon name="clock" size={15} />{formatMinutes(d.total_minutes)}</span>}
             {d.servings && <span>Serves {d.servings}</span>}
             {d.ratings.avg_family ? <span><Star size={15} /><b>{formatAvg(d.ratings.avg_family)}</b> family average from {d.ratings.rating_count} {d.ratings.rating_count === 1 ? "rating" : "ratings"}</span> : <span className="muted">Not rated yet</span>}
-            {d.source_url && <a href={d.source_url} target="_blank" rel="noreferrer">{d.source_kind === "nyt" ? "Open on NYT Cooking" : d.source_kind === "web" ? `Open on ${webSource(d).site}` : "The recipe's page"} <Icon name="external" size={13} /><span className="visually-hidden"> (opens in a new tab)</span></a>}
+            {d.source_url && <a href={d.source_url} target="_blank" rel="noreferrer">{d.source_kind === "web" ? `Open on ${webSource(d).site}` : "The recipe's page"} <Icon name="external" size={13} /><span className="visually-hidden"> (opens in a new tab)</span></a>}
           </div>
           <div className="source-line">
             {d.source_kind === "web" ? <WebAttribution r={d} /> : <span>From: {sourceLabel(d)}</span>}
-            {canEdit && d.source_kind !== "nyt" && d.source_kind !== "web" && (
+            {canEdit && d.source_kind !== "web" && (
               <Button kind="ghost" size="sm" onClick={() => setEditing("source")}>{d.source_kind === "book" && !d.source_title ? "Add book" : "Edit source"}</Button>
             )}
             {can("rate.self") && <Button kind="outline" size="sm" icon="star" onClick={() => onRate(d)}>Rate</Button>}

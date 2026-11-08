@@ -47,7 +47,7 @@ export function AddRecipeDialog({ open, week, day, onClose }: { open: boolean; w
                 <span className="pick-text">
                   <b>{r.title}</b>
                   <small>
-                    {[formatMinutes(r.total_minutes), r.source_kind === "book" || r.source_kind === "web" ? r.source_title : r.source_kind === "nyt" ? "NYT Cooking" : null].filter(Boolean).join(" · ")}
+                    {[formatMinutes(r.total_minutes), r.source_kind === "book" || r.source_kind === "web" ? r.source_title : null].filter(Boolean).join(" · ")}
                   </small>
                 </span>
                 <span className="pick-meta">
