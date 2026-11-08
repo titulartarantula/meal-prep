@@ -46,7 +46,7 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 | Edit source / Add book (Book · Other, "Used before") | Yes | |
 | Book search ("Which book?", Open Library / Google Books) | Yes | Your books first, then the server's search. |
 | Add photo of p.N (cross-referenced pages) | No | |
-| Import an NYT link | Yes | |
+| Import a recipe link (NYT Cooking or any site) | Yes (web + Android 0.20.0, 2026-11-08) | Any public recipe page: the server reads its JSON-LD / microdata, else the AI reads the page; saved as a website recipe ("From <site> · by <author>", link to the original, Websites / per-site filter). The same page again opens the saved one. |
 | Cookbook photo import (camera, multi-page, reorder/retake/delete, Which book? + page) | No | A phone browser could use `<input type=file capture>`; not built. |
 | Import from a file: JSON-LD / saved page | Yes | Preview + choices + apply. |
 | Import from a file: PDF / Word / text (several recipes per document) | Yes | Same dialog (read job, then preview). |
@@ -117,7 +117,7 @@ This week action on phones, and the theme menu fix. The rows below are updated.
 
 ## Summary
 
-- **Same on both:** week plan (place, move, remove), library search/sort, add to a week, NYT link import, file and
+- **Same on both:** week plan (place, move, remove), library search/sort, add to a week, recipe link import (any site), file and
   document import, edit recipe and source (book search), rating with company verdict, note, So far and earlier notes,
   the How was banner, Good for company, shopping list with staples, build → review → swap → add → send.
 - **Phone only, biggest gaps:** cookbook photos, export, fridge cleaner, notifications, offline, staples editing, pins
