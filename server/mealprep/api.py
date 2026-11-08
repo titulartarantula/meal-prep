@@ -18,12 +18,19 @@ from .exchange import importer, jsonld, safe
 from .config import Settings
 from .importers.nyt import BASE as NYT_BASE, extract_nyt_url, fetch_nyt_recipe, parse_nyt_html, parse_nyt_image, \
     recipe_id as nyt_id
+from .importers import web
 from .importers.photo import import_photo, import_subrecipe
+from .importers.web import fetch_page
 from .importers.structure import structure_ingredients
 from .matcher import fill_cart
 from .models import EDITABLE_FIELDS, FridgeItem, ListItem, PlanEntry, Recipe, RecipeDetail, RecipeOut, SourceKind, Staple, recipe_revision
 from .pcx import Pcx
 from .shopping import build_list
+
+
+def web_resolve(host: str, port: int) -> list[str]:
+    """DNS for the any-site import's link check (a module function so tests can answer for invented hosts)."""
+    return web._resolve(host, port)
 
 
 PREP_RETIRED = "Sunday prep and cook cards have been retired; update the app."
@@ -671,11 +678,52 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.post("/recipes/share", dependencies=A)
     def share(body: ShareIn, c=Depends(get_conn), s: Scope = Depends(household_scope)):
+        """Import the recipe at the first link in `text`: an NYT Cooking recipe link (its own importer: slug repair,
+        photo crops) or any other web page (importers/web.py: JSON-LD, microdata, else the AI on the page's text;
+        attributed to the site and author). A link already in the library (same NYT id, or the same page) returns
+        that recipe with existing = true instead of importing it again. 422 = no link / not a public web page / no
+        recipe on it; 502 = the site couldn't be read (blocked, paywall, down) or the AI failed."""
         if body.week is not None:
             s.require("plan.edit")
+        if extract_nyt_url(body.text):
+            return _share_nyt(c, s, body)
+        link = web.extract_url(body.text)
+        if not link:
+            raise HTTPException(422, "No web link found. Share or paste the recipe page's link.")
+        return _share_web(c, s, body, link)
+
+    def _existing_web(c, url: str):
+        return c.execute("SELECT id FROM recipes WHERE source_url = ANY(%s) ORDER BY id LIMIT 1",
+                         (web.url_variants(url),)).fetchone()
+
+    def _share_web(c, s: Scope, body: ShareIn, link: str):
+        try:
+            link = web.check_url(web.normalise_url(link), resolve=web_resolve)
+        except web.WebImportError as e:
+            log.warning("share import of %s refused: %s", link[:200], e.reason)
+            raise HTTPException(422, str(e))
+        existing = _existing_web(c, link)
+        if existing:   # the shared link is already in the library (checked before fetching anything)
+            return _save_and_plan(c, db.get_recipe(c, existing[0]), body.week, existing=True)
+        try:
+            page = fetch_page(link, import_cap)
+            # the AI reads a page without recipe markup (several calls on a long page: the document reader's timeout)
+            found = web.read_recipe(page.html, page.url, ai=metered(document_ai, s, "share"), tidy=importer.tidy)
+        except web.WebImportError as e:
+            log.warning("share import of %s failed: %s: %s", link[:200], e.reason, str(e)[:300])
+            raise HTTPException(422 if e.reason in web.USER_ERRORS else 502, str(e))
+        except Exception as e:   # AIError and anything unexpected
+            log.warning("share import of %s failed: %s: %s", link[:200], type(e).__name__, str(e)[:300])
+            raise HTTPException(502, f"import failed: {type(e).__name__}: {str(e)[:200]}")
+        r = found.recipe
+        existing = _existing_web(c, r.source_url) if r.source_url else None
+        if existing:   # a redirect or the canonical link names a page already in the library
+            return _save_and_plan(c, db.get_recipe(c, existing[0]), body.week, existing=True)
+        log.warning("share import of %s: %s recipe from %s (%s)", link[:200], found.how, r.source_title, r.source_url)
+        return _save_and_plan(c, r, body.week)
+
+    def _share_nyt(c, s: Scope, body: ShareIn):
         url = extract_nyt_url(body.text)
-        if not url:
-            raise HTTPException(422, "no NYT Cooking link found")
         # Same numeric id = same recipe, whatever the slug (share links don't always carry the canonical one).
         rid = nyt_id(url)
         existing = c.execute("SELECT id FROM recipes WHERE source_url=%s OR source_url=%s OR source_url LIKE %s "
@@ -759,7 +807,8 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             kind = fields.get("source_kind", r.source_kind)
             title = fields.get("source_title", r.source_title)
             ref = fields.get("source_ref", r.source_ref)
-            same_book = (title or "").lower() == (r.source_title or "").lower()
+            # a book's author/ISBN belong to that book; a web recipe's author stays when the site's name is edited
+            same_book = (title or "").lower() == (r.source_title or "").lower() or (kind == "web" == r.source_kind)
             author = fields.get("source_author", r.source_author if same_book else None)
             isbn = fields.get("source_isbn", r.source_isbn if same_book else None)
             if kind == "nyt":

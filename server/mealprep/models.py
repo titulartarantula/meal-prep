@@ -17,7 +17,7 @@ class Ingredient(BaseModel):
     expanded: bool = False         # a "…, page 191" line whose sub-recipe was attached: not bought itself
 
 
-SourceKind = Literal["nyt", "book", "other"]
+SourceKind = Literal["nyt", "book", "other", "web"]
 SOURCE_FIELDS = {"source_kind", "source_title", "source_ref", "source_author", "source_isbn"}   # stored in recipes columns, not in `data`
 COLUMN_FIELDS = SOURCE_FIELDS | {"uid"}   # every Recipe field kept in a recipes column (never inside `data`)
 
@@ -25,13 +25,15 @@ COLUMN_FIELDS = SOURCE_FIELDS | {"uid"}   # every Recipe field kept in a recipes
 class Recipe(BaseModel):
     id: int | None = None
     title: str
-    source: str                  # how it was imported: "nyt" | "photo"
+    source: str                  # how it was imported: "nyt" | "photo" | "web" | "import" …
     source_url: str | None = None
     servings: int | None = None
     ingredients: list[Ingredient]
     steps: list[str]
     # Where the recipe comes from (columns on recipes, editable with PATCH /recipes/{id}): NYT Cooking, a cookbook
-    # (source_title = the book, null = not known yet; source_ref = page(s), free text) or something else.
+    # (source_title = the book, null = not known yet; source_ref = page(s), free text), a web page ("web", 2026-11-08:
+    # source_title = the site's name, source_author = the recipe's author, source_url = its canonical link) or
+    # something else.
     source_kind: SourceKind | None = None   # None only before saving: save_recipe derives it (default_kind)
     source_title: str | None = None
     source_ref: str | None = None
@@ -55,6 +57,8 @@ class Recipe(BaseModel):
     def default_kind(self) -> str:
         if self.source_url and "nytimes.com" in self.source_url:
             return "nyt"
+        if self.source == "web":
+            return "web"
         return "book" if self.source == "photo" else "other"
 
 

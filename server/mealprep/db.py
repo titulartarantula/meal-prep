@@ -91,11 +91,13 @@ def save_recipe(conn, r: Recipe, ai_provider: str | None = None) -> int:
 
 def _source(kind, title, ref, author, isbn) -> tuple:
     """An NYT recipe has no book, page, author or ISBN; an author/ISBN belongs to a known book title only (an "other"
-    source, e.g. "Mum's recipes", is a name and a note: no author/ISBN)."""
+    source, e.g. "Mum's recipes", is a name and a note: no author/ISBN); a web page has its site and author only."""
     if kind == "nyt":
         return None, None, None, None
     if kind == "other":
         return title, ref, None, None
+    if kind == "web":   # the site and the recipe's author; no page or ISBN
+        return title, None, author, None
     return (title, ref, author, isbn) if title else (None, ref, None, None)
 
 
@@ -137,15 +139,17 @@ def update_source(conn, rid: int, kind: str, title: str | None, ref: str | None,
 
 
 def source_filter(source: str | None) -> tuple[str, dict]:
-    """SQL condition for GET /recipes?source=: "nyt", "book" (every book), "other" (every other source),
-    "book:<title>" / "other:<name>" (case-insensitive, spacing ignored), "book:" (book not known yet), "other:" (other
-    source without a name); any other value is a book title."""
+    """SQL condition for GET /recipes?source=: "nyt", "book" (every book), "other" (every other source), "web" (every
+    web page), "book:<title>" / "other:<name>" / "web:<site>" (case-insensitive, spacing ignored), "book:" (book not
+    known yet), "other:" (other source without a name), "web:" (a page without a site name); any other value is a
+    book title."""
     if not source:
         return "", {}
     s = source.strip()
-    if s in ("nyt", "book", "other"):
+    if s in ("nyt", "book", "other", "web"):
         return " WHERE source_kind = %(kind)s", {"kind": s}
-    kind = "other" if s.lower().startswith("other:") else "book"
+    low = s.lower()
+    kind = "other" if low.startswith("other:") else "web" if low.startswith("web:") else "book"
     title = s[len(kind) + 1:] if s.lower().startswith(kind + ":") else s
     title = " ".join(title.split())
     if not title:
@@ -159,7 +163,8 @@ def list_recipes(conn, source: str | None = None) -> list[Recipe]:
 
 
 def recipe_sources(conn) -> list[dict]:
-    """Distinct sources with counts: NYT Cooking, each book and each named other source ("Mum's recipes") A–Z
+    """Distinct sources with counts: NYT Cooking, each book and each named other source ("Mum's recipes") A–Z, each web
+    site A–Z
     (titles grouped case-insensitively, the newest recipe's spelling shown), Unknown book, Other (no name). `key` is
     the GET /recipes?source= value that lists them."""
     rows = conn.execute(
@@ -174,11 +179,16 @@ def recipe_sources(conn) -> list[dict]:
              for k, t, n, a, i in rows if k == "book" and t is not None]
     named = [{"key": f"other:{t}", "kind": "other", "title": t, "label": t, "count": n}
              for k, t, n, _, _ in rows if k == "other" and t is not None]
+    # web sites after the books and named sources, A–Z (an old app shows them nowhere: it lists books and others)
+    sites = sorted(({"key": f"web:{t}", "kind": "web", "title": t, "label": t, "count": n}
+                    for k, t, n, _, _ in rows if k == "web" and t is not None), key=lambda b: b["title"].lower())
+    unnamed_web = [{"key": "web:", "kind": "web", "title": None, "label": "Websites", "count": n}
+                   for k, t, n, _, _ in rows if k == "web" and t is None]
     unknown = [{"key": "book:", "kind": "book", "title": None, "label": "Unknown book", "count": n}
                for k, t, n, _, _ in rows if k == "book" and t is None]
     other = [{"key": "other:", "kind": "other", "title": None, "label": "Other", "count": n}
              for k, t, n, _, _ in rows if k == "other" and t is None]
-    return nyt + sorted(books + named, key=lambda b: (b["title"].lower(), b["kind"])) + unknown + other
+    return nyt + sorted(books + named, key=lambda b: (b["title"].lower(), b["kind"])) + sites + unnamed_web + unknown + other
 
 
 def get_pick(conn, key: str) -> str | None:

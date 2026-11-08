@@ -697,6 +697,16 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Any-site import (2026-11-08): source_kind 'web' = a recipe imported from a web page (source_title = the site's
+-- name, source_author = the recipe's author, source_url = the page's canonical link). Widen the check once.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'recipes_source_kind_check'
+             AND pg_get_constraintdef(oid) NOT LIKE '%web%') THEN
+    ALTER TABLE recipes DROP CONSTRAINT recipes_source_kind_check;
+    ALTER TABLE recipes ADD CONSTRAINT recipes_source_kind_check CHECK (source_kind IN ('nyt','book','other','web'));
+  END IF;
+END $$;
+
 GRANT USAGE ON SCHEMA public TO mealprep_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mealprep_app;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO mealprep_app;

@@ -119,6 +119,10 @@ def _based_on(r: RecipeOut):
     if r.source_kind == "other" and r.source_title:
         o = {"@type": "CreativeWork", "name": r.source_title, "mealprep:note": r.source_ref}
         return {k: v for k, v in o.items() if v is not None}
+    if r.source_kind == "web" and (r.source_url or r.source_title):
+        w = {"@type": "WebPage", "url": r.source_url, "publisher": {"@type": "Organization", "name": r.source_title}
+             if r.source_title else None, "author": {"@type": "Person", "name": r.source_author} if r.source_author else None}
+        return {k: v for k, v in w.items() if v is not None}
     return None
 
 
@@ -487,6 +491,17 @@ def _foreign_source(node: dict, url: str | None, warnings: list[str]) -> dict:
     based = node.get("isBasedOn")
     if isinstance(based, list):
         based = next((b for b in based if isinstance(b, dict)), based[0] if based else None)
+    if isinstance(based, dict) and "WebPage" in _type_set(based.get("@type")):   # our own export of a web recipe
+        page = safe_url(based.get("url")) or url
+        site = _names(based.get("publisher")) or (_host(page) if page else None)
+        return {"source_kind": "web", "source_url": page, "source_title": site[:200] if site else None,
+                "source_author": _names(based.get("author"))}
+    if url and not isinstance(based, dict):
+        # a recipe from a web page (2026-11-08): the site's name and the recipe's author, like a link import
+        site = _names(node.get("publisher")) or _host(url)
+        author = _names(node.get("author"))
+        return {"source_kind": "web", "source_url": url, "source_title": site[:200] if site else None,
+                "source_author": None if author and site and author.casefold() == site.casefold() else author}
     src: dict = {"source_kind": "other", "source_url": url}
     if isinstance(based, dict):
         types = _type_set(based.get("@type"))
@@ -576,7 +591,7 @@ def _from_block(node: dict, block: dict, warnings: list[str]) -> Incoming:
     if url is not None and not safe_url(url):
         warnings.append(DROPPED_LINK)
         url = None
-    kind = src.get("kind") if src.get("kind") in ("nyt", "book", "other") else None
+    kind = src.get("kind") if src.get("kind") in ("nyt", "book", "other", "web") else None
     isbn = None
     if src.get("isbn"):
         try:

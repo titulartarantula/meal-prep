@@ -127,6 +127,8 @@ def source_label(r: Recipe) -> str:
         return "NYT Cooking"
     if r.source_kind == "book":
         return f"Book · {r.source_title}" if r.source_title else "Unknown book"
+    if r.source_kind == "web":
+        return f"Website · {r.source_title}" if r.source_title else "Website"
     return f"Other · {r.source_title}" if r.source_title else "Other"
 
 

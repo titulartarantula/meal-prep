@@ -49,7 +49,8 @@ def test_graph_with_webpage():
     assert (beans.name, beans.qty, beans.unit) == ("black beans", 2.0, "can")
     assert "drained" in beans.prep and "14 oz" in beans.prep
     assert r.ingredients[2].likely_on_hand is True                      # ground cumin
-    assert r.source_kind == "other" and r.source_title == "Example Recipes"
+    # a recipe with its web page's link is a website recipe (2026-11-08): the publisher is the site
+    assert r.source_kind == "web" and r.source_title == "Example Recipes"
     assert r.source_url == "https://recipes.example.org/test-bean-chili" and inc.link == r.source_url
     assert r.schema_extra == {"recipeCuisine": "Test", "keywords": "beans, chili"}   # aggregateRating ignored
     assert r.uid == str(uuid.uuid5(uuid.NAMESPACE_URL, r.source_url))

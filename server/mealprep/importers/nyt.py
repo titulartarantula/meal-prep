@@ -168,8 +168,13 @@ def parse_nyt_image(html: str) -> str | None:
     """The recipe photo's link from the page's JSON-LD `image` (a link, a list of links or ImageObjects), or None.
     Only https links (the web app's CSP and mixed content); the photo stays on NYT's servers (hotlinked)."""
     n = _recipe_node(html)
-    img = n.get("image") if n else None
-    items = img if isinstance(img, list) else [img]
+    return pick_image(n.get("image") if n else None)
+
+
+def pick_image(img) -> str | None:
+    """A card-sized https photo link from a schema.org `image` value (a link, an ImageObject, or a list of them): an
+    NYT crop by name first, else the one closest to 800 px wide, else the first. Also used for any web page."""
+    items = (img if isinstance(img, list) else [img])[:50]
     found: list[tuple[str, str, int]] = []   # (link, id + link to match a crop name in, width)
     for it in items:
         if isinstance(it, str):
