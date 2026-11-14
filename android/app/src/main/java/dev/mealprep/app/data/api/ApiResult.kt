@@ -32,6 +32,10 @@ sealed interface ApiError {
     data class Other(val message: String) : ApiError
 }
 
+/** The server couldn't get what it needed from another site (Loblaws, a recipe site, the AI): 502 from the LAN API;
+ *  the public site (mealprep.drwhom.ca) passes the same answer on as 424, since Cloudflare replaces any 502. */
+val UPSTREAM_FAILED = setOf(502, 424)
+
 fun ApiError.userMessage(): String = when (this) {
     ApiError.NotConfigured -> "Set the server address and token in Settings."
     ApiError.Unreachable -> "Can't reach the meal-prep server. Are you on home Wi-Fi (or WireGuard)?"
@@ -39,7 +43,7 @@ fun ApiError.userMessage(): String = when (this) {
     ApiError.Unauthorized -> "The server didn't accept this phone's sign-in. Check Settings."
     // The server's 502 details are "<step> failed: SomeError: …" — internals, not sentences. Other details
     // (404/409/422) are written for people and shown as they are.
-    is ApiError.Http -> if (code == 502) "The server couldn't get what it needed from another site. Try again later."
+    is ApiError.Http -> if (code in UPSTREAM_FAILED) "The server couldn't get what it needed from another site. Try again later."
         else detail ?: "Server error ($code)."
     is ApiError.Exists -> detail
     is ApiError.Other -> message

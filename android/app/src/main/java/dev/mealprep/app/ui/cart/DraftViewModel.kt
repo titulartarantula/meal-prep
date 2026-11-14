@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.ApiError
 import dev.mealprep.app.data.api.ApiResult
+import dev.mealprep.app.data.api.UPSTREAM_FAILED
 import dev.mealprep.app.data.api.Draft
 import dev.mealprep.app.data.api.DraftLine
 import dev.mealprep.app.data.api.userMessage
@@ -151,7 +152,7 @@ class DraftViewModel(private val repo: Repository, private val id: Int, private 
         const val CHANGED = "This cart changed on the server — reloaded."
         const val CHANGED_HERE = "This cart was sent or changed on the server — go back to see it."
         fun sendMessage(e: ApiError): String =
-            if (e is ApiError.Http && e.code == 502) "Loblaws didn't take the cart just now. Try Send again in a minute."
+            if (e is ApiError.Http && e.code in UPSTREAM_FAILED) "Loblaws didn't take the cart just now. Try Send again in a minute."
             else e.userMessage()
     }
 }

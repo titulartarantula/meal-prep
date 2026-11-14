@@ -9,6 +9,7 @@ import dev.mealprep.app.core.RatingText
 import dev.mealprep.app.core.firstMissingRef
 import dev.mealprep.app.data.api.ApiError
 import dev.mealprep.app.data.api.ApiResult
+import dev.mealprep.app.data.api.UPSTREAM_FAILED
 import dev.mealprep.app.data.api.ShareResult
 import dev.mealprep.app.data.api.userMessage
 import dev.mealprep.app.notify.Notifier
@@ -60,12 +61,12 @@ class ImportWorker(
 
         /** The server's 502 on an import means it couldn't fetch or read the recipe. */
         fun importMessage(e: ApiError, kind: String? = LINK): String = when {
-            e is ApiError.Http && e.code == 502 && kind == PHOTO -> PHOTO_UNREADABLE
-            e is ApiError.Http && e.code == 502 && kind == PAGES -> PAGE_UNREADABLE
+            e is ApiError.Http && e.code in UPSTREAM_FAILED && kind == PHOTO -> PHOTO_UNREADABLE
+            e is ApiError.Http && e.code in UPSTREAM_FAILED && kind == PAGES -> PAGE_UNREADABLE
             alreadyAttached(e, kind) -> ALREADY_ATTACHED
             // a link the server couldn't read says why (the site blocks automated readers, wants a subscription …)
-            e is ApiError.Http && e.code == 502 && kind == LINK && siteReason(e.detail) != null -> siteReason(e.detail)!!
-            e is ApiError.Http && e.code == 502 -> "Couldn't read that recipe. Try again later."
+            e is ApiError.Http && e.code in UPSTREAM_FAILED && kind == LINK && siteReason(e.detail) != null -> siteReason(e.detail)!!
+            e is ApiError.Http && e.code in UPSTREAM_FAILED -> "Couldn't read that recipe. Try again later."
             else -> e.userMessage()
         }
 

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.ApiError
 import dev.mealprep.app.data.api.ApiResult
+import dev.mealprep.app.data.api.UPSTREAM_FAILED
 import dev.mealprep.app.data.api.Choice
 import dev.mealprep.app.data.api.DraftLine
 import dev.mealprep.app.data.api.userMessage
@@ -197,7 +198,7 @@ class ChooserViewModel(private val repo: Repository, private val mode: ChooserMo
     }
 
     private fun searchMessage(e: ApiError): String =
-        if (e is ApiError.Http && e.code == 502) "Loblaws didn't answer just now. Try again in a minute." else e.userMessage()
+        if (e is ApiError.Http && e.code in UPSTREAM_FAILED) "Loblaws didn't answer just now. Try again in a minute." else e.userMessage()
 
     companion object {
         const val GONE = "This line isn't in the cart any more."
