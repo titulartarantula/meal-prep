@@ -17,8 +17,17 @@
 	}
 	# The server judges the shared token by the caller's address: it sees this container's, never a client's, so the
 	# token is refused through the public site. Don't add X-Forwarded-For trust on the server side.
+	# Cloudflare replaces any 502 or 504 from this origin with its own "origin returned an invalid response" error, so
+	# the server's own sentence ("that site blocks automated readers…") never reached the page. Its 502/504 answers are
+	# passed on as 424 (same body); a server that doesn't answer at all gets a JSON 503 from handle_errors below. The
+	# LAN API on :8790 (the Android app) still answers 502 as before.
 	handle_path /api/* {
-		reverse_proxy 192.168.1.101:8790
+		reverse_proxy 192.168.1.101:8790 {
+			@gateway status 502 504
+			handle_response @gateway {
+				copy_response 424
+			}
+		}
 	}
 
 	# CSP etc. are set for the app's pages; JSON from /api doesn't need them but they do no harm there.
@@ -44,6 +53,14 @@
 
 	# A single-page app: any path that isn't a file is the app's route. /privacy and /terms are static pages
 	# (privacy.html, terms.html: no JavaScript, no sign-in).
+	handle_errors 502 503 504 {
+		@api path /api/*
+		handle @api {
+			header Content-Type application/json
+			respond `{"detail":"The Meal Prep server isn't answering right now. Try again in a minute."}` 503
+		}
+	}
+
 	handle {
 		root * /srv
 		try_files {path} {path}.html /index.html

@@ -47,13 +47,26 @@ export async function api<T>(method: string, path: string, body?: Body, opts: { 
   return data as T;
 }
 
-function errorText(data: unknown, status: number): string {
+/** Cloudflare (in front of the site) answers some failures itself: an HTML page, or for JSON clients an RFC 9457
+ * body whose detail talks about "the origin web server". Neither is a sentence for the household. */
+function fromCloudflare(data: unknown): boolean {
+  if (typeof data === "string") return /cloudflare|<html/i.test(data);
+  if (!data || typeof data !== "object") return false;
+  const d = data as Record<string, unknown>;
+  return "ray_id" in d || "cloudflare_error" in d || /cloudflare|origin web server/i.test(String(d.detail ?? ""));
+}
+
+export function errorText(data: unknown, status: number): string {
+  if (fromCloudflare(data)) {
+    if (status === 524 || status === 504) return "The server took too long to answer. Try again in a minute.";
+    return "The Meal Prep server couldn't be reached just now. Try again in a minute.";
+  }
   if (data && typeof data === "object" && "detail" in data) {
     const d = (data as { detail: unknown }).detail;
     if (typeof d === "string") return d;
     if (Array.isArray(d)) return d.map((e) => (e as { msg?: string }).msg ?? "").filter(Boolean).join("; ");
   }
-  if (status === 502) return "The server couldn't reach Loblaws or the import source. Try again in a minute.";
+  if (status === 502 || status === 424) return "The server couldn't reach Loblaws or the import source. Try again in a minute.";
   if (status >= 500) return "Something went wrong on the server.";
   return `Request failed (${status})`;
 }
