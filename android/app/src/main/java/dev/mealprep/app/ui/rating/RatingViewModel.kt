@@ -90,8 +90,10 @@ class RatingViewModel(
             }
             entry = e; recipeId = e.recipeId
             _state.update { it.copy(title = e.title ?: "this recipe", night = e.day?.let(Weeks::longDayLabel).orEmpty(),
-                loading = false, offlineSince = w.offlineSince) }
+                offlineSince = w.offlineSince) }
+            // Loaded only once the saved rating is in: a screen (or test) that sees loading = false never gets an empty form.
             show(null)
+            _state.update { it.copy(loading = false) }
             repo.recipe(e.recipeId).value?.let { r ->
                 savedCompany = r.ratings.company?.takeIf { it == "yes" || it == "no" }
                 _state.update { it.copy(summary = r.ratings, company = savedCompany) }
