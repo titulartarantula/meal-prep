@@ -37,6 +37,14 @@ class ApiErrorTest {
         assertEquals(ApiError.Http(500, null), err { api.weeks("2026-10-04", 1) })
     }
 
+    @Test fun `a 426 (an app from before Monday weeks) shows the server's detail`() = runTest {
+        val detail = "Weeks now start on Monday. Update the Meal Prep app to keep planning."
+        reply(426, """{"detail":"$detail"}""")
+        val e = err { api.weeks("2026-10-05", 1) }
+        assertEquals(ApiError.Http(426, detail), e)
+        assertEquals(detail, e.userMessage())
+    }
+
     @Test fun `nothing listening is Unreachable`() = runTest {
         val dead = Http.api("http://127.0.0.1:1/", Http.client({ "tok" }))
         assertEquals(ApiError.Unreachable, (apiCall { dead.health() } as ApiResult.Err).error)

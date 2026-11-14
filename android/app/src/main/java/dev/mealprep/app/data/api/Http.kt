@@ -34,6 +34,10 @@ object Http {
 
     private val HEALTH = Regex("""/health$""")
 
+    /** Sent on every request: weeks run Monday–Sunday, named by their Monday (0.21.0). */
+    const val WEEK_START_HEADER = "X-Week-Start"
+    const val WEEK_START = "monday"
+
     fun client(
         token: () -> String,
         connectTimeoutSec: Long = 5,
@@ -53,7 +57,10 @@ object Http {
             val orig = chain.request()
             // Every call except GET /health carries the bearer token.
             val skipAuth = t.isBlank() || (orig.method == "GET" && HEALTH.containsMatchIn(orig.url.encodedPath))
-            val req = if (skipAuth) orig else orig.newBuilder().header("Authorization", "Bearer $t")
+            // Every call (also without the token) says the app knows weeks start on Monday; the server answers an
+            // app from before 0.21.0 (no header) with 426 and a detail asking to update.
+            val weekStart = orig.newBuilder().header(WEEK_START_HEADER, WEEK_START).build()
+            val req = if (skipAuth) weekStart else weekStart.newBuilder().header("Authorization", "Bearer $t")
                 .apply { household()?.let { header("X-Household", it.toString()) } }.build()
             val path = req.url.encodedPath
             val c = when {

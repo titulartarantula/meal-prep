@@ -11,18 +11,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RemindersTest {
-    private val wk = LocalDate.parse("2026-10-11")
-    private val sunMorning = LocalDateTime.parse("2026-10-11T10:00")
-    private val chili = PlanEntry(21, "2026-10-11", 5, 2, title = "Chili")
-    private val soup = PlanEntry(22, "2026-10-11", 6, 4, title = "Fish soup")
-    private fun plan(entries: List<PlanEntry>, prefs: NotifPrefs = NotifPrefs(), now: LocalDateTime = sunMorning) =
+    private val wk = LocalDate.parse("2026-10-12")
+    private val monMorning = LocalDateTime.parse("2026-10-12T10:00")
+    private val chili = PlanEntry(21, "2026-10-12", 5, 2, title = "Chili")
+    private val soup = PlanEntry(22, "2026-10-12", 6, 4, title = "Fish soup")
+    private fun plan(entries: List<PlanEntry>, prefs: NotifPrefs = NotifPrefs(), now: LocalDateTime = monMorning) =
         Reminders.plan(listOf(WeekData(wk, entries)), prefs, now).associateBy { it.id }
 
     @Test fun `morning after each placed, unrated dinner`() {
-        val r = plan(listOf(chili, soup.copy(rating = Rating(4)), PlanEntry(23, "2026-10-11", 1, null, title = "Cookies")))
-        assertEquals(LocalDateTime.parse("2026-10-14T09:00"), r["rate-21"]!!.at)
-        assertEquals("How was Tuesday's Chili?", r["rate-21"]!!.title)
-        assertEquals("rating/21/2026-10-11", r["rate-21"]!!.nav)
+        val r = plan(listOf(chili, soup.copy(rating = Rating(4)), PlanEntry(23, "2026-10-12", 1, null, title = "Cookies")))
+        assertEquals(LocalDateTime.parse("2026-10-15T09:00"), r["rate-21"]!!.at)
+        assertEquals("How was Wednesday's Chili?", r["rate-21"]!!.title)
+        assertEquals("rating/21/2026-10-12", r["rate-21"]!!.nav)
         assertEquals(21, r["rate-21"]!!.entryId); assertEquals(wk, r["rate-21"]!!.week)
         assertTrue("rate-22" !in r && "rate-23" !in r)
     }
@@ -37,10 +37,10 @@ class RemindersTest {
         assertTrue(plan(listOf(chili)).keys.none { it.startsWith("tonight") })
         val prefs = NotifPrefs(tonight = true, tonightAt = LocalTime.of(16, 30), rateAt = LocalTime.of(8, 15))
         val r = plan(listOf(chili, soup), prefs = prefs)
-        assertEquals(LocalDateTime.parse("2026-10-13T16:30"), r["tonight-21"]!!.at)
+        assertEquals(LocalDateTime.parse("2026-10-14T16:30"), r["tonight-21"]!!.at)
         assertEquals("Tonight: Chili", r["tonight-21"]!!.title)
-        assertEquals(LocalDateTime.parse("2026-10-14T08:15"), r["rate-21"]!!.at)
-        assertTrue(plan(listOf(chili), now = LocalDateTime.parse("2026-10-14T09:30")).isEmpty())
+        assertEquals(LocalDateTime.parse("2026-10-15T08:15"), r["rate-21"]!!.at)
+        assertTrue(plan(listOf(chili), now = LocalDateTime.parse("2026-10-15T09:30")).isEmpty())
     }
 
     @Test fun `tonight opens the recipe`() {
@@ -52,15 +52,15 @@ class RemindersTest {
         assertTrue(plan(listOf(chili, soup), prefs = NotifPrefs(rate = false, tonight = false)).isEmpty())
     }
 
-    @Test fun `Saturday dinner is rated Sunday morning (next week)`() {
-        val sat = PlanEntry(30, "2026-10-04", 7, 6, title = "Pizza")
-        val r = Reminders.plan(listOf(WeekData(LocalDate.parse("2026-10-04"), listOf(sat))), NotifPrefs(), LocalDateTime.parse("2026-10-10T12:00"))
-        assertEquals(LocalDateTime.parse("2026-10-11T09:00"), r.single().at)
+    @Test fun `Sunday dinner is rated Monday morning (next week)`() {
+        val sun = PlanEntry(30, "2026-10-05", 7, 6, title = "Pizza")
+        val r = Reminders.plan(listOf(WeekData(LocalDate.parse("2026-10-05"), listOf(sun))), NotifPrefs(), LocalDateTime.parse("2026-10-11T12:00"))
+        assertEquals(LocalDateTime.parse("2026-10-12T09:00"), r.single().at)
     }
 
     @Test fun `two weeks, sorted by time`() {
-        val next = WeekData(LocalDate.parse("2026-10-18"), listOf(PlanEntry(40, "2026-10-18", 8, 1, title = "Tacos")))
-        val r = Reminders.plan(listOf(next, WeekData(wk, listOf(chili, soup))), NotifPrefs(), sunMorning)
+        val next = WeekData(LocalDate.parse("2026-10-19"), listOf(PlanEntry(40, "2026-10-19", 8, 1, title = "Tacos")))
+        val r = Reminders.plan(listOf(next, WeekData(wk, listOf(chili, soup))), NotifPrefs(), monMorning)
         assertEquals(listOf("rate-21", "rate-22", "rate-40"), r.map { it.id })
     }
 }

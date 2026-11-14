@@ -43,7 +43,7 @@ class ReminderSchedulerTest {
     private val env = TestEnv()
     private lateinit var wm: WorkManager
     private val zone = ZoneId.of("America/Toronto")
-    private val now = ZonedDateTime.of(LocalDateTime.parse("2026-10-11T10:00"), zone)
+    private val now = ZonedDateTime.of(LocalDateTime.parse("2026-10-12T10:00"), zone)
     @Volatile private var wanted = true
     private fun r(id: String, at: String) = Reminder(id, ReminderKind.RATE, LocalDateTime.parse(at), "Title $id", "Text $id", "card/1")
 
@@ -69,23 +69,23 @@ class ReminderSchedulerTest {
 
     @Test fun `reconcile schedules wanted reminders and cancels the rest`() {
         val s = ReminderScheduler(wm)
-        s.reconcile(listOf(r("rate-1", "2026-10-14T09:00"), r("rate-2", "2026-10-15T09:00")), now)
+        s.reconcile(listOf(r("rate-1", "2026-10-15T09:00"), r("rate-2", "2026-10-16T09:00")), now)
         assertEquals(WorkInfo.State.ENQUEUED, info("rate-1").state)
-        s.reconcile(listOf(r("rate-2", "2026-10-15T09:00")), now)
+        s.reconcile(listOf(r("rate-2", "2026-10-16T09:00")), now)
         assertEquals(WorkInfo.State.CANCELLED, info("rate-1").state)
         assertEquals(WorkInfo.State.ENQUEUED, info("rate-2").state)
-        assertEquals(Duration.ofHours(95).toMillis(), info("rate-2").initialDelayMillis)   // Sun 10:00 → Thu 09:00
+        assertEquals(Duration.ofHours(95).toMillis(), info("rate-2").initialDelayMillis)   // Mon 10:00 → Fri 09:00
     }
 
     @Test fun `a reminder already due but not run yet is left to run`() {
         val s = ReminderScheduler(wm)
-        s.reconcile(listOf(r("rate-1", "2026-10-11T10:30")), now)
+        s.reconcile(listOf(r("rate-1", "2026-10-12T10:30")), now)
         s.reconcile(emptyList(), now.plusMinutes(45))                       // due 15 min ago, Doze held it back
         assertEquals(WorkInfo.State.ENQUEUED, info("rate-1").state)
     }
 
     @Test fun `a due reminder posts its notification`() = runTest {
-        ReminderScheduler(wm).reconcile(listOf(r("rate-1", "2026-10-14T09:00")), now)
+        ReminderScheduler(wm).reconcile(listOf(r("rate-1", "2026-10-15T09:00")), now)
         runDue("rate-1")
         val n = notes().single()
         assertEquals("Title rate-1", n.extras.getString(Notification.EXTRA_TITLE))
@@ -94,21 +94,21 @@ class ReminderSchedulerTest {
 
     @Test fun `a reminder no longer wanted when it's due stays quiet`() = runTest {
         wanted = false
-        ReminderScheduler(wm).reconcile(listOf(r("rate-1", "2026-10-14T09:00")), now)
+        ReminderScheduler(wm).reconcile(listOf(r("rate-1", "2026-10-15T09:00")), now)
         runDue("rate-1")
         assertTrue(notes().isEmpty())
     }
 
     @Test fun `when due, a dinner rated or moved meanwhile needs no reminder`() = runBlocking {
-        val wk = LocalDate.parse("2026-10-11")
-        env.on("GET", "/weeks/2026-10-11", body = fixture("week_home.json"))
-        val rate21 = Reminder("rate-21", ReminderKind.RATE, LocalDateTime.parse("2026-10-14T09:00"), "", "", "", 21, wk)
+        val wk = LocalDate.parse("2026-10-12")
+        env.on("GET", "/weeks/2026-10-12", body = fixture("week_home.json"))
+        val rate21 = Reminder("rate-21", ReminderKind.RATE, LocalDateTime.parse("2026-10-15T09:00"), "", "", "", 21, wk)
         assertTrue(Reminders.stillWanted(rate21, env.repo, NotifPrefs()))
         assertFalse(Reminders.stillWanted(rate21.copy(id = "rate-22", entryId = 22), env.repo, NotifPrefs()))   // rated already
-        assertFalse(Reminders.stillWanted(rate21.copy(at = LocalDateTime.parse("2026-10-15T09:00")), env.repo, NotifPrefs()))  // moved
+        assertFalse(Reminders.stillWanted(rate21.copy(at = LocalDateTime.parse("2026-10-16T09:00")), env.repo, NotifPrefs()))  // moved
         assertFalse(Reminders.stillWanted(rate21, env.repo, NotifPrefs(rate = false)))                       // switched off
         env.offline = true                                                                                   // the saved copies decide
         assertFalse(Reminders.stillWanted(rate21.copy(id = "rate-22", entryId = 22), env.repo, NotifPrefs()))
-        assertTrue(Reminders.stillWanted(rate21.copy(week = LocalDate.parse("2026-11-01")), env.repo, NotifPrefs()))  // nothing known: show it
+        assertTrue(Reminders.stillWanted(rate21.copy(week = LocalDate.parse("2026-11-02")), env.repo, NotifPrefs()))  // nothing known: show it
     }
 }

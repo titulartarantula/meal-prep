@@ -43,9 +43,9 @@ class FridgeHomeTest {
     @get:Rule val main = MainDispatcherRule()
     @get:Rule val compose = createComposeRule()
     private val env = TestEnv()
-    private val today = LocalDate.parse("2026-10-07")   // Wednesday
-    private val wk = LocalDate.parse("2026-10-04")
-    private fun e(day: Int?) = PlanEntry(day ?: 9, "2026-10-04", 1, day)
+    private val today = LocalDate.parse("2026-10-08")   // Thursday
+    private val wk = LocalDate.parse("2026-10-05")
+    private fun e(day: Int?) = PlanEntry(day ?: 9, "2026-10-05", 1, day)
 
     @Before fun setUp() {
         WorkManagerTestInitHelper.initializeTestWorkManager(env.context, Configuration.Builder().setExecutor(SynchronousExecutor()).build())
@@ -53,7 +53,7 @@ class FridgeHomeTest {
     @After fun tearDown() = env.close()
 
     @Test fun `use up the fridge shows for a week with free nights and something in the fridge`() {
-        assertEquals("Use up the fridge · 4 nights free", useUpFridge(wk, today, emptyList(), 3))        // Wed–Sat
+        assertEquals("Use up the fridge · 4 nights free", useUpFridge(wk, today, emptyList(), 3))        // Thu–Sun
         assertEquals("Use up the fridge · 3 nights free", useUpFridge(wk, today, listOf(e(4), e(1), e(null)), 3))
         assertEquals("Use up the fridge · 7 nights free", useUpFridge(wk.plusWeeks(1), today, emptyList(), 1))
         assertEquals("Use up the fridge · 1 night free", useUpFridge(wk, today, listOf(e(3), e(4), e(5)), 1))
@@ -63,11 +63,11 @@ class FridgeHomeTest {
     }
 
     private val night = Http.json.decodeFromString(ListSerializer(FridgeNight.serializer()), fixture("fridge_used.json")).single()
-    private val pending = PendingRating(21, "2026-10-04", 2, "2026-10-06", 3, "Chili")
+    private val pending = PendingRating(21, "2026-10-05", 2, "2026-10-07", 3, "Chili")
 
     @Test fun `nudge texts`() {
-        assertEquals("Update the fridge? Tuesday's Test Spinach Frittata used 4 Eggs and 1 cup Whole milk.", fridgeNudgeText(night))
-        assertEquals("Tuesday's Salsa used what's in the fridge.", fridgeNudgeText(FridgeNight(1, "2026-10-06", "Salsa", check = listOf("Cilantro"))))
+        assertEquals("Update the fridge? Wednesday's Test Spinach Frittata used 4 Eggs and 1 cup Whole milk.", fridgeNudgeText(night))
+        assertEquals("Wednesday's Salsa used what's in the fridge.", fridgeNudgeText(FridgeNight(1, "2026-10-07", "Salsa", check = listOf("Cilantro"))))
         assertEquals("Fridge updated · Eggs 2, Whole milk 3 cups", fridgeUpdatedText(UsedAnswer(31, "applied",
             listOf(UsedChange(1, "Eggs", text = "Eggs 2"), UsedChange(5, "Whole milk", text = "Whole milk 3 cups")))))
         assertEquals("a, b and c", andList(listOf("a", "b", "c")))
@@ -96,7 +96,7 @@ class FridgeHomeTest {
     }
 
     @Test fun `check only has no update button`() {
-        banner(null, FridgeNight(1, "2026-10-06", "Salsa", check = listOf("Cilantro")))
+        banner(null, FridgeNight(1, "2026-10-07", "Salsa", check = listOf("Cilantro")))
         compose.onNodeWithText(UPDATE_FRIDGE).assertDoesNotExist()
         compose.onNodeWithText("Open the fridge").assertExists()
     }

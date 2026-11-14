@@ -67,7 +67,7 @@ fun filterRecipes(all: List<Recipe>, query: String, sort: LibrarySort, source: S
     return if (sort == LibrarySort.AZ) hits.sortedBy { fold(it.title) } else hits
 }
 
-/** "On the plan: this week, week of Oct 25" from the server's ISO Sundays; null when it isn't planned. */
+/** "On the plan: this week, week of Oct 25" from the server's ISO week starts (Mondays); null when it isn't planned. */
 fun plannedText(weeks: List<String>, today: LocalDate): String? {
     val labels = weeks.mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }.sorted()
         .map { Weeks.weekTitle(it, today).replaceFirstChar(Char::lowercase) }

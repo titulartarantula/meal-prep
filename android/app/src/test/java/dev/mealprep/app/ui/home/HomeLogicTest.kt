@@ -11,16 +11,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class HomeLogicTest {
-    private val wk = LocalDate.parse("2026-10-11")
+    private val wk = LocalDate.parse("2026-10-12")                   // a Monday: the week starts
     private val wed = LocalDate.parse("2026-10-07")                  // the week before: planning ahead
-    private fun e(id: Int, day: Int?, title: String = "R$id") = PlanEntry(id, "2026-10-11", id, day, title = title)
+    private fun e(id: Int, day: Int?, title: String = "R$id") = PlanEntry(id, "2026-10-12", id, day, title = title)
     private val entries = listOf(e(21, 2, "Chili"), e(22, 4, "Fish soup"), e(23, null))
 
     @Test fun `week view groups nights and the tray`() {
         val v = weekView(LocalDate.parse("2026-10-14"), entries)
         assertEquals(wk, v.week)
         assertEquals(7, v.nights.size)
-        assertEquals(LocalDate.parse("2026-10-13"), v.nights[2].date)
+        assertEquals(wk, v.nights[0].date)                                            // Monday first
+        assertEquals(LocalDate.parse("2026-10-14"), v.nights[2].date)
+        assertEquals(LocalDate.parse("2026-10-18"), v.nights[6].date)                 // Sunday last
         assertEquals(listOf(21), v.nights[2].entries.map { it.id })
         assertEquals(listOf(23), v.unplaced.map { it.id })
     }
@@ -49,21 +51,23 @@ class HomeLogicTest {
         assertEquals(ContextAction.ReviewCart(8, false), contextAction(wk, wed, entries, false, Draft(8, "ready")))  // a new one
     }
 
-    @Test fun `tonight wins once the week's Sunday has passed`() {
-        val tue = LocalDate.parse("2026-10-13")
-        assertEquals(ContextAction.Tonight(21, 21, "Chili"), contextAction(wk, tue, entries, false, null))
+    @Test fun `tonight wins once the week's Monday has passed`() {
+        val wedThisWeek = LocalDate.parse("2026-10-14")
+        assertEquals(ContextAction.Tonight(21, 21, "Chili"), contextAction(wk, wedThisWeek, entries, false, null))
         assertEquals("Tonight: Chili", ContextAction.Tonight(21, 21, "Chili").label)
-        val sundayEntry = listOf(e(30, 0, "Roast"))
-        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wk, sundayEntry, false, null))           // Sunday: shopping first
-        assertEquals(ContextAction.Tonight(30, 30, "Roast"), contextAction(wk, wk, sundayEntry, true, null))   // then tonight
-        assertEquals(ContextAction.AllSet, contextAction(wk, LocalDate.parse("2026-10-20"), entries, false, null)) // week over
+        val mondayEntry = listOf(e(30, 0, "Roast"))
+        assertEquals(ContextAction.BuildCart(wk), contextAction(wk, wk, mondayEntry, false, null))           // Monday: shopping first
+        assertEquals(ContextAction.Tonight(30, 30, "Roast"), contextAction(wk, wk, mondayEntry, true, null))   // then tonight
+        val sundayEntry = listOf(e(31, 6, "Pasta"))                                    // Sunday is the week's last night
+        assertEquals(ContextAction.Tonight(31, 31, "Pasta"), contextAction(wk, LocalDate.parse("2026-10-18"), sundayEntry, false, null))
+        assertEquals(ContextAction.AllSet, contextAction(wk, LocalDate.parse("2026-10-19"), entries, false, null)) // week over
     }
 
     @Test fun `import cards`() {
         val a = UUID.randomUUID(); val b = UUID.randomUUID(); val c = UUID.randomUUID(); val d = UUID.randomUUID()
         val done = workDataOf(ImportWorker.OUT_RECIPE_ID to 3, ImportWorker.OUT_TITLE to "Wings", ImportWorker.OUT_EXISTING to true,
             ImportWorker.OUT_RATING to "Family 5/5", ImportWorker.OUT_MISSING_LINE to 1, ImportWorker.OUT_MISSING_PAGE to 191,
-            ImportWorker.OUT_WEEK to "2026-10-11")
+            ImportWorker.OUT_WEEK to "2026-10-12")
         val ui = importUi(listOf(
             ImportJob(a, WorkInfo.State.RUNNING, workDataOf()),
             ImportJob(b, WorkInfo.State.FAILED, workDataOf(ImportWorker.ERROR to "boom")),

@@ -19,22 +19,22 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/** This week's night names and store items (2026-11-06): loaded with the week, each write sent as the server wants it. */
+/** This week's night names and store items (2026-11-07): loaded with the week, each write sent as the server wants it. */
 @RunWith(RobolectricTestRunner::class)
 class NightViewModelTest {
     @get:Rule val main = MainDispatcherRule()
     private val env = TestEnv()
-    private val wk = LocalDate.parse("2026-10-11")
+    private val wk = LocalDate.parse("2026-10-12")
     private lateinit var vm: HomeViewModel
-    private val pizza = """{"id":7,"week":"2026-10-11","day":4,"term":"frozen pizza","quantity":2,
+    private val pizza = """{"id":7,"week":"2026-10-12","day":4,"term":"frozen pizza","quantity":2,
         "product":{"code":"PIZ","name":"Pepperoni Pizza","brand":"Hearthstone"}}"""
 
     @Before fun setUp() {
         WorkManagerTestInitHelper.initializeTestWorkManager(env.context, Configuration.Builder().setExecutor(SynchronousExecutor()).build())
-        env.on("GET", "/weeks/2026-10-11", body = fixture("week_home.json"))
-        env.on("GET", "/weeks", body = """[{"week":"2026-10-11","entries":3,"extras":1,"named_nights":1,"carted":false}]""")
-        env.on("GET", "/weeks/2026-10-11/nights", body = """[{"day":1,"title":"Leftovers","items":[]},{"day":4,"title":"Pizza night","items":[$pizza]}]""")
-        vm = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-07") })
+        env.on("GET", "/weeks/2026-10-12", body = fixture("week_home.json"))
+        env.on("GET", "/weeks", body = """[{"week":"2026-10-12","entries":3,"extras":1,"named_nights":1,"carted":false}]""")
+        env.on("GET", "/weeks/2026-10-12/nights", body = """[{"day":1,"title":"Leftovers","items":[]},{"day":4,"title":"Pizza night","items":[$pizza]}]""")
+        vm = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-08") })
     }
     @After fun tearDown() = env.close()
 
@@ -45,7 +45,7 @@ class NightViewModelTest {
     }
 
     @Test fun `a week with only store items builds a cart`() = runTest {
-        env.on("GET", "/weeks/2026-10-11", body = "[]")
+        env.on("GET", "/weeks/2026-10-12", body = "[]")
         val ui = vm.week(wk).await { !it.loading && it.nights.isNotEmpty() }
         assertEquals(ContextAction.BuildCart(wk), ui.action)
         assertEquals(StatusStrip(planned = true, cartSent = false), ui.strip)
@@ -53,13 +53,13 @@ class NightViewModelTest {
 
     @Test fun `naming, renaming and clearing a night`() = runTest {
         vm.week(wk).await { !it.loading && it.nights.isNotEmpty() }
-        env.on("PUT", "/weeks/2026-10-11/nights/5", body = """{"week":"2026-10-11","day":5,"title":"Taco night"}""")
+        env.on("PUT", "/weeks/2026-10-12/nights/5", body = """{"week":"2026-10-12","day":5,"title":"Taco night"}""")
         vm.nameNight(wk, 5, "  Taco   night ")
-        assertEquals("""{"title":"Taco   night"}""", env.awaitBody("PUT", "/weeks/2026-10-11/nights/5"))
-        env.on("DELETE", "/weeks/2026-10-11/nights/1", code = 204)
+        assertEquals("""{"title":"Taco   night"}""", env.awaitBody("PUT", "/weeks/2026-10-12/nights/5"))
+        env.on("DELETE", "/weeks/2026-10-12/nights/1", code = 204)
         vm.nameNight(wk, 1, "  ")
-        env.awaitBody("DELETE", "/weeks/2026-10-11/nights/1")
-        assertEquals(1, env.count("DELETE", "/weeks/2026-10-11/nights/1"))
+        env.awaitBody("DELETE", "/weeks/2026-10-12/nights/1")
+        assertEquals(1, env.count("DELETE", "/weeks/2026-10-12/nights/1"))
     }
 
     @Test fun `a store item's quantity, move and removal`() = runTest {

@@ -7,10 +7,10 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
-/** Weeks start on Sunday; day 0 = Sun … 6 = Sat (same as the server). */
+/** Weeks start on Monday (0.21.0; was Sunday) and are named by their Monday; day 0 = Mon … 6 = Sun (same as the server). */
 object Weeks {
-    private val DAYS = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-    private val LONG = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+    private val DAYS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    private val LONG = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     private val SHORT_DATE = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 
     /** Planning horizon (0.4.3): the app plans at most 4 weeks in all, this week and the next 3. */
@@ -20,7 +20,7 @@ object Weeks {
     /** How far later weeks are looked at for recipes already planned there (the server allows ≤ 52). */
     const val LOOK_AHEAD = 48
 
-    fun weekStart(d: LocalDate): LocalDate = d.minusDays((d.dayOfWeek.value % 7).toLong())
+    fun weekStart(d: LocalDate): LocalDate = d.minusDays((d.dayOfWeek.value - 1).toLong())
 
     /** The weeks a picker offers: this week and the next 3. */
     fun horizon(today: LocalDate): List<LocalDate> = (0 until HORIZON).map { weekStart(today).plusWeeks(it.toLong()) }
@@ -39,16 +39,18 @@ object Weeks {
         return (planned + listOfNotNull(open?.let { weeksBetween(today, it) }) + (HORIZON - 1)).max().coerceAtMost(LOOK_AHEAD + HORIZON)
     }
 
-    /** Default week for a new recipe: today if Sunday, else the coming Sunday (server api.default_week). */
-    fun upcomingSunday(today: LocalDate): LocalDate =
-        if (today.dayOfWeek == DayOfWeek.SUNDAY) today else weekStart(today).plusWeeks(1)
+    /** Default week for a new recipe: today if Monday, else the coming Monday (server api.default_week). */
+    fun upcomingMonday(today: LocalDate): LocalDate =
+        if (today.dayOfWeek == DayOfWeek.MONDAY) today else weekStart(today).plusWeeks(1)
 
     fun nightDate(week: LocalDate, day: Int): LocalDate {
-        require(day in 0..6) { "day must be 0 (Sun) … 6 (Sat)" }
+        require(day in 0..6) { "day must be 0 (Mon) … 6 (Sun)" }
         return weekStart(week).plusDays(day.toLong())
     }
 
-    fun dayOf(date: LocalDate): Int = date.dayOfWeek.value % 7
+    fun dayOf(date: LocalDate): Int = dayOf(date.dayOfWeek)
+    /** A weekday's index in the app's week: Monday = 0 … Sunday = 6. */
+    fun dayOf(d: DayOfWeek): Int = d.value - 1
     fun dayLabel(day: Int): String = DAYS[day]
     fun longDayLabel(day: Int): String = LONG[day]
     fun shortDate(d: LocalDate): String = d.format(SHORT_DATE)
@@ -64,17 +66,17 @@ object Weeks {
         else -> "Week of ${shortDate(weekStart(week))}"
     }
 
-    /** The week's dates under its title: "Oct 11 – 17", "Sep 27 – Oct 3". */
+    /** The week's dates under its title: "Oct 12 – 18", "Sep 28 – Oct 4". */
     fun range(week: LocalDate): String {
         val start = weekStart(week)
         val end = start.plusDays(6)
         return if (end.month == start.month) "${shortDate(start)} – ${end.dayOfMonth}" else "${shortDate(start)} – ${shortDate(end)}"
     }
 
-    /** [range] for TalkBack, which reads "–" as a dash: "Oct 11 to 17". */
+    /** [range] for TalkBack, which reads "–" as a dash: "Oct 12 to 18". */
     fun spokenRange(week: LocalDate): String = range(week).replace(" – ", " to ")
 
-    /** Week-picker label: "This week (Oct 4)", "Next week (Oct 11)", "Week of Oct 18". */
+    /** Week-picker label: "This week (Oct 5)", "Next week (Oct 12)", "Week of Oct 19". */
     fun weekChoiceLabel(week: LocalDate, today: LocalDate): String = when (weeksBetween(today, week)) {
         0, 1 -> "${weekTitle(week, today)} (${shortDate(weekStart(week))})"
         else -> weekTitle(week, today)

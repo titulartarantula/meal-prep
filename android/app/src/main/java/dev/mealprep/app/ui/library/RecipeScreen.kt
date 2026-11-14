@@ -283,7 +283,7 @@ fun ingredientLines(r: Recipe): List<IngredientLine> {
 fun AddToWeekDialog(
     options: List<WeekOption>, planned: List<String>, today: LocalDate, onAdd: (LocalDate, Int?) -> Unit, onDismiss: () -> Unit,
 ) {
-    var week by remember { mutableStateOf(Weeks.upcomingSunday(today)) }
+    var week by remember { mutableStateOf(Weeks.upcomingMonday(today)) }
     var night by remember { mutableStateOf<Int?>(null) }
     val already = week.toString() in planned
     AlertDialog(

@@ -26,11 +26,11 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class RepositoryTest {
     private val env = TestEnv()
-    private val wk = LocalDate.parse("2026-10-14")   // a Wednesday: the repo asks for its Sunday
+    private val wk = LocalDate.parse("2026-10-15")   // a Thursday: the repo asks for its Monday
     @After fun tearDown() = env.close()
 
     @Test fun `offline falls back to the saved copy`() = runTest {
-        env.on("GET", "/weeks/2026-10-11", body = fixture("week_home.json"))
+        env.on("GET", "/weeks/2026-10-12", body = fixture("week_home.json"))
         val fresh = env.repo.week(wk)
         assertEquals(3, fresh.value!!.size); assertNull(fresh.error); assertFalse(fresh.offline)
         env.offline = true
@@ -109,7 +109,7 @@ class RepositoryTest {
     }
 
     @Test fun `not configured falls back to cache`() = runTest {
-        env.on("GET", "/weeks/2026-10-11", body = fixture("week_home.json"))
+        env.on("GET", "/weeks/2026-10-12", body = fixture("week_home.json"))
         env.repo.week(wk)
         env.token = ""
         val r = env.repo.week(wk)
@@ -119,7 +119,7 @@ class RepositoryTest {
     }
 
     @Test fun `unreadable saved copy is ignored`() = runTest {
-        env.db.cache().put(CachedDoc("week:2026-10-11", "{not json", 1L))
+        env.db.cache().put(CachedDoc("week:2026-10-12", "{not json", 1L))
         env.offline = true
         val r = env.repo.week(wk)
         assertNull(r.value); assertEquals(ApiError.Unreachable, r.error)

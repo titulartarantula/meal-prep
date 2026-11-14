@@ -32,13 +32,27 @@ class ApiTest {
 
     @Test fun `sends the bearer token and parses captured weeks`() = runTest {
         reply(fixture("weeks.json"))
-        val weeks = api.weeks("2026-10-04", 8)
+        val weeks = api.weeks("2026-10-05", 8)
         assertEquals(8, weeks.size)
-        assertEquals("2026-10-04", weeks[0].week)
-        assertTrue(weeks.all { LocalDate.parse(it.week).dayOfWeek == DayOfWeek.SUNDAY })
+        assertEquals("2026-10-05", weeks[0].week)
+        assertTrue(weeks.all { LocalDate.parse(it.week).dayOfWeek == DayOfWeek.MONDAY })
         val req = server.takeRequest()
         assertEquals("Bearer tok", req.headers["Authorization"])
-        assertEquals("/weeks?from=2026-10-04&count=8", req.target)
+        assertEquals("/weeks?from=2026-10-05&count=8", req.target)
+    }
+
+    @Test fun `every call says weeks start on Monday, also those without the token`() = runTest {
+        reply(fixture("health.json")); reply(fixture("default_week.json"))
+        api.health()
+        assertEquals("monday", server.takeRequest().headers["X-Week-Start"])          // no token: still sent
+        api.defaultCartWeek()
+        val req = server.takeRequest()
+        assertEquals("monday", req.headers["X-Week-Start"]); assertEquals("Bearer tok", req.headers["Authorization"])
+        // Not signed in yet (no token) at all: still sent.
+        val bare = Http.api(server.url("/").toString(), Http.client({ "" }))
+        reply(fixture("default_week.json")); bare.defaultCartWeek()
+        val r2 = server.takeRequest()
+        assertEquals("monday", r2.headers["X-Week-Start"]); assertNull(r2.headers["Authorization"])
     }
 
     @Test fun `health is the only call sent without the token`() = runTest {
@@ -50,8 +64,8 @@ class ApiTest {
     }
 
     @Test fun `parses captured week entries with titles`() = runTest {
-        reply(fixture("week_2026-10-11.json"))
-        val e = api.week("2026-10-11").first { it.id == 1 }
+        reply(fixture("week_2026-10-12.json"))
+        val e = api.week("2026-10-12").first { it.id == 1 }
         assertEquals(1, e.recipeId); assertNull(e.day); assertEquals("Best Chocolate Chip Cookies", e.title)
     }
 
@@ -77,12 +91,12 @@ class ApiTest {
 
     @Test fun `parses synthetic replies`() = runTest {
         reply(fixture("share_result.json")); reply(fixture("draft_ready.json")); reply(fixture("pending.json"))
-        val s = api.share(ShareIn("x", "2026-10-11"))
+        val s = api.share(ShareIn("x", "2026-10-12"))
         assertTrue(s.existing); assertEquals(listOf(1), s.recipe.missingPages); assertEquals(4.5, s.recipe.ratings.avgFamily!!, 0.0)
         val d = api.draft(7)
         assertNull(d.lines[1].product); assertEquals("memory", d.lines[0].source)
         assertEquals(1, d.lines[0].quantity); assertNull(d.lines[1].quantity)
-        assertEquals("Chili", api.pendingRatings("2026-10-14").single().title)
+        assertEquals("Chili", api.pendingRatings("2026-10-15").single().title)
     }
 
     @Test fun `unplacing sends an explicit null day`() = runTest {

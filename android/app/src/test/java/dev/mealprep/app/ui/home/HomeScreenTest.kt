@@ -40,14 +40,14 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class HomeScreenTest {
     @get:Rule val compose = createComposeRule()
-    private val wk = LocalDate.parse("2026-10-11")
-    private val entries = listOf(PlanEntry(21, "2026-10-11", 5, 2, title = "Chili"), PlanEntry(23, "2026-10-11", 1, null, title = "Cookies"))
+    private val wk = LocalDate.parse("2026-10-12")
+    private val entries = listOf(PlanEntry(21, "2026-10-12", 5, 2, title = "Chili"), PlanEntry(23, "2026-10-12", 1, null, title = "Cookies"))
     private val ui = WeekUi(wk, weekView(wk, entries), statusStrip(entries, false), ContextAction.BuildCart(wk), loading = false)
 
     @Test fun `shows nights, tray and the context button`() {
         var action: ContextAction? = null
-        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
-        compose.onNodeWithText("Tue 13").assertExists()
+        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-08"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
+        compose.onNodeWithText("Wed 14").assertExists()
         compose.onNodeWithText("Chili").assertExists()
         compose.onNodeWithText("Cookies").assertExists()
         compose.onNodeWithText("Build cart").performClick()
@@ -56,19 +56,19 @@ class HomeScreenTest {
 
     @Test fun `tapping a tray recipe lets you put it on a night`() {
         var placed: Pair<Int, Int?>? = null
-        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { e, d -> placed = e.id to d }, { _, _ -> }, {}, {}, {}) }
+        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-08"), {}, { e, d -> placed = e.id to d }, { _, _ -> }, {}, {}, {}) }
         compose.onNodeWithText("Cookies").performClick()
-        compose.onNodeWithText("Thu").performClick()
+        compose.onNodeWithText("Fri").performClick()
         assertEquals(23 to 4, placed)
     }
 
     @Test fun `a placed recipe can be moved to another night or back to the tray from its dialog`() {
         val moves = mutableListOf<Pair<Int, Int?>>()
-        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { e, d -> moves += e.id to d }, { _, _ -> }, {}, {}, {}) }
+        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-08"), {}, { e, d -> moves += e.id to d }, { _, _ -> }, {}, {}, {}) }
         compose.onNodeWithText("Chili").performClick()
         compose.onNodeWithText("Move to").assertExists()
-        compose.onNodeWithText("Tue").performClick()                                // where it already is: nothing
-        compose.onNodeWithText("Fri").performClick()
+        compose.onNodeWithText("Wed").performClick()                                // where it already is: nothing
+        compose.onNodeWithText("Sat").performClick()
         assertEquals(listOf(21 to 5), moves)
         compose.onNodeWithText("Chili").performClick()
         compose.onNode(hasText(NO_NIGHT) and hasClickAction()).performClick()      // the dialog's chip, not the tray heading
@@ -80,7 +80,7 @@ class HomeScreenTest {
         val haptics = object : HapticFeedback { override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) { buzzes += hapticFeedbackType } }
         compose.setContent {
             CompositionLocalProvider(LocalHapticFeedback provides haptics) {
-                WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {})
+                WeekContent(ui, LocalDate.parse("2026-10-08"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {})
             }
         }
         compose.onNodeWithText("Hold a recipe and drag it to a night (or back here), or tap it to move it.").assertExists()
@@ -94,7 +94,7 @@ class HomeScreenTest {
 
     @Test fun `while a recipe is held the zones say where it goes`() {
         val drag = WeekDrag()
-        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {}, drag = drag) }
+        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-08"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {}, drag = drag) }
         compose.onNodeWithText("Drop here").assertDoesNotExist()
         drag.started(); drag.entered(Slot(0))
         compose.onNodeWithText("Drop here").assertExists()
@@ -117,7 +117,7 @@ class HomeScreenTest {
     @Test fun `a sent cart can be reopened from the status strip`() {
         var opened: Any? = null
         val sent = ui.copy(strip = statusStrip(entries, true), sentDraftId = 9)
-        compose.setContent { WeekContent(sent, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, { opened = it }, {}) }
+        compose.setContent { WeekContent(sent, LocalDate.parse("2026-10-08"), {}, { _, _ -> }, { _, _ -> }, {}, { opened = it }, {}) }
         compose.onNodeWithText("✓ Cart sent").performClick()
         assertEquals(dev.mealprep.app.ui.nav.DraftRoute(9), opened)
     }
@@ -136,7 +136,7 @@ class HomeScreenTest {
     @Test fun `a recipe on the week that still misses a page offers it in its dialog`() {
         var opened: Any? = null
         compose.setContent {
-            WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, { opened = it }, {},
+            WeekContent(ui, LocalDate.parse("2026-10-08"), {}, { _, _ -> }, { _, _ -> }, {}, { opened = it }, {},
                 loadRef = { id -> if (id == 5) dev.mealprep.app.ui.camera.RefPrompt(5, 2, "Sauce, page 51", 51) else null })
         }
         compose.onNodeWithText("Chili").performClick()
@@ -158,15 +158,15 @@ class HomeScreenTest {
     @Test fun `an empty week points to Recipes instead of a share hint`() {
         var action: ContextAction? = null
         val empty = WeekUi(wk, weekView(wk, emptyList()), statusStrip(emptyList(), false), ContextAction.AddRecipes, loading = false)
-        compose.setContent { WeekContent(empty, LocalDate.parse("2026-10-07"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
+        compose.setContent { WeekContent(empty, LocalDate.parse("2026-10-08"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
         compose.onNodeWithText(EMPTY_WEEK).assertExists()
         compose.onNodeWithText("○ Planned").assertExists()                                  // the status line stays
         compose.onNodeWithText("Choose from Recipes").performClick()
         assertEquals(ContextAction.AddRecipes, action)
         // The card and the seven nights (to name one or add store items to it); no tray, no drag hint, no Refresh.
         compose.onNodeWithText(NO_NIGHT).assertDoesNotExist()
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Tue 13"))
-        compose.onNodeWithText("Tue 13").assertExists()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Wed 14"))
+        compose.onNodeWithText("Wed 14").assertExists()
         compose.onNodeWithText("Hold a recipe", substring = true).assertDoesNotExist()
         compose.onNodeWithText("Refresh").assertDoesNotExist()
     }
@@ -174,7 +174,7 @@ class HomeScreenTest {
     @Test fun `the week's next step is docked at the bottom, full width`() {
         var action: ContextAction? = null
         val tonight = ui.copy(action = ContextAction.Tonight(21, 5, "Chili"))
-        compose.setContent { WeekContent(tonight, LocalDate.parse("2026-10-07"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
+        compose.setContent { WeekContent(tonight, LocalDate.parse("2026-10-08"), { action = it }, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
         val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
         val button = compose.onNodeWithText("Tonight: Chili").fetchSemanticsNode().boundsInRoot
         assertTrue(button.bottom > root.bottom - 100f)                       // at the bottom of the screen
@@ -185,8 +185,8 @@ class HomeScreenTest {
 
     @Test fun `a saved copy offers Refresh`() {
         var refreshed = 0
-        val offline = ui.copy(offlineSince = java.time.Instant.parse("2026-10-07T12:00:00Z"))
-        compose.setContent { WeekContent(offline, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, { refreshed++ }) }
+        val offline = ui.copy(offlineSince = java.time.Instant.parse("2026-10-08T12:00:00Z"))
+        compose.setContent { WeekContent(offline, LocalDate.parse("2026-10-08"), {}, { _, _ -> }, { _, _ -> }, {}, {}, { refreshed++ }) }
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Refresh"))
         compose.onNodeWithText("Refresh").performClick()
         assertEquals(1, refreshed)
@@ -196,11 +196,11 @@ class HomeScreenTest {
         var steps = ""
         var first by mutableStateOf(false)
         compose.setContent {
-            WeekHeader(wk, LocalDate.parse("2026-10-07"), canBack = !first, canForward = true,
+            WeekHeader(wk, LocalDate.parse("2026-10-08"), canBack = !first, canForward = true,
                 onPrev = { steps += "<" }, onNext = { steps += ">" }, menu = emptyList(), onOpen = {})
         }
         compose.onNodeWithText("Next week").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-        compose.onNodeWithText("Oct 11 – 17").assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Oct 11 to 17")))
+        compose.onNodeWithText("Oct 12 – 18").assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Oct 12 to 18")))
         compose.onNodeWithContentDescription("Previous week").assertTouchHeightIsEqualTo(48.dp).performClick()
         compose.onNodeWithContentDescription("Next week").assertTouchHeightIsEqualTo(48.dp).performClick()
         assertEquals("<>", steps)
@@ -211,7 +211,7 @@ class HomeScreenTest {
     @Test fun `a week that couldn't be loaded and has no saved copy shows only the message and Try again`() {
         var refreshed = 0
         val failed = WeekUi(wk, loading = false, error = "Can't reach the meal-prep server.")
-        compose.setContent { WeekContent(failed, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, { refreshed++ }) }
+        compose.setContent { WeekContent(failed, LocalDate.parse("2026-10-08"), {}, { _, _ -> }, { _, _ -> }, {}, {}, { refreshed++ }) }
         compose.onNodeWithText("Can't reach the meal-prep server.").assertExists()
         compose.onNodeWithText(EMPTY_WEEK).assertDoesNotExist()
         compose.onNodeWithText("Build cart").assertDoesNotExist()                 // nothing docked either
@@ -223,12 +223,12 @@ class HomeScreenTest {
 
     @Test fun `all set is a line of text, not a button`() {
         val done = ui.copy(action = ContextAction.AllSet)
-        compose.setContent { WeekContent(done, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
+        compose.setContent { WeekContent(done, LocalDate.parse("2026-10-08"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
         compose.onNodeWithText("✓ All set for this week").assertExists().assertHasNoClickAction()
     }
 
     @Test fun `the status strip says done or not yet`() {
-        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
+        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-08"), {}, { _, _ -> }, { _, _ -> }, {}, {}, {}) }
         compose.onNodeWithContentDescription("Planned").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "done"))
         compose.onNodeWithContentDescription("Cart sent").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not yet"))
         compose.onNodeWithContentDescription("Prep done").assertDoesNotExist()             // Sunday prep was retired (0.16.0)
@@ -236,7 +236,7 @@ class HomeScreenTest {
 
     @Test fun `the entry dialog's amounts are words, one choice`() {
         var scaled: Double? = null
-        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-07"), {}, { _, _ -> }, { _, m -> scaled = m }, {}, {}, {}) }
+        compose.setContent { WeekContent(ui, LocalDate.parse("2026-10-08"), {}, { _, _ -> }, { _, m -> scaled = m }, {}, {}, {}) }
         compose.onNodeWithText("Chili").performClick()
         compose.onNodeWithText("Amount").assertExists()
         compose.onNodeWithText("Normal").assertIsSelected()

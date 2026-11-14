@@ -28,6 +28,8 @@ open class MealPrepApp : Application(), Configuration.Provider, SingletonImageLo
         graph.notifier.ensureChannels()
         // Pages of imports abandoned long ago (a failed import nobody retried, an app killed mid-capture).
         graph.scope.launch(Dispatchers.IO) { graph.pages.pruneOlderThan(System.currentTimeMillis() - PAGES_KEPT_MS) }
+        // Weeks start on Monday from 0.21.0: saved copies with Sunday weeks are read again from the server.
+        graph.scope.launch(Dispatchers.IO) { graph.repo.forgetSundayWeekCopies() }
         // The weekly staples reminder, if chosen, stays queued (KEEP) — re-queued only if it was lost.
         graph.settings.value.notif.takeIf { it.staples }?.let { StaplesReminder.apply(graph.workManager, it, policy = ExistingWorkPolicy.KEEP) }
     }

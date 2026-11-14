@@ -58,7 +58,7 @@ fun contextAction(week: LocalDate, today: LocalDate, entries: List<PlanEntry>, c
     if (start.plusDays(6).isBefore(today)) return ContextAction.AllSet
     val tonight = entries.firstOrNull { it.day != null && Weeks.nightDate(start, it.day) == today }
         ?.let { ContextAction.Tonight(it.id, it.recipeId, it.title ?: "dinner") }
-    // After the week's Sunday (the shopping is done by then) tonight's dinner is what matters.
+    // After the week's first day, its Monday (the shopping is done by then), tonight's dinner is what matters.
     if (tonight != null && today.isAfter(start)) return tonight
     // A cart built before the week's recipes changed is an older cart: build a new one, don't review that one.
     if (!carted && draft != null && !draft.stale && draft.status in setOf("building", "ready")) return ContextAction.ReviewCart(draft.id, draft.status == "building")

@@ -64,7 +64,7 @@ class LibraryTest {
     @get:Rule val main = MainDispatcherRule()
     @get:Rule val compose = createComposeRule()
     private val env = TestEnv()
-    private val today = LocalDate.parse("2026-10-07")          // a Wednesday; the upcoming Sunday is Oct 11
+    private val today = LocalDate.parse("2026-10-08")          // a Thursday; the upcoming Monday is Oct 12
     private val lib: List<Recipe> = Http.json.decodeFromString(ListSerializer(Recipe.serializer()), fixture("library.json"))
 
     @After fun tearDown() = env.close()
@@ -204,8 +204,8 @@ class LibraryTest {
     }
 
     @Test fun `planned weeks read like the week screen`() {
-        assertEquals("On the plan: next week, week of Oct 25", plannedText(listOf("2026-10-25", "2026-10-11"), today))
-        assertEquals("On the plan: this week", plannedText(listOf("2026-10-04"), today))
+        assertEquals("On the plan: next week, week of Oct 26", plannedText(listOf("2026-10-26", "2026-10-12"), today))
+        assertEquals("On the plan: this week", plannedText(listOf("2026-10-05"), today))
         assertNull(plannedText(emptyList(), today))
     }
 
@@ -240,57 +240,57 @@ class LibraryTest {
     }
 
     @Test fun `add to a week on a night`() = runTest {
-        env.on("GET", "/weeks/2026-10-18", body = "[]")
-        env.on("POST", "/weeks/2026-10-18/entries", body = """{"id":41,"week":"2026-10-18","recipe_id":11,"day":null}""")
+        env.on("GET", "/weeks/2026-10-19", body = "[]")
+        env.on("POST", "/weeks/2026-10-19/entries", body = """{"id":41,"week":"2026-10-19","recipe_id":11,"day":null}""")
         env.on("PATCH", "/plan/41", code = 204)
         val vm = recipeVm()
         vm.state.await { it.recipe != null }
-        vm.addToWeek(LocalDate.parse("2026-10-20"), 2)                       // any day of that week
+        vm.addToWeek(LocalDate.parse("2026-10-21"), 2)                       // any day of that week
         val a = vm.state.await { it.added != null }.added!!
-        assertEquals("Added to the week of Oct 18, on Tuesday.", a.text)
-        assertEquals(LocalDate.parse("2026-10-18"), a.week)
-        assertEquals("""{"recipe_id":11}""", env.bodies("POST", "/weeks/2026-10-18/entries").single())
+        assertEquals("Added to the week of Oct 19, on Wednesday.", a.text)
+        assertEquals(LocalDate.parse("2026-10-19"), a.week)
+        assertEquals("""{"recipe_id":11}""", env.bodies("POST", "/weeks/2026-10-19/entries").single())
         assertEquals("""{"day":2}""", env.bodies("PATCH", "/plan/41").single())
     }
 
     @Test fun `a recipe already in that week is not added twice`() = runTest {
-        env.on("GET", "/weeks/2026-10-11", body = """[{"id":5,"week":"2026-10-11","recipe_id":11,"day":4,"title":"Crêpes with Lemon"}]""")
+        env.on("GET", "/weeks/2026-10-12", body = """[{"id":5,"week":"2026-10-12","recipe_id":11,"day":4,"title":"Crêpes with Lemon"}]""")
         val vm = recipeVm()
         vm.state.await { it.recipe != null }
-        vm.addToWeek(LocalDate.parse("2026-10-11"), null)
+        vm.addToWeek(LocalDate.parse("2026-10-12"), null)
         val a = vm.state.await { it.added != null }.added!!
-        assertEquals("It's already in next week (Oct 11), on Thursday.", a.text)
+        assertEquals("It's already in next week (Oct 12), on Friday.", a.text)
         assertFalse(a.ok)
-        assertEquals(0, env.count("POST", "/weeks/2026-10-11/entries"))
+        assertEquals(0, env.count("POST", "/weeks/2026-10-12/entries"))
     }
 
     @Test fun `off the home network adding says it needs the home network`() = runTest {
         val vm = recipeVm()
         vm.state.await { it.recipe != null }
         env.offline = true
-        vm.addToWeek(LocalDate.parse("2026-10-11"), null)
+        vm.addToWeek(LocalDate.parse("2026-10-12"), null)
         assertEquals("Adding to a week needs the home network (or WireGuard).", vm.state.await { it.added != null }.added!!.text)
     }
 
-    @Test fun `the detail shows the recipe and adds to the upcoming Sunday by default`() {
+    @Test fun `the detail shows the recipe and adds to the upcoming Monday by default`() {
         val r = Http.json.decodeFromString(Recipe.serializer(), fixture("recipe_11.json"))
         var added: Pair<LocalDate, Int?>? = null
-        val opts = listOf(WeekOption(LocalDate.parse("2026-10-04"), "This week (Oct 4)", null), WeekOption(LocalDate.parse("2026-10-11"), "Next week (Oct 11)", null))
+        val opts = listOf(WeekOption(LocalDate.parse("2026-10-05"), "This week (Oct 5)", null), WeekOption(LocalDate.parse("2026-10-12"), "Next week (Oct 12)", null))
         compose.setContent {
-            RecipeContent(RecipeState(r.copy(plannedWeeks = listOf("2026-10-04")), loading = false, options = opts),
+            RecipeContent(RecipeState(r.copy(plannedWeeks = listOf("2026-10-05")), loading = false, options = opts),
                 onAdd = { w, d -> added = w to d }, onWeek = {}, onOpen = {}, onDismissAdded = {}, today = today)
         }
         val list = compose.onNode(hasScrollAction())
         list.performScrollToNode(hasText("2 eggs"))
         list.performScrollToNode(hasText("2. Cook the crêpes."))
-        list.performScrollToNode(hasText("Week of Sep 27 · Wed"))
+        list.performScrollToNode(hasText("Week of Sep 28 · Thu"))
         compose.onNodeWithText("Add to a week").performClick()
-        compose.onNodeWithText("This week (Oct 4)").performClick()                // already planned there
+        compose.onNodeWithText("This week (Oct 5)").performClick()                // already planned there
         compose.onNodeWithText("Add").assertIsNotEnabled()
-        compose.onNodeWithText("Next week (Oct 11)").performClick()
-        compose.onNodeWithText("Fri").performClick()
+        compose.onNodeWithText("Next week (Oct 12)").performClick()
+        compose.onNodeWithText("Sat").performClick()
         compose.onNodeWithText("Add").performClick()
-        assertEquals(LocalDate.parse("2026-10-11") to 5, added)
+        assertEquals(LocalDate.parse("2026-10-12") to 5, added)
     }
 
     @Test fun `paste dialog takes any web link and offers the copied one`() {
@@ -354,7 +354,7 @@ class LibraryTest {
         list.performScrollToNode(hasText("★ 5 · good for company · NYT Cooking"))
         compose.onNodeWithText("★ 5 · good for company · NYT Cooking", useUnmergedTree = true)   // TalkBack doesn't hear "black star"
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Average 5 out of 5, good for company, NYT Cooking")))
-        list.performScrollToNode(hasText("On the plan: next week, week of Oct 25"))
+        list.performScrollToNode(hasText("On the plan: next week, week of Oct 26"))
         compose.onNodeWithText("Apple Crumble").performClick()
         assertEquals(10, opened)
         list.performScrollToNode(hasText("Not rated · Unknown book"))

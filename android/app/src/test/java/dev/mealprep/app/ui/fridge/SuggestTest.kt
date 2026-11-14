@@ -32,8 +32,8 @@ class SuggestTest {
     @get:Rule val main = MainDispatcherRule()
     @get:Rule val compose = createComposeRule()
     private val env = TestEnv()
-    private val today = LocalDate.parse("2026-10-07")     // a Wednesday: Wed–Sat are left this week
-    private val week = LocalDate.parse("2026-10-04")
+    private val today = LocalDate.parse("2026-10-08")     // a Thursday: Thu–Sun are left this week
+    private val week = LocalDate.parse("2026-10-05")
     private val sug = Http.json.decodeFromString(Suggestion.serializer(), fixture("fridge_suggest.json"))
     @After fun tearDown() = env.close()
 
@@ -48,19 +48,19 @@ class SuggestTest {
         assertEquals(null, SuggestLogic.rating(sug.picks[1]))
         assertEquals("Only 1 recipe in Recipes uses what's in the fridge.", SuggestLogic.thinText(sug.copy(thinLibrary = true, picks = sug.picks.take(1))))
         assertEquals("Add 2 to this week", SuggestLogic.addLabel(2, week, today))
-        assertEquals("Add 1 to the week of Oct 25", SuggestLogic.addLabel(1, LocalDate.parse("2026-10-25"), today))
+        assertEquals("Add 1 to the week of Oct 26", SuggestLogic.addLabel(1, LocalDate.parse("2026-10-26"), today))
     }
 
     private suspend fun vm(): SuggestViewModel {
-        env.on("GET", "/weeks/2026-10-04", body = """[{"id":1,"week":"2026-10-04","recipe_id":3,"day":4,"title":"Chili"}]""")
+        env.on("GET", "/weeks/2026-10-05", body = """[{"id":1,"week":"2026-10-05","recipe_id":3,"day":4,"title":"Chili"}]""")
         env.on("POST", "/fridge/suggest", body = fixture("fridge_suggest.json"))
-        return SuggestViewModel(env.repo, LocalDate.parse("2026-10-06"), { today }).also { v -> v.state.await { !it.loading && it.result != null } }
+        return SuggestViewModel(env.repo, LocalDate.parse("2026-10-07"), { today }).also { v -> v.state.await { !it.loading && it.result != null } }
     }
 
     @Test fun `free nights from today on, people 4, all picks ticked`() = runTest {
         val v = vm()
-        assertEquals(3, v.state.value.nights)                          // Wed, Fri, Sat (Thu has the Chili)
-        assertEquals("""{"nights":3,"people":4,"week":"2026-10-04","exclude":[]}""", env.bodies("POST", "/fridge/suggest").single())
+        assertEquals(3, v.state.value.nights)                          // Thu, Sat, Sun (Fri has the Chili)
+        assertEquals("""{"nights":3,"people":4,"week":"2026-10-05","exclude":[]}""", env.bodies("POST", "/fridge/suggest").single())
         assertEquals(setOf(5, 7), v.state.value.ticked)
     }
 
@@ -69,7 +69,7 @@ class SuggestTest {
         v.toggle(7)
         v.suggestOthers()
         v.state.await { !it.loading && env.count("POST", "/fridge/suggest") == 2 }
-        assertEquals("""{"nights":3,"people":4,"week":"2026-10-04","exclude":[7]}""", env.bodies("POST", "/fridge/suggest").last())
+        assertEquals("""{"nights":3,"people":4,"week":"2026-10-05","exclude":[7]}""", env.bodies("POST", "/fridge/suggest").last())
         v.setPeople(2)
         v.state.await { env.count("POST", "/fridge/suggest") == 3 && !it.loading }
         assertTrue(env.bodies("POST", "/fridge/suggest").last().contains("\"people\":2"))
@@ -77,12 +77,12 @@ class SuggestTest {
 
     @Test fun `adding never puts a recipe on the week twice`() = runTest {
         val v = vm()
-        env.on("GET", "/weeks/2026-10-04", body = """[{"id":1,"week":"2026-10-04","recipe_id":5,"day":null,"title":"Test Spinach Frittata"}]""")
-        env.on("POST", "/weeks/2026-10-04/entries", body = """{"id":9,"week":"2026-10-04","recipe_id":7}""")
+        env.on("GET", "/weeks/2026-10-05", body = """[{"id":1,"week":"2026-10-05","recipe_id":5,"day":null,"title":"Test Spinach Frittata"}]""")
+        env.on("POST", "/weeks/2026-10-05/entries", body = """{"id":9,"week":"2026-10-05","recipe_id":7}""")
         v.addToWeek(); v.addToWeek()
         val done = v.state.await { it.done != null }.done!!
         assertEquals("Added 2 dinners to this week — put them on nights there.", done)
-        assertEquals(listOf("""{"recipe_id":7}"""), env.bodies("POST", "/weeks/2026-10-04/entries"))
+        assertEquals(listOf("""{"recipe_id":7}"""), env.bodies("POST", "/weeks/2026-10-05/entries"))
     }
 
     @Test fun `offline says suggestions need the home network`() = runTest {

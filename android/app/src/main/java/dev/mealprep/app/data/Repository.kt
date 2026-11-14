@@ -104,6 +104,9 @@ data class Loaded<T>(val value: T?, val error: ApiError?, val fetchedAt: Instant
     val offline: Boolean get() = error != null && fetchedAt != null
 }
 
+/** The once-key marking that saved copies from Sunday-week servers were dropped (0.21.0). */
+internal const val MONDAY_WEEKS = "monday-weeks"
+
 private const val PLAN_WRITE_WAIT = 40_000L   // ms; longer than a write's connect + read timeouts
 
 class Repository(
@@ -189,6 +192,10 @@ class Repository(
 
     /** Signed in / out or another household: the saved copies were someone else's view. */
     suspend fun forgetServerCopies() = cache.clearServerCopies()
+
+    /** Once, on the first start of 0.21.0 (weeks start on Monday): saved copies from before hold Sunday weeks and
+     *  Sunday-based night numbers, so they are dropped and read again from the server. True when it dropped them. */
+    suspend fun forgetSundayWeekCopies(): Boolean = markOnce(MONDAY_WEEKS).also { if (it) cache.clearServerCopies() }
     suspend fun defaultCartWeek(): ApiResult<LocalDate?> = call { api -> api.defaultCartWeek().week?.let(LocalDate::parse) }
     suspend fun draft(id: Int): ApiResult<Draft> = call { it.draft(id) }
     /** Book suggestions for "Which book?" (live, never saved: offline the caller falls back to the household's books). */

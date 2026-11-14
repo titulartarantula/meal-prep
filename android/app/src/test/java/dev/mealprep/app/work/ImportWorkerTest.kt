@@ -40,7 +40,7 @@ class ImportWorkerTest {
     @get:Rule val tmp = TemporaryFolder()
     private val link = ImportQueue.linkInput("https://cooking.nytimes.com/recipes/1-x")
     /** A job queued by 0.4.1 or earlier: it still carries the week the recipe went into. */
-    private val legacyLink = ImportQueue.linkInput("https://cooking.nytimes.com/recipes/1-x", LocalDate.parse("2026-10-11"))
+    private val legacyLink = ImportQueue.linkInput("https://cooking.nytimes.com/recipes/1-x", LocalDate.parse("2026-10-12"))
 
     @Before fun setUp() {
         shadowOf(env.context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
@@ -84,8 +84,8 @@ class ImportWorkerTest {
         assertTrue(out.getBoolean(ImportWorker.OUT_EXISTING, false))
         assertEquals(1, out.getInt(ImportWorker.OUT_MISSING_LINE, -1))
         assertEquals(191, out.getInt(ImportWorker.OUT_MISSING_PAGE, 0))
-        assertEquals("2026-10-11", out.getString(ImportWorker.OUT_WEEK))
-        assertEquals(listOf("""{"text":"https://cooking.nytimes.com/recipes/1-x","week":"2026-10-11"}"""),
+        assertEquals("2026-10-12", out.getString(ImportWorker.OUT_WEEK))
+        assertEquals(listOf("""{"text":"https://cooking.nytimes.com/recipes/1-x","week":"2026-10-12"}"""),
             env.bodies("POST", "/recipes/share"))
         val n = notifications().single()
         assertEquals("Already in your Recipes: Thai Green Curry Wings", n.extras.getString(Notification.EXTRA_TITLE))

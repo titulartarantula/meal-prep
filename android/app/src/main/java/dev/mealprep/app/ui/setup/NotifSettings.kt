@@ -58,15 +58,15 @@ import java.time.format.FormatStyle
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-/** Sun … Sat, the app's week order. */
-internal val WEEK_DAYS = listOf(DayOfWeek.SUNDAY) + DayOfWeek.entries.filter { it != DayOfWeek.SUNDAY }
+/** Mon … Sun, the app's week order. */
+internal val WEEK_DAYS: List<DayOfWeek> = DayOfWeek.entries
 
 private val SHORT_TIME: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
 private val DAY_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
 
 internal fun time(t: LocalTime): String = t.format(SHORT_TIME)
 
-internal fun reminderSummary(n: NotifPrefs): String = "Every ${Weeks.longDayLabel(n.staplesDay.value % 7)} at ${time(n.staplesAt)}"
+internal fun reminderSummary(n: NotifPrefs): String = "Every ${Weeks.longDayLabel(Weeks.dayOf(n.staplesDay))} at ${time(n.staplesAt)}"
 
 /** "Wed Oct 14, 9:00 AM: How was Tuesday's Chili?" */
 internal fun upcomingLine(r: PlannedReminder): String =
@@ -152,7 +152,7 @@ fun NotifSettingsContent(
             n.staples, { onChange(n.copy(staples = it)) })
         if (n.staples) {
             FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                WEEK_DAYS.forEach { d -> GardenChip(n.staplesDay == d, { onChange(n.copy(staplesDay = d)) }, Weeks.dayLabel(d.value % 7)) }
+                WEEK_DAYS.forEach { d -> GardenChip(n.staplesDay == d, { onChange(n.copy(staplesDay = d)) }, Weeks.dayLabel(Weeks.dayOf(d))) }
             }
             TimeButton("staples reminder", n.staplesAt) { onChange(n.copy(staplesAt = it)) }
         }

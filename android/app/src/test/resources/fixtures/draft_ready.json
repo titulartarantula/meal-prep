@@ -1,4 +1,4 @@
-{"id": 7, "status": "ready", "error": null, "progress": {"done": 2, "total": 2}, "weeks": ["2026-10-11"],
+{"id": 7, "status": "ready", "error": null, "progress": {"done": 2, "total": 2}, "weeks": ["2026-10-12"],
  "lines": [
   {"id": 31, "item_key": "onion|each", "name": "onion", "qty": 3.0, "unit": null, "prep": "diced", "recipes": ["Chili", "Fish soup"],
    "product": {"code": "20600927001_KG", "name": "Yellow Onions", "brand": null, "package_size": "1.36 kg bag", "price": 3.99, "stock": "OK", "sold_by": "SOLD_BY_EACH"},
@@ -7,4 +7,4 @@
    "removed": false, "status": "matched"},
   {"id": 32, "item_key": "ground beef|g", "name": "ground beef", "qty": 900.0, "unit": "g", "prep": null, "recipes": ["Chili"],
    "product": null, "quantity": null, "source": "none", "alternatives": [], "removed": false, "status": "unmatched"}],
- "pcx_cart_id": null, "estimated_total": 3.99, "created_at": "2026-10-07T19:00:00+00:00", "sent_at": null}
+ "pcx_cart_id": null, "estimated_total": 3.99, "created_at": "2026-10-08T19:00:00+00:00", "sent_at": null}

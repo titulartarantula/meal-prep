@@ -26,15 +26,15 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/** This week: a night's name and store items (2026-11-06). No `w411dp-h891dp` qualifier here: with it, a text field in a
+/** This week: a night's name and store items (2026-11-07). No `w411dp-h891dp` qualifier here: with it, a text field in a
  *  dialog never lets Compose go idle under Robolectric (the name dialog). */
 @RunWith(RobolectricTestRunner::class)
 class NightScreenTest {
     @get:Rule val compose = createComposeRule()
-    private val wk = LocalDate.parse("2026-10-11")
-    private val today = LocalDate.parse("2026-10-07")
-    private val pizza = Extra(7, "2026-10-11", "frozen pizza", product = Product("PIZ", "Pepperoni Pizza", "Hearthstone"), quantity = 2, day = 4)
-    private val entries = listOf(PlanEntry(21, "2026-10-11", 5, 2, title = "Chili"))
+    private val wk = LocalDate.parse("2026-10-12")
+    private val today = LocalDate.parse("2026-10-08")
+    private val pizza = Extra(7, "2026-10-12", "frozen pizza", product = Product("PIZ", "Pepperoni Pizza", "Hearthstone"), quantity = 2, day = 4)
+    private val entries = listOf(PlanEntry(21, "2026-10-12", 5, 2, title = "Chili"))
     private val nights = listOf(WeekNight(4, "Pizza night", listOf(pizza)))
     private val ui = WeekUi(wk, weekView(wk, entries), statusStrip(entries, false, nights), ContextAction.BuildCart(wk), nights = nights, loading = false)
 
@@ -59,7 +59,7 @@ class NightScreenTest {
 
     @Test fun `the night menu offers naming it`() {
         show()
-        menu("Monday")
+        menu("Tuesday")
         compose.onNodeWithText(NAME_NIGHT).assertExists()
         compose.onNodeWithText(ADD_STORE_ITEMS).assertExists()
         compose.onNodeWithText(CLEAR_NAME).assertDoesNotExist()
@@ -67,7 +67,7 @@ class NightScreenTest {
 
     @Test fun `a named night's menu offers renaming and clearing it`() {
         show()
-        menu("Thursday")
+        menu("Friday")
         compose.onNodeWithText(RENAME_NIGHT).assertExists()
         compose.onNodeWithText(CLEAR_NAME).assertExists()
     }
@@ -75,7 +75,7 @@ class NightScreenTest {
     @Test fun `name a night in its dialog`() {
         val names = mutableListOf<Pair<Int, String>>()
         compose.setContent { NameNightDialog(1, null, onSave = { names += 1 to it }, onDismiss = {}) }
-        compose.onNodeWithText("Name Monday").assertExists()
+        compose.onNodeWithText("Name Tuesday").assertExists()
         compose.onNodeWithText("Name of the night").performTextReplacement("x".repeat(61))
         compose.onNodeWithText("Save").assertIsNotEnabled()
         compose.onNodeWithText("Name of the night").performTextReplacement("  Leftovers ")
@@ -88,7 +88,7 @@ class NightScreenTest {
         show(a = NightActions(onName = { d, t -> names += d to t }))
         scrollTo("Pizza night")
         compose.onNodeWithText("Pizza night").performClick()
-        compose.onNodeWithText("Rename Thursday").assertExists()
+        compose.onNodeWithText("Rename Friday").assertExists()
         compose.onNodeWithText(CLEAR_NAME).performClick()
         assertEquals(listOf(4 to ""), names)
     }
@@ -96,7 +96,7 @@ class NightScreenTest {
     @Test fun `add store items opens the chooser for that night`() {
         var added: Int? = null
         show(a = NightActions(onAddItems = { added = it }))
-        menu("Saturday")
+        menu("Sunday")
         compose.onNodeWithText(ADD_STORE_ITEMS).performClick()
         assertEquals(6, added)
     }
@@ -110,7 +110,7 @@ class NightScreenTest {
         compose.onNodeWithText("Done").performClick()
         assertEquals(listOf(3), qty)
         compose.onNodeWithText("Hearthstone Pepperoni Pizza ×2").performClick()
-        compose.onNodeWithText("Fri").performClick()
+        compose.onNodeWithText("Sat").performClick()
         assertEquals(listOf<Int?>(5), moves)
         compose.onNodeWithText("Hearthstone Pepperoni Pizza ×2").performClick()
         compose.onNodeWithText(WHOLE_WEEK).performClick()
@@ -122,7 +122,7 @@ class NightScreenTest {
 
     @Test fun `a reader sees names and items but can't change them`() {
         show(access = Access(setOf("plan.read")))
-        compose.onNodeWithContentDescription("Options for Thursday").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Options for Friday").assertDoesNotExist()
         scrollTo("Pizza night")
         compose.onNodeWithText("Pizza night").assertExists()
         compose.onNodeWithText("Hearthstone Pepperoni Pizza ×2").performClick()
@@ -133,6 +133,6 @@ class NightScreenTest {
         val empty = WeekUi(wk, weekView(wk, emptyList()), statusStrip(emptyList(), false), ContextAction.AddRecipes, loading = false)
         show(empty, access = Access(setOf("plan.read")))
         compose.onNodeWithText(EMPTY_WEEK).assertExists()
-        compose.onNodeWithText("Tue 13").assertDoesNotExist()
+        compose.onNodeWithText("Wed 14").assertDoesNotExist()
     }
 }

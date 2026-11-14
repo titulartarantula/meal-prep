@@ -26,7 +26,7 @@ import org.robolectric.RobolectricTestRunner
 class DraftScreenTest {
     @get:Rule val compose = createComposeRule()
     private val ready = Http.json.decodeFromString(Draft.serializer(), fixture("draft_ready.json"))
-    private val today = java.time.LocalDate.parse("2026-10-07")
+    private val today = java.time.LocalDate.parse("2026-10-08")
 
     @Test fun `ready draft leads each line with the product and price, then one quiet line`() {
         var sent = 0
@@ -38,7 +38,7 @@ class DraftScreenTest {
         compose.onNodeWithText("ground beef · need 900 g · Chili").assertExists()      // one recipe: by name
         compose.onNodeWithText("About $3.99 · 1 item").assertExists()
         compose.onNodeWithText("Cart").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-        compose.onNodeWithText("Next week (Oct 11)").assertExists()                      // the cart's week under the title
+        compose.onNodeWithText("Next week (Oct 12)").assertExists()                      // the cart's week under the title
         compose.onNodeWithText("Send to Loblaws").performClick()
         assertEquals(1, sent)
     }
@@ -56,7 +56,7 @@ class DraftScreenTest {
         assertEquals(0, sent)
         compose.onNodeWithContentDescription("One more onion").assertIsNotEnabled()
         compose.onNodeWithText(BUILD_NEW_CART).assertHeightIsAtLeast(48.dp).performClick()
-        assertEquals(listOf("2026-10-11"), rebuilt)
+        assertEquals(listOf("2026-10-12"), rebuilt)
         assertEquals(false, DraftState(ready.copy(stale = true), loading = false).canSend)
         assertEquals(true, DraftState(ready, loading = false).canSend)
     }
@@ -131,11 +131,11 @@ class DraftScreenTest {
 
     @Test fun `failed draft offers to build again for its weeks`() {
         var weeks: List<String>? = null
-        val failed = Draft(7, "failed", error = "Every product search failed. Try again later.", weeks = listOf("2026-10-11"))
+        val failed = Draft(7, "failed", error = "Every product search failed. Try again later.", weeks = listOf("2026-10-12"))
         compose.setContent { DraftContent(DraftState(failed, loading = false, error = failed.error), DraftActions(onRebuild = { weeks = it })) }
         compose.onNodeWithText("Every product search failed. Try again later.").assertExists()
         compose.onNodeWithText("Build it again").performClick()
-        assertEquals(listOf("2026-10-11"), weeks)
+        assertEquals(listOf("2026-10-12"), weeks)
     }
 
     @Test fun `building draft shows progress`() {
@@ -209,8 +209,8 @@ class DraftScreenTest {
         assertEquals("onion · need 3 · diced · 2 recipes", lineDetail(line))
         assertEquals("onion · need 3 · diced · 2 recipes · $3.99 each", lineDetail(line.copy(quantity = 2)))
         assertEquals("milk", lineDetail(line.copy(name = "milk", qty = null, prep = null, recipes = emptyList())))
-        assertEquals("Next week (Oct 11)", weeksTitle(listOf("2026-10-11"), today))
-        assertEquals("Oct 11 + Oct 18", weeksTitle(listOf("2026-10-18", "2026-10-11"), today))
+        assertEquals("Next week (Oct 12)", weeksTitle(listOf("2026-10-12"), today))
+        assertEquals("Oct 12 + Oct 19", weeksTitle(listOf("2026-10-19", "2026-10-12"), today))
         assertEquals(null, weeksTitle(emptyList(), today))
     }
 

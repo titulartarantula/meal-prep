@@ -34,14 +34,14 @@ import org.robolectric.RobolectricTestRunner
 class HomeViewModelTest {
     @get:Rule val main = MainDispatcherRule()
     private val env = TestEnv()
-    private val wk = LocalDate.parse("2026-10-11")
+    private val wk = LocalDate.parse("2026-10-12")
     private lateinit var vm: HomeViewModel
 
     @Before fun setUp() {
         WorkManagerTestInitHelper.initializeTestWorkManager(env.context, Configuration.Builder().setExecutor(SynchronousExecutor()).build())
-        env.on("GET", "/weeks/2026-10-11", body = fixture("week_home.json"))
-        env.on("GET", "/weeks", body = """[{"week":"2026-10-11","entries":3,"carted":false}]""")
-        vm = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-07") })
+        env.on("GET", "/weeks/2026-10-12", body = fixture("week_home.json"))
+        env.on("GET", "/weeks", body = """[{"week":"2026-10-12","entries":3,"carted":false}]""")
+        vm = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-08") })
     }
     @After fun tearDown() = env.close()
 
@@ -50,8 +50,8 @@ class HomeViewModelTest {
         fun later() = env.requests.firstOrNull { it.url.encodedPath == "/weeks" && it.url.queryParameter("count") == "48" }
         withContext(Dispatchers.Default) { withTimeout(5_000) { while (later() == null) delay(10) } }
         val asked = later()!!
-        assertEquals("2026-11-01", asked.url.queryParameter("from"))                // the first week after the horizon
-        env.on("GET", "/weeks", body = """[{"week":"2026-11-01","entries":0},{"week":"2026-11-15","entries":1}]""")
+        assertEquals("2026-11-02", asked.url.queryParameter("from"))                // the first week after the horizon
+        env.on("GET", "/weeks", body = """[{"week":"2026-11-02","entries":0},{"week":"2026-11-16","entries":1}]""")
         vm.refreshAhead()
         vm.ahead.await { it == 6 }
         env.offline = true                                                         // the saved copy still shows it
@@ -77,8 +77,8 @@ class HomeViewModelTest {
     }
 
     @Test fun `a week changed after its cart was sent is planned only and builds a new cart`() = runTest {
-        env.on("GET", "/weeks", body = """[{"week":"2026-10-11","entries":3,"carted":false,"cart_stale":true}]""")
-        env.on("GET", "/weeks/2026-10-11/draft", body = fixture("draft_3_sent.json").replaceFirst("{", "{\"stale\": true, "))
+        env.on("GET", "/weeks", body = """[{"week":"2026-10-12","entries":3,"carted":false,"cart_stale":true}]""")
+        env.on("GET", "/weeks/2026-10-12/draft", body = fixture("draft_3_sent.json").replaceFirst("{", "{\"stale\": true, "))
         val ui = vm.week(wk).await { !it.loading }
         assertEquals(StatusStrip(planned = true, cartSent = false), ui.strip)
         assertEquals(ContextAction.BuildCart(wk), ui.action)
@@ -114,11 +114,11 @@ class HomeViewModelTest {
         vm.week(wk).await { !it.loading }
         val old = fixture("week_home.json")
         val gate = CountDownLatch(1)
-        env.onGated("GET", "/weeks/2026-10-11", gate, old)                    // stale: cookies still in the tray
-        val before = env.count("GET", "/weeks/2026-10-11")
+        env.onGated("GET", "/weeks/2026-10-12", gate, old)                    // stale: cookies still in the tray
+        val before = env.count("GET", "/weeks/2026-10-12")
         vm.refresh(wk)
-        withContext(Dispatchers.Default) { withTimeout(5_000) { while (env.count("GET", "/weeks/2026-10-11") == before) delay(10) } }
-        env.on("GET", "/weeks/2026-10-11", body = old.replace("\"day\": null", "\"day\": 4"))
+        withContext(Dispatchers.Default) { withTimeout(5_000) { while (env.count("GET", "/weeks/2026-10-12") == before) delay(10) } }
+        env.on("GET", "/weeks/2026-10-12", body = old.replace("\"day\": null", "\"day\": 4"))
         vm.refresh(wk)
         vm.week(wk).await { it.view!!.unplaced.isEmpty() }
         gate.countDown()                                                      // the stale response is released only now
@@ -129,10 +129,10 @@ class HomeViewModelTest {
     @Test fun `overlapping writes where the first fails end on the server's truth`() = runTest {
         val old = fixture("week_home.json")
         val ui = vm.week(wk).await { !it.loading }.view!!
-        env.onDelayed("PATCH", "/plan/23", 400, """{"detail":"boom"}""", code = 500)   // A: cookies -> Thu, fails late
-        env.on("PATCH", "/plan/21", code = 204)                                          // B: chili -> Fri, succeeds
-        // server truth once B has landed: chili on Fri, cookies still in the tray, fish soup untouched
-        env.on("GET", "/weeks/2026-10-11", body = old.replace("\"recipe_id\": 5, \"day\": 2", "\"recipe_id\": 5, \"day\": 5"))
+        env.onDelayed("PATCH", "/plan/23", 400, """{"detail":"boom"}""", code = 500)   // A: cookies -> Fri, fails late
+        env.on("PATCH", "/plan/21", code = 204)                                          // B: chili -> Sat, succeeds
+        // server truth once B has landed: chili on Sat, cookies still in the tray, fish soup untouched
+        env.on("GET", "/weeks/2026-10-12", body = old.replace("\"recipe_id\": 5, \"day\": 2", "\"recipe_id\": 5, \"day\": 5"))
         vm.place(ui.unplaced.single(), 4)
         vm.place(ui.all.first { it.id == 21 }, 5)
         assertEquals("boom", vm.message.await { it != null })
@@ -158,7 +158,7 @@ class HomeViewModelTest {
 
     @Test fun `a removal is deleted once the snackbar goes, or when another dinner is removed`() = runTest {
         var changes = 0
-        val v = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-07") },
+        val v = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-08") },
             afterChange = { changes++ })
         env.on("DELETE", "/plan/21", code = 204)
         env.on("DELETE", "/plan/23", code = 204)
@@ -176,7 +176,7 @@ class HomeViewModelTest {
 
     @Test fun `a failed load with no saved copy is unknown, not an empty week`() = runTest {
         env.offline = true
-        val ui = vm.week(LocalDate.parse("2026-11-01")).await { !it.loading }
+        val ui = vm.week(LocalDate.parse("2026-11-02")).await { !it.loading }
         assertEquals(null, ui.view)
         assertNotNull(ui.error)
         assertEquals(true, ui.failed)
@@ -184,7 +184,7 @@ class HomeViewModelTest {
 
     @Test fun `a rejected token is an error, not offline`() = runTest {
         vm.week(wk).await { !it.loading }
-        env.on("GET", "/weeks/2026-10-11", code = 401, body = """{"detail":"nope"}""")
+        env.on("GET", "/weeks/2026-10-12", code = 401, body = """{"detail":"nope"}""")
         vm.refresh(wk)
         val ui = vm.week(wk).await { it.error != null }
         assertEquals(null, ui.offlineSince)
@@ -193,14 +193,14 @@ class HomeViewModelTest {
 
     @Test fun `a failed import that may be on the server is not re-sent by Try again`() = runTest {
         val id = UUID.randomUUID()
-        val out = workDataOf(ImportWorker.KIND to ImportWorker.LINK, ImportWorker.TEXT to "x", ImportWorker.WEEK to "2026-10-11",
+        val out = workDataOf(ImportWorker.KIND to ImportWorker.LINK, ImportWorker.TEXT to "x", ImportWorker.WEEK to "2026-10-12",
             ImportWorker.ERROR to "timed out", ImportWorker.RETRY_SAFE to false)
         val safeId = UUID.randomUUID()
         val flow = MutableStateFlow(listOf(ImportJob(id, WorkInfo.State.FAILED, out), ImportJob(safeId, WorkInfo.State.FAILED,
-            workDataOf(ImportWorker.KIND to ImportWorker.LINK, ImportWorker.TEXT to "y", ImportWorker.WEEK to "2026-10-11",
+            workDataOf(ImportWorker.KIND to ImportWorker.LINK, ImportWorker.TEXT to "y", ImportWorker.WEEK to "2026-10-12",
                 ImportWorker.ERROR to "no connection", ImportWorker.RETRY_SAFE to true))))
         val wm = WorkManager.getInstance(env.context)
-        val v = HomeViewModel(env.repo, ImportQueue(wm), today = { LocalDate.parse("2026-10-07") }, jobs = flow)
+        val v = HomeViewModel(env.repo, ImportQueue(wm), today = { LocalDate.parse("2026-10-08") }, jobs = flow)
         assertEquals(listOf(false, true), v.imports.await { it.size == 2 }.map { (it as ImportUi.Failed).retrySafe })
         v.retryImport(id)
         assertEquals(0, wm.getWorkInfosByTag(ImportQueue.TAG).get().size)
@@ -212,7 +212,7 @@ class HomeViewModelTest {
         val wm = WorkManager.getInstance(env.context)
         val queue = ImportQueue(wm)
         val id = queue.enqueueLink("https://cooking.nytimes.com/recipes/1-x")   // test WorkManager: network never met
-        val v = HomeViewModel(env.repo, queue, today = { LocalDate.parse("2026-10-07") })
+        val v = HomeViewModel(env.repo, queue, today = { LocalDate.parse("2026-10-08") })
         v.cancelImport(id)
         assertEquals(WorkInfo.State.CANCELLED, wm.getWorkInfoById(id).get()!!.state)
     }
@@ -228,24 +228,24 @@ class HomeViewModelTest {
 
     @Test fun `yesterday's unrated dinner is offered for rating, Later hides it on this phone until tomorrow`() = runTest {
         env.on("GET", "/ratings/pending", body = fixture("pending.json"))
-        val v = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-14") })
+        val v = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-15") })
         val p = v.pending.await { it != null }!!
         assertEquals(21, p.entryId); assertEquals("Chili", p.title)
-        assertEquals("today=2026-10-14", env.requests.last { it.url.encodedPath == "/ratings/pending" }.url.query)
+        assertEquals("today=2026-10-15", env.requests.last { it.url.encodedPath == "/ratings/pending" }.url.query)
         v.dismissPending()
         assertEquals(null, v.pending.value)
         withContext(Dispatchers.Default) { delay(200) }                    // "Later" is written
         val asked = env.count("GET", "/ratings/pending")
-        val again = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-14") })
+        val again = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-15") })
         withContext(Dispatchers.Default) { withTimeout(5_000) { while (env.count("GET", "/ratings/pending") == asked) delay(10) }; delay(200) }
         assertEquals(null, again.pending.value)
-        val tomorrow = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-15") })
+        val tomorrow = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-16") })
         assertEquals(21, tomorrow.pending.await { it != null }!!.entryId)
     }
 
     @Test fun `a change to the week re-plans the reminders, a failed one does not`() = runTest {
         var changes = 0
-        val v = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-07") },
+        val v = HomeViewModel(env.repo, ImportQueue(WorkManager.getInstance(env.context)), today = { LocalDate.parse("2026-10-08") },
             afterChange = { changes++ })
         val cookies = v.week(wk).await { !it.loading }.view!!.unplaced.single()
         env.on("PATCH", "/plan/23", code = 500, body = """{"detail":"boom"}""")

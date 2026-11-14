@@ -37,7 +37,7 @@ import org.robolectric.Shadows.shadowOf
 class SyncWorkerTest {
     private val env = TestEnv()
     private lateinit var wm: WorkManager
-    private val now = ZonedDateTime.of(LocalDateTime.parse("2026-10-11T10:00"), ZoneId.of("America/Toronto"))
+    private val now = ZonedDateTime.of(LocalDateTime.parse("2026-10-12T10:00"), ZoneId.of("America/Toronto"))
     private var settings = Settings(token = "tok")
     private var foreground = false
 
@@ -46,12 +46,12 @@ class SyncWorkerTest {
         Notifier(env.context).ensureChannels()
         WorkManagerTestInitHelper.initializeTestWorkManager(env.context, Configuration.Builder().setExecutor(SynchronousExecutor()).build())
         wm = WorkManager.getInstance(env.context)
-        env.on("GET", "/weeks/2026-10-11", body = """[{"id":21,"week":"2026-10-11","recipe_id":5,"day":2,"title":"Chili"},
-            {"id":22,"week":"2026-10-11","recipe_id":6,"day":4,"title":"Fish soup"}]""")
-        env.on("GET", "/weeks/2026-10-04", body = "[]")
-        env.on("GET", "/weeks/2026-10-18", body = "[]")
+        env.on("GET", "/weeks/2026-10-12", body = """[{"id":21,"week":"2026-10-12","recipe_id":5,"day":2,"title":"Chili"},
+            {"id":22,"week":"2026-10-12","recipe_id":6,"day":4,"title":"Fish soup"}]""")
+        env.on("GET", "/weeks/2026-10-05", body = "[]")
+        env.on("GET", "/weeks/2026-10-19", body = "[]")
         env.on("GET", "/recipes", body = "[]")
-        env.on("GET", "/weeks/2026-10-11/draft", body = fixture("draft_ready.json"))
+        env.on("GET", "/weeks/2026-10-12/draft", body = fixture("draft_ready.json"))
     }
     @After fun tearDown() = env.close()
 
@@ -72,7 +72,7 @@ class SyncWorkerTest {
         worker().doWork()
         assertEquals(1, notes().size)
         val planned = env.repo.getLocal(SyncWorker.PLANNED, SyncWorker.plannedSerializer)!!
-        assertEquals(listOf("rate-21", "rate-22"), planned.map { it.id })       // Wed 9:00, Fri 9:00
+        assertEquals(listOf("rate-21", "rate-22"), planned.map { it.id })       // Thu 9:00, Sat 9:00
         assertTrue(env.requests.none { "prep" in it.url.encodedPath || "/card" in it.url.encodedPath })   // Sunday prep retired
     }
 

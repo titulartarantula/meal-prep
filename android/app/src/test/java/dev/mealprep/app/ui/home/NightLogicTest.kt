@@ -12,11 +12,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** A night's name and store items (2026-11-06): the cached nights after each write, labels, planned, next step. */
+/** A night's name and store items (2026-11-07): the cached nights after each write, labels, planned, next step. */
 class NightLogicTest {
-    private val wk = LocalDate.parse("2026-11-15")
+    private val wk = LocalDate.parse("2026-11-16")
     private fun item(id: Int, day: Int?, qty: Int = 1, name: String = "Thing $id", brand: String? = null, weighted: Boolean = false) =
-        Extra(id, "2026-11-15", name.lowercase(), product = Product("P$id", name, brand, weighted = weighted, interval = if (weighted) 100 else null),
+        Extra(id, "2026-11-16", name.lowercase(), product = Product("P$id", name, brand, weighted = weighted, interval = if (weighted) 100 else null),
             quantity = qty, day = day)
 
     @Test fun `a name is added, renamed and cleared, and a night with nothing left drops out`() {
@@ -40,7 +40,7 @@ class NightLogicTest {
         var ns = putItem(listOf(WeekNight(1, "Leftovers")), item(5, 4, 2))
         assertEquals(listOf(1 to emptyList(), 4 to listOf(5)), ns.map { it.day to it.items.map { i -> i.id } })
         ns = putItem(ns, item(6, 4))
-        ns = putItem(ns, item(5, 6, 2))                                       // moved to Saturday
+        ns = putItem(ns, item(5, 6, 2))                                       // moved to Sunday
         assertEquals(listOf(1 to emptyList(), 4 to listOf(6), 6 to listOf(5)), ns.map { it.day to it.items.map { i -> i.id } })
         ns = putItem(ns, item(6, 4, 3))                                       // one more
         assertEquals(3, ns.first { it.day == 4 }.items.single().quantity)
@@ -56,26 +56,26 @@ class NightLogicTest {
         assertNull(itemCount(item(2, 4)))
         assertEquals("300 g", itemCount(item(3, 4, 300, "Ham", weighted = true)))
         assertEquals("From the store: Hearthstone Pepperoni Pizza ×2 · Caesar Kit", storeLine(listOf(pizza, item(4, 4, 1, "Caesar Kit"))))
-        assertEquals("cheddar", itemName(Extra(9, "2026-11-15", "cheddar")))
+        assertEquals("cheddar", itemName(Extra(9, "2026-11-16", "cheddar")))
     }
 
     @Test fun `a night with only a name or store items counts as planned, and store items build a cart`() {
         assertEquals(StatusStrip(false, false), statusStrip(emptyList(), false))
         assertEquals(StatusStrip(true, false), statusStrip(emptyList(), false, listOf(WeekNight(4, "Pizza night"))))
         assertEquals(StatusStrip(true, false), statusStrip(emptyList(), false, listOf(WeekNight(4, null, listOf(item(1, 4))))))
-        val today = LocalDate.parse("2026-11-12")
+        val today = LocalDate.parse("2026-11-13")
         assertEquals(ContextAction.AddRecipes, contextAction(wk, today, emptyList(), false, null))
         assertEquals(ContextAction.BuildCart(wk), contextAction(wk, today, emptyList(), false, null, extras = 2))
-        val chili = PlanEntry(1, "2026-11-15", 5, 2, title = "Chili")
+        val chili = PlanEntry(1, "2026-11-16", 5, 2, title = "Chili")
         assertEquals(ContextAction.BuildCart(wk), contextAction(wk, today, listOf(chili), false, null, extras = 0))
     }
 
     @Test fun `the list and the cart say which night an added item is for`() {
         val e = item(1, 4, 2, "Pepperoni Pizza", brand = "Hearthstone")
-        assertEquals("2 · for Thursday", extraDetail(e))
+        assertEquals("2 · for Friday", extraDetail(e))
         assertEquals("2", extraDetail(e.copy(day = null)))
         val line = DraftLine(7, name = "frozen pizza", recipes = listOf("Added"), extraId = 1, day = 4)
-        assertEquals("frozen pizza · Added for Thu", lineDetail(line))
+        assertEquals("frozen pizza · Added for Fri", lineDetail(line))
         assertEquals("frozen pizza · Added", lineDetail(line.copy(day = null)))
     }
 }

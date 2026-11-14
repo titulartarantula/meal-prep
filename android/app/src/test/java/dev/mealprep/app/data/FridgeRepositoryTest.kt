@@ -82,7 +82,7 @@ class FridgeRepositoryTest {
     }
 
     @Test fun `edits send explicit nulls for a cleared amount and confirm alone`() = runTest {
-        env.on("PATCH", "/fridge/1", body = """{"id":1,"name":"Eggs","amount_as_of":"2026-10-07"}""")
+        env.on("PATCH", "/fridge/1", body = """{"id":1,"name":"Eggs","amount_as_of":"2026-10-08"}""")
         env.repo.editFridge(1, name = "Eggs", qty = null, unit = null, useSoon = true, useBy = null)
         assertEquals("""{"name":"Eggs","qty":null,"unit":null,"use_soon":true,"use_by":null}""", env.bodies("PATCH", "/fridge/1").last())
         env.repo.confirmFridge(1)
@@ -93,14 +93,14 @@ class FridgeRepositoryTest {
         env.on("POST", "/fridge/suggest", body = fixture("fridge_suggest.json"))
         env.on("GET", "/fridge/names", body = """["egg","eggplant"]""")
         env.on("GET", "/fridge/used", body = fixture("fridge_used.json"))
-        env.on("POST", "/fridge/used/31", body = """{"entry_id":31,"action":"applied","changes":[{"item_id":1,"name":"Eggs","before":6,"after":2,"unit":null,"text":"Eggs 2"}],"answered_at":"2026-10-07T12:00:00+00:00"}""")
+        env.on("POST", "/fridge/used/31", body = """{"entry_id":31,"action":"applied","changes":[{"item_id":1,"name":"Eggs","before":6,"after":2,"unit":null,"text":"Eggs 2"}],"answered_at":"2026-10-08T12:00:00+00:00"}""")
         env.on("POST", "/list", body = "[]")
-        val wk = LocalDate.parse("2026-10-11")
+        val wk = LocalDate.parse("2026-10-12")
         (env.repo.suggest(3, 4, wk, listOf(9)) as ApiResult.Ok)
-        assertEquals("""{"nights":3,"people":4,"week":"2026-10-11","exclude":[9]}""", env.bodies("POST", "/fridge/suggest").last())
+        assertEquals("""{"nights":3,"people":4,"week":"2026-10-12","exclude":[9]}""", env.bodies("POST", "/fridge/suggest").last())
         assertEquals(listOf("egg", "eggplant"), (env.repo.fridgeNames("eg") as ApiResult.Ok).value)
         assertEquals("eg", env.requests.last { it.url.encodedPath == "/fridge/names" }.url.queryParameter("q"))
-        assertEquals(31, (env.repo.fridgeUsed(LocalDate.parse("2026-10-07")) as ApiResult.Ok).value.single().entryId)
+        assertEquals(31, (env.repo.fridgeUsed(LocalDate.parse("2026-10-08")) as ApiResult.Ok).value.single().entryId)
         assertEquals("Eggs 2", (env.repo.answerUsed(31, true) as ApiResult.Ok).value.changes.single().text)
         assertEquals("""{"apply":true}""", env.bodies("POST", "/fridge/used/31").last())
         env.repo.shoppingList(listOf(wk), listOf(1), fridge = true)

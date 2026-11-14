@@ -164,7 +164,7 @@ class ChooserViewModelTest {
 
     @Test fun `Add an item starts blank and searches nothing until something is typed`() = runTest {
         env.on("GET", "/products/choices", body = fixture("choices.json"))
-        val vm = ChooserViewModel(env.repo, ChooserMode.AddToList(java.time.LocalDate.parse("2026-10-11")))
+        val vm = ChooserViewModel(env.repo, ChooserMode.AddToList(java.time.LocalDate.parse("2026-10-12")))
         val s0 = vm.state.value
         assertTrue(s0.adding && s0.blank && s0.editable && !s0.loading)
         vm.search("  ")
@@ -178,33 +178,33 @@ class ChooserViewModelTest {
 
     @Test fun `Add to list posts the week, the search, the product and how many`() = runTest {
         env.on("GET", "/products/choices", body = fixture("choices.json").replace("\"term\": \"old cheddar\"", "\"term\": \"cheddar\""))
-        env.on("POST", "/extras", code = 201, body = """{"id":4,"week":"2026-10-11","term":"cheddar","quantity":2}""")
-        val vm = ChooserViewModel(env.repo, ChooserMode.AddToList(java.time.LocalDate.parse("2026-10-14")))
+        env.on("POST", "/extras", code = 201, body = """{"id":4,"week":"2026-10-12","term":"cheddar","quantity":2}""")
+        val vm = ChooserViewModel(env.repo, ChooserMode.AddToList(java.time.LocalDate.parse("2026-10-15")))
         vm.search("cheddar")
         vm.state.await { !it.loading && it.choices.isNotEmpty() }
         vm.open(vm.state.value.choices.first { it.product.code == "21289751_EA" })
         vm.more()
         vm.use()
         vm.state.await { it.done }
-        // the week the list chose (any day of it → its Sunday), the search as the item's name, the stepper's 3
-        assertEquals("""{"week":"2026-10-11","term":"cheddar","product_code":"21289751_EA","quantity":3}""",
+        // the week the list chose (any day of it → its Monday), the search as the item's name, the stepper's 3
+        assertEquals("""{"week":"2026-10-12","term":"cheddar","product_code":"21289751_EA","quantity":3}""",
             env.bodies("POST", "/extras").single())
     }
 
     @Test fun `adding for a night of the week posts its day and says which night`() = runTest {
         env.on("GET", "/products/choices", body = fixture("choices.json").replace("\"term\": \"old cheddar\"", "\"term\": \"cheddar\""))
-        env.on("POST", "/extras", code = 201, body = """{"id":4,"week":"2026-10-11","day":4,"term":"cheddar","quantity":1}""")
-        val vm = ChooserViewModel(env.repo, ChooserMode.AddToList(java.time.LocalDate.parse("2026-10-11"), day = 4))
+        env.on("POST", "/extras", code = 201, body = """{"id":4,"week":"2026-10-12","day":4,"term":"cheddar","quantity":1}""")
+        val vm = ChooserViewModel(env.repo, ChooserMode.AddToList(java.time.LocalDate.parse("2026-10-12"), day = 4))
         assertEquals(4, vm.state.value.night)
-        assertEquals("Add items for Thursday", addToNightTitle(4))
-        assertEquals("Add to Thursday", addToNight(4))
+        assertEquals("Add items for Friday", addToNightTitle(4))
+        assertEquals("Add to Friday", addToNight(4))
         vm.search("cheddar")
         vm.state.await { !it.loading && it.choices.isNotEmpty() }
         vm.open(vm.state.value.choices.first { it.product.code == "21289751_EA" })
         vm.use()
         vm.state.await { it.done }
         val body = env.bodies("POST", "/extras").single()
-        assertTrue(body, body.startsWith("""{"week":"2026-10-11","term":"cheddar","product_code":"21289751_EA","quantity":"""))
+        assertTrue(body, body.startsWith("""{"week":"2026-10-12","term":"cheddar","product_code":"21289751_EA","quantity":"""))
         assertTrue(body, body.endsWith(""","day":4}"""))
     }
 

@@ -108,7 +108,7 @@ class ListViewModel(
         viewModelScope.launch {
             val t = today()
             val weeks = initial.map(Weeks::weekStart).ifEmpty {
-                listOf((repo.defaultCartWeek() as? ApiResult.Ok)?.value?.let(Weeks::weekStart) ?: Weeks.upcomingSunday(t))
+                listOf((repo.defaultCartWeek() as? ApiResult.Ok)?.value?.let(Weeks::weekStart) ?: Weeks.upcomingMonday(t))
             }.toSet()
             val options = weekOptions(t, repo.weeks(t, Weeks.HORIZON).value)
             val fridge = repo.fridge().value.orEmpty().count { i -> i.qty == null || i.qty > 0 }
