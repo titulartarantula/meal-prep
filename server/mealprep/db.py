@@ -261,7 +261,9 @@ def set_pick(conn, key: str, code: str, chosen_by: str = "ai") -> None:
 
 
 def week_start(d: date) -> date:
-    return d - timedelta(days=(d.weekday() + 1) % 7)   # Python: Mon=0 … Sun=6
+    """The Monday of d's week. Weeks run Monday–Sunday (since 2026-11-14; Sunday–Saturday before, see
+    monday_weeks.py) and a night's day is its offset from the Monday: 0 = Mon … 6 = Sun (= date.weekday())."""
+    return d - timedelta(days=d.weekday())
 
 
 def add_to_week(conn, week: date, recipe_id: int) -> int:
@@ -336,13 +338,13 @@ def shopping_key(servings, ingredients) -> str:
                              for i in rows if not i.get("expanded")]])[:16]
 
 
-def plan_fingerprint(conn, weeks, version: int = 2) -> str:
+def plan_fingerprint(conn, weeks, version: int = 2, normalise: bool = True) -> str:
     """Stable hash of the shopping-relevant plan of these weeks: the multiset of (week, recipe, scale) over every entry,
     placed on a night or not (as the shopping list uses them). Moving a dinner to another night doesn't change it;
     adding or removing a recipe or changing its scale does. Version 2 ("2:" + 32 hex, since 2026-10-11) also covers
     what each recipe buys (shopping_key), so editing a planned recipe's ingredients or servings changes it; version 1
     (32 hex, carts from 0.8.1 on) is still computed for the carts that recorded it."""
-    wks = sorted({week_start(w) for w in weeks})
+    wks = sorted({week_start(w) if normalise else w for w in weeks})   # normalise=False: monday_weeks.py, old ids
     rows = conn.execute("SELECT p.week, p.recipe_id, p.multiplier, r.servings, r.data -> 'ingredients' FROM plan p "
                         "JOIN recipes r ON r.id = p.recipe_id WHERE p.week = ANY(%s)", (wks,)).fetchall()
     entries = sorted(f"{w.isoformat()}|{r}|{float(m):.4f}" + (f"|{shopping_key(s, ings or [])}" if version >= 2 else "")
@@ -381,7 +383,7 @@ def sent_cart_stale(conn, weeks: list[date]) -> dict[date, bool]:
 
 
 def week_summaries(conn, start: date, count: int) -> list[dict]:
-    """One row per week from start's Sunday: number of plan entries; extras = items added by search (for the week or
+    """One row per week from start's Monday: number of plan entries; extras = items added by search (for the week or
     a night: something to shop for without a recipe); named_nights = nights with a name; carted = its newest sent cart
     still matches the plan; cart_stale = a cart was sent but the week's recipes changed since."""
     first = week_start(start)
@@ -396,7 +398,7 @@ def week_summaries(conn, start: date, count: int) -> list[dict]:
 
 
 def default_cart_week(conn, today: date) -> date | None:
-    """Earliest week >= this week's Sunday that has plan entries or added items and no up-to-date sent cart (a stale
+    """Earliest week >= this week's Monday that has plan entries or added items and no up-to-date sent cart (a stale
     one counts as none)."""
     planned = [w for (w,) in conn.execute("SELECT week FROM plan WHERE week >= %s UNION SELECT week FROM extras "
                                           "WHERE week >= %s ORDER BY week", (week_start(today), week_start(today)))]
@@ -589,7 +591,7 @@ def rate_recipe(conn, recipe_id: int, family: int, company: str | None, note: st
             (recipe_id, cooked_on, rater, by, family, company, note)).fetchone()[0]
         conn.execute("INSERT INTO rating_history(plan_id, recipe_rating_id, recipe_id, week, day, action, family, "
                      "company, note, member_id, entered_by) VALUES(NULL,%s,%s,%s,%s,'set',%s,%s,%s,%s,%s)",
-                     (rrid, recipe_id, week_start(cooked_on), (cooked_on.weekday() + 1) % 7, family, company, note,
+                     (rrid, recipe_id, week_start(cooked_on), cooked_on.weekday(), family, company, note,
                       rater, by))
     return {"cooked_on": cooked_on.isoformat(), "entry_id": None, "recipe_rating_id": rrid}
 
@@ -611,7 +613,7 @@ def unrate_recipe(conn, recipe_id: int, cooked_on: date, rater: int | None = Non
         if gone:
             conn.execute("INSERT INTO rating_history(plan_id, recipe_rating_id, recipe_id, week, day, action, "
                          "member_id, entered_by) VALUES(NULL,%s,%s,%s,%s,'delete',%s,%s)",
-                         (gone[0], recipe_id, week_start(cooked_on), (cooked_on.weekday() + 1) % 7, rater, by))
+                         (gone[0], recipe_id, week_start(cooked_on), cooked_on.weekday(), rater, by))
     return True
 
 

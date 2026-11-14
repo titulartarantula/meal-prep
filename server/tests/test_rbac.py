@@ -16,7 +16,7 @@ from mealprep.config import Settings
 from mealprep.models import Recipe
 
 H = {"Authorization": "Bearer secret"}
-WEEK = "2026-10-11"
+WEEK = "2026-10-12"
 ALL_ROLES = ["owner", "approver", "planner", "contributor"]
 
 
@@ -140,7 +140,7 @@ def test_roles_grant_what_the_plan_says(conn):
 def test_contributor_reads_and_rates_but_doesnt_plan_or_shop(conn):
     hid = db.first_household(conn)
     rid = db.save_recipe(conn, Recipe(title="Soup", source="photo", ingredients=[], steps=[]))
-    eid = db.add_to_week(conn, date(2026, 10, 11), rid)
+    eid = db.add_to_week(conn, date(2026, 10, 12), rid)
     b, _ = member_session(conn, hid, ["contributor"])
     c = TestClient(app(conn))
     assert [r["title"] for r in c.get("/recipes", headers=b).json()] == ["Soup"]
@@ -159,14 +159,14 @@ def test_households_are_isolated(conn):
     first = db.first_household(conn)
     rid = db.save_recipe(conn, Recipe(title="Ours", source="nyt", source_url="https://cooking.nytimes.com/recipes/1-a",
                                       ingredients=[], steps=[]))
-    eid = db.add_to_week(conn, date(2026, 10, 11), rid)
+    eid = db.add_to_week(conn, date(2026, 10, 12), rid)
     db.set_rating(conn, eid, 5)
     sid = conn.execute("INSERT INTO staples(name) VALUES('milk') RETURNING id").fetchone()[0]
     fid = conn.execute("INSERT INTO fridge_items(name, key, key_source) VALUES('eggs','egg','rule') RETURNING id"
                        ).fetchone()[0]
     xid = conn.execute("INSERT INTO extras(week, term, key, product_code, quantity) VALUES(%s,'x','x','P',1) "
                        "RETURNING id", (WEEK,)).fetchone()[0]
-    did = conn.execute("INSERT INTO carts(status, weeks) VALUES('ready', %s) RETURNING id", ([date(2026, 10, 11)],)
+    did = conn.execute("INSERT INTO carts(status, weeks) VALUES('ready', %s) RETURNING id", ([date(2026, 10, 12)],)
                        ).fetchone()[0]
     lid = conn.execute("INSERT INTO cart_lines(cart_id, item_key, source, status) VALUES(%s,'k','ai','added') "
                        "RETURNING id", (did,)).fetchone()[0]
@@ -208,7 +208,7 @@ def test_households_are_isolated(conn):
     # nothing of the first household changed
     db.scope(conn, first)
     r = db.get_recipe(conn, rid)
-    assert r.title == "Ours" and [e.rating.family for e in db.get_week(conn, date(2026, 10, 11))] == [5]
+    assert r.title == "Ours" and [e.rating.family for e in db.get_week(conn, date(2026, 10, 12))] == [5]
     assert conn.execute("SELECT name FROM staples").fetchall() == [("milk",)]
     assert conn.execute("SELECT count(*) FROM fridge_items").fetchone()[0] == 1
     assert conn.execute("SELECT quantity FROM extras").fetchone()[0] == 1
@@ -366,9 +366,9 @@ def test_routes_meter_their_ai_calls(conn):
 def test_retired_prep_routes_answer_410_and_call_no_ai(conn):
     """Sunday prep + cook cards were retired 2026-10-31: every old route says so (an older app shows it), nothing is
     written and no AI is asked; rows from before stay in the tables."""
-    db.add_to_week(conn, date(2026, 10, 11), db.save_recipe(conn, Recipe(title="Soup", source="photo", ingredients=[], steps=[])))
+    db.add_to_week(conn, date(2026, 10, 12), db.save_recipe(conn, Recipe(title="Soup", source="photo", ingredients=[], steps=[])))
     pid = conn.execute("INSERT INTO prep_plans(weeks, status, input) VALUES(%s,'ready','{}') RETURNING id",
-                       ([date(2026, 10, 11)],)).fetchone()[0]
+                       ([date(2026, 10, 12)],)).fetchone()[0]
     ai = AI()
     c = TestClient(app(conn, ai))
     for method, url, body in (("POST", "/prep-plans", {"weeks": [WEEK]}), ("GET", f"/prep-plans/{pid}", None),

@@ -34,6 +34,8 @@ def web_resolve(host: str, port: int) -> list[str]:
     return web._resolve(host, port)
 
 
+OLD_WEEK_APP = ("Weeks now start on Monday. Update Meal Prep from Google Play to keep planning — this version would "
+                "show every dinner on the wrong day.")
 PREP_RETIRED = "Sunday prep and cook cards have been retired; update the app."
 
 class ShareIn(BaseModel):
@@ -377,7 +379,7 @@ class ExtraIn(BaseModel):     # an item added by search for a week, or one night
     term: Annotated[str, Field(min_length=1, max_length=200)]
     product_code: Annotated[str, Field(min_length=1, max_length=64)]
     quantity: Annotated[int, Field(gt=0, le=10000)] = 1
-    day: Annotated[int, Field(ge=0, le=6)] | None = None   # 0 = Sun … 6 = Sat; none = for the week
+    day: Annotated[int, Field(ge=0, le=6)] | None = None   # 0 = Mon … 6 = Sun; none = for the week
 
 
 class ExtraPatch(BaseModel):
@@ -397,7 +399,7 @@ class NightTitle(BaseModel):
 
 
 class Night(BaseModel):
-    day: int                     # 0 = Sun … 6 = Sat
+    day: int                     # 0 = Mon … 6 = Sun
     title: str | None            # the night's name, if it has one
     items: list[dict]            # the night's added items (as GET /extras)
 
@@ -491,8 +493,8 @@ log = logging.getLogger(__name__)
 
 
 def default_week(today: date) -> date:
-    """Today if Sunday, else the upcoming Sunday."""
-    return today if today.weekday() == 6 else today + timedelta(days=6 - today.weekday())
+    """Today if Monday, else the coming Monday (the next week that hasn't started)."""
+    return today if today.weekday() == 0 else today + timedelta(days=7 - today.weekday())
 
 
 def _save_pages(d: str, files: list[UploadFile]) -> list[str]:
@@ -658,6 +660,18 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
             n = request.headers.get("content-length", "")
             if n.isdigit() and int(n) > import_cap + 1024 * 1024:
                 return JSONResponse({"detail": too_big}, status_code=413)
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def sunday_week_app_guard(request, call_next):
+        """Weeks start on Monday since 2026-11-14 (week ids are Mondays, day 0 = Mon). Android apps up to 0.20.0 work out
+        Sunday weeks themselves and would show every dinner a day off (and save edits on the wrong night), so an
+        OkHttp client that doesn't send `X-Week-Start: monday` (0.21.0 on) gets 426 and a sentence to update, except
+        for /health and sign-in. The web app and scripts aren't OkHttp and aren't affected."""
+        ua = request.headers.get("user-agent", "")
+        if ua.lower().startswith("okhttp") and request.headers.get("x-week-start", "").lower() != "monday" and \
+                request.url.path != "/health" and not request.url.path.startswith("/auth/"):
+            return JSONResponse({"detail": OLD_WEEK_APP}, status_code=426)
         return await call_next(request)
 
     @app.get("/health")
@@ -1044,7 +1058,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
 
     @app.get("/weeks/{week}/nights", dependencies=A)
     def get_nights(week: date, c=Depends(get_conn)) -> list[Night]:
-        """The week's nights that have a name or store items (Sunday first). A night with no recipe still counts as
+        """The week's nights that have a name or store items (Monday first). A night with no recipe still counts as
         planned for display; it never asks for a rating."""
         return nights.list_nights(c, week)
 
@@ -1074,7 +1088,7 @@ def create_app(settings: Settings, provider=None, pcx=None, conn=None,
     @app.patch("/plan/{entry_id}", status_code=204, dependencies=A)
     def patch_entry(entry_id: int, body: EntryPatch, c=Depends(get_conn)):
         if body.day is not None and not 0 <= body.day <= 6:
-            raise HTTPException(422, "day must be 0 (Sun) … 6 (Sat)")
+            raise HTTPException(422, "day must be 0 (Mon) … 6 (Sun)")
         if body.multiplier is not None and body.multiplier <= 0:
             raise HTTPException(422, "multiplier must be > 0")
         fields = body.model_dump(include=body.model_fields_set)   # only what the client sent

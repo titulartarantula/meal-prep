@@ -18,7 +18,7 @@ class NightError(ValueError):
 
 def _day(day: int) -> int:
     if not 0 <= day <= 6:
-        raise NightError("day must be 0 (Sun) … 6 (Sat)")
+        raise NightError("day must be 0 (Mon) … 6 (Sun)")
     return day
 
 
@@ -31,7 +31,7 @@ def clean_title(title: str | None) -> str | None:
 
 
 def list_nights(conn, week: date) -> list[dict]:
-    """The week's nights that have a name or store items, Sunday first: {day, title, items} (items = the night's
+    """The week's nights that have a name or store items, Monday first: {day, title, items} (items = the night's
     added items, as GET /extras gives them)."""
     wk = db.week_start(week)
     titles = dict(conn.execute("SELECT day, title FROM nights WHERE week=%s", (wk,)).fetchall())

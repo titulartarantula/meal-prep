@@ -34,7 +34,7 @@ def fam(conn):
 
 
 def week(f, h):
-    return f["c"].get("/weeks/2026-10-11", headers=h).json()
+    return f["c"].get("/weeks/2026-10-12", headers=h).json()
 
 
 def rate(f, eid, h, **body):
@@ -43,7 +43,7 @@ def rate(f, eid, h, **body):
 
 def test_each_member_rates_for_themselves_and_the_shared_token_rates_as_the_legacy_member(conn, fam):
     f, rid = fam, setup(conn)
-    eid = placed(conn, rid, day=2)
+    eid = placed(conn, rid, day=1)
     assert rate(f, eid, H, family=3, note="phone").status_code == 204          # Android, unchanged
     assert rate(f, eid, f["ben_h"], family=5, note="more heat").status_code == 204
     assert rate(f, eid, f["cleo_h"], family=4).status_code == 204
@@ -69,7 +69,7 @@ def test_each_member_rates_for_themselves_and_the_shared_token_rates_as_the_lega
 
 def test_the_phone_only_counts_the_legacy_members_rating(conn, fam):
     f, rid = fam, setup(conn)
-    eid = placed(conn, rid, day=2)
+    eid = placed(conn, rid, day=1)
     rate(f, eid, f["ben_h"], family=5)
     [e] = week(f, H)
     assert e["rating"] is None and e["my_rating"] is None and e["rating_count"] == 1   # Ben's isn't Ada's answer
@@ -82,7 +82,7 @@ def test_the_phone_only_counts_the_legacy_members_rating(conn, fam):
 
 def test_removing_takes_only_your_own(conn, fam):
     f, rid = fam, setup(conn)
-    eid = placed(conn, rid, day=2)
+    eid = placed(conn, rid, day=1)
     rate(f, eid, H)
     rate(f, eid, f["ben_h"])
     rate(f, eid, f["cleo_h"])
@@ -95,7 +95,7 @@ def test_removing_takes_only_your_own(conn, fam):
 
 def test_a_planner_rates_for_a_child_profile(conn, fam):
     f, rid = fam, setup(conn)
-    eid = placed(conn, rid, day=2)
+    eid = placed(conn, rid, day=1)
     assert rate(f, eid, f["ben_h"], family=5, note="ate it all", member_id=f["dot"]).status_code == 204
     [e] = week(f, f["ben_h"])
     [dot] = e["ratings"]
@@ -120,7 +120,7 @@ def test_a_planner_rates_for_a_child_profile(conn, fam):
 
 def test_pending_is_per_member(conn, fam):
     f, rid = fam, setup(conn)
-    mon, tue = placed(conn, rid, day=1), placed(conn, rid, day=2)
+    mon, tue = placed(conn, rid, day=0), placed(conn, rid, day=1)
     rate(f, tue, f["cleo_h"])
     pend = lambda h: [p["entry_id"] for p in f["c"].get("/ratings/pending", headers=h).json()]   # noqa: E731
     assert pend(f["ben_h"]) == [tue, mon]             # Cleo's rating isn't Ben's
@@ -147,7 +147,7 @@ def test_rating_from_the_recipe_is_per_person_too(conn, fam):
     s = d["ratings"]
     assert (s["times_cooked"], s["times_rated"], s["rating_count"], s["avg_family"]) == (1, 1, 3, 3.3)
     # a dinner of it waiting for Cleo's rating takes hers (not Ben's, who already rated that night)
-    tue = placed(conn, rid, day=2)
+    tue = placed(conn, rid, day=1)
     rate(f, tue, f["ben_h"])
     out = put(f["cleo_h"], family=3)
     assert out.json()["entry_id"] == tue
@@ -162,7 +162,7 @@ def test_rating_from_the_recipe_is_per_person_too(conn, fam):
 
 def test_summary_people_and_average(conn, fam):
     f, rid = fam, setup(conn)
-    mon, tue = placed(conn, rid, day=1), placed(conn, rid, day=2)
+    mon, tue = placed(conn, rid, day=0), placed(conn, rid, day=1)
     rate(f, mon, H, family=4, note="old phone rating")
     rate(f, tue, H, family=2)
     rate(f, tue, f["ben_h"], family=5, note="too spicy for me")
@@ -196,7 +196,7 @@ def test_good_for_company_is_one_household_verdict_set_by_owners(conn, fam):
     assert c.put("/recipes/9999/company", headers=f["ben_h"], json={"company": "yes"}).status_code == 404
     assert [r["id"] for r in c.get("/recipes", headers=f["cleo_h"]).json() if r["ratings"]["good_for_company"]] == [rid]
     # a rating's company answer: a non-owner's is ignored; an owner's (and the phone's: Ada) sets the verdict
-    eid = placed(conn, rid, day=2)
+    eid = placed(conn, rid, day=1)
     rate(f, eid, f["cleo_h"], family=2, company="no")
     assert summary()["company"] == "yes"
     rate(f, eid, H, family=4, company="no")
@@ -222,7 +222,7 @@ def test_good_for_company_is_one_household_verdict_set_by_owners(conn, fam):
 
 def test_old_family_rows_still_show_as_family(conn, fam):
     f, rid = fam, setup(conn)
-    eid = placed(conn, rid, day=2)
+    eid = placed(conn, rid, day=1)
     conn.execute("INSERT INTO ratings(plan_id, member_id, family) VALUES(%s, NULL, 4)", (eid,))
     rate(f, eid, f["ben_h"], family=2)
     [e] = week(f, f["ben_h"])
@@ -234,7 +234,7 @@ def test_old_family_rows_still_show_as_family(conn, fam):
 
 def test_a_removed_members_ratings_stay(conn, fam):
     f, rid = fam, setup(conn)
-    eid = placed(conn, rid, day=2)
+    eid = placed(conn, rid, day=1)
     rate(f, eid, f["cleo_h"], family=2)
     rate(f, eid, f["ben_h"], family=4)
     db.unscope(conn)
@@ -248,7 +248,7 @@ def test_a_removed_members_ratings_stay(conn, fam):
 
 def test_export_has_one_entry_per_time_cooked(conn, fam):
     f, rid = fam, setup(conn)
-    eid = placed(conn, rid, day=2)
+    eid = placed(conn, rid, day=1)
     rate(f, eid, f["ben_h"], family=5, company="yes", note="more heat")
     rate(f, eid, f["cleo_h"], family=4, note="mild is fine")
     rate(f, eid, H, family=2)
@@ -263,7 +263,7 @@ def test_export_has_one_entry_per_time_cooked(conn, fam):
 
 def test_rerunning_the_schema_keeps_per_person_ratings(conn, fam):
     f, rid = fam, setup(conn)
-    eid = placed(conn, rid, day=2)
+    eid = placed(conn, rid, day=1)
     rate(f, eid, H)
     rate(f, eid, f["ben_h"])
     f["c"].put(f"/recipes/{rid}/company", headers=f["ben_h"], json={"company": "no"})
@@ -304,7 +304,7 @@ def test_maybe_verdicts_become_not_decided_and_are_logged_when_the_schema_runs(c
 def test_legacy_ratings_migration_moves_family_to_the_legacy_member_and_makes_verdicts(conn, fam):
     f, rid = fam, setup(conn)
     other = setup(conn, "Soup")
-    mon, tue, wed = placed(conn, rid, day=1), placed(conn, rid, day=2), placed(conn, other, day=3)
+    mon, tue, wed = placed(conn, rid, day=0), placed(conn, rid, day=1), placed(conn, other, day=2)
     ins = "INSERT INTO ratings(plan_id, member_id, family, company, note, rated_at) VALUES(%s,%s,%s,%s,%s,%s) RETURNING id"
     fam_mon = conn.execute(ins, (mon, None, 4, "yes", "old", "2026-10-12 20:00+00")).fetchone()[0]
     fam_tue = conn.execute(ins, (tue, None, 3, "no", None, "2026-10-13 20:00+00")).fetchone()[0]   # newer: wins
@@ -317,7 +317,7 @@ def test_legacy_ratings_migration_moves_family_to_the_legacy_member_and_makes_ve
                  "VALUES(%s, '2026-10-02', %s, 4, 'yes'), (%s, '2026-10-03', %s, 3, 'no')",
                  (third, f["ben"], other, f["cleo"]))   # Ben (an owner) on Stew; Cleo's older answer on Soup
     conn.execute("INSERT INTO rating_history(plan_id, recipe_id, week, day, action, family, member_id) "
-                 "VALUES(%s,%s,'2026-10-11',1,'set',4,NULL), (%s,%s,'2026-10-11',2,'set',3,NULL)",
+                 "VALUES(%s,%s,'2026-10-12',0,'set',4,NULL), (%s,%s,'2026-10-12',1,'set',3,NULL)",
                  (mon, rid, tue, rid))
     db.unscope(conn)
     before = legacy_ratings.snapshot(conn)

@@ -51,22 +51,22 @@ def fill(c):
                    "'https://cooking.nytimes.com/recipes/1-soup', 'Soup', 4, %s) RETURNING id", (Jsonb(data),)).fetchone()[0]
     r2 = c.execute("INSERT INTO recipes(source, title, servings, data, source_kind, source_title) VALUES('photo', "
                    "'Stew', 4, %s, 'book', 'Invented Book') RETURNING id", (Jsonb({**data, "title": "Stew"}),)).fetchone()[0]
-    p1 = c.execute("INSERT INTO plan(week, recipe_id, day) VALUES('2026-10-11', %s, 1) RETURNING id", (r1,)).fetchone()[0]
-    p2 = c.execute("INSERT INTO plan(week, recipe_id, day) VALUES('2026-10-11', %s, 2) RETURNING id", (r2,)).fetchone()[0]
+    p1 = c.execute("INSERT INTO plan(week, recipe_id, day) VALUES('2026-10-12', %s, 1) RETURNING id", (r1,)).fetchone()[0]
+    p2 = c.execute("INSERT INTO plan(week, recipe_id, day) VALUES('2026-10-12', %s, 2) RETURNING id", (r2,)).fetchone()[0]
     c.execute("INSERT INTO ratings(plan_id, family, company) VALUES(%s, 5, 'yes')", (p1,))
     c.execute("INSERT INTO rating_history(plan_id, recipe_id, week, day, action, family) "
-              "VALUES(%s,%s,'2026-10-11',1,'set',5)", (p1, r1))
+              "VALUES(%s,%s,'2026-10-12',1,'set',5)", (p1, r1))
     c.execute("INSERT INTO products(code, name) VALUES('P1', 'Eggs'), ('P2', 'Milk')")
     c.execute("INSERT INTO price_observations(code, store_id, price) VALUES('P1', '1092', 4.99)")
     c.execute("INSERT INTO pack_contents(code, pieces, word, source) VALUES('P1', 12, 'carton', 'user')")
     c.execute("INSERT INTO picks(key, product_code, chosen_by, pinned) VALUES('egg|each', 'P1', 'user', true)")
     c.execute("INSERT INTO pick_history(key, product_code, chosen_by) VALUES('egg|each', 'P1', 'user')")
     cart = c.execute("INSERT INTO carts(pcx_cart_id, store_id, status, weeks, sent_at) VALUES('pc-1', '1092', 'sent', "
-                     "'{2026-10-11}', now()) RETURNING id").fetchone()[0]
-    c.execute("INSERT INTO cart_weeks VALUES(%s, '2026-10-11')", (cart,))
+                     "'{2026-10-12}', now()) RETURNING id").fetchone()[0]
+    c.execute("INSERT INTO cart_weeks VALUES(%s, '2026-10-12')", (cart,))
     c.execute("INSERT INTO cart_lines(cart_id, item_key, product_code, quantity, status, source) "
               "VALUES(%s, 'egg|each', 'P1', 1, 'added', 'memory')", (cart,))
-    pp = c.execute("INSERT INTO prep_plans(weeks, status, input) VALUES('{2026-10-11}', 'ready', '{}') RETURNING id"
+    pp = c.execute("INSERT INTO prep_plans(weeks, status, input) VALUES('{2026-10-12}', 'ready', '{}') RETURNING id"
                    ).fetchone()[0]
     c.execute("INSERT INTO prep_tasks(prep_plan_id, task_id, section, position, text, shelf_life) "
               "VALUES(%s, 't1', 'knife', 0, 'Chop', 'ok')", (pp,))
@@ -76,7 +76,7 @@ def fill(c):
               (r2,))
     c.execute("INSERT INTO import_jobs(file_sha, choices_sha, status, report) VALUES('s', 'c', 'done', '{}')")
     c.execute("INSERT INTO document_reads(file_sha, format, recipes) VALUES('s', 'pdf', '[]')")
-    c.execute("INSERT INTO extras(week, term, key, product_code, quantity) VALUES('2026-10-11', 'milk', 'milk', 'P2', 1)")
+    c.execute("INSERT INTO extras(week, term, key, product_code, quantity) VALUES('2026-10-12', 'milk', 'milk', 'P2', 1)")
     c.execute("INSERT INTO fridge_items(name, key, key_source, qty) VALUES('Eggs', 'egg', 'rule', 6)")
     c.execute("INSERT INTO fridge_reads(photos_sha, photo_count, status) VALUES('ph', 2, 'applied')")
     c.execute("INSERT INTO fridge_nudges(plan_id, action) VALUES(%s, 'dismissed')", (p2,))
@@ -115,7 +115,7 @@ def test_migration_backfills_every_household_row_and_is_idempotent(old_db):
         # the household sees everything it had …
         db.scope(c, 1)
         assert counts(c, OWNED) == {t: before[t] for t in OWNED}
-        assert [e.rating.family if e.rating else None for e in db.get_week(c, date(2026, 10, 11))] == [5, None]
+        assert [e.rating.family if e.rating else None for e in db.get_week(c, date(2026, 10, 12))] == [5, None]
         assert db.get_pick(c, "egg|each") == "P1"
         # … and a new household sees none of it, but the shared caches
         db.unscope(c)

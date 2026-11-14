@@ -9,7 +9,7 @@ week, so a cart under review never misses one; a line's edits come back here (`d
 The chosen product becomes the household's pick for the search's item key ("paper towel|each"), so the next search
 for it shows that product under Bought before once a cart with it is sent.
 
-Since 2026-11-06 an item can belong to one night of its week (`day`, 0 = Sun … 6 = Sat; None = for the week): "add
+Since 2026-11-06 an item can belong to one night of its week (`day`, 0 = Mon … 6 = Sun; None = for the week): "add
 items to a night" on This week. The night travels with the item into its cart line (the line's item `day`), so the
 cart and the list can say "Thu"; it doesn't change what is bought or the cart's plan fingerprint (added items reach a
 cart under review directly, as before)."""
@@ -34,7 +34,7 @@ _KEEP = object()   # update_extra: leave the night as it is
 
 def check_day(day: int | None) -> int | None:
     if day is not None and not 0 <= day <= 6:
-        raise ValueError("day must be 0 (Sun) … 6 (Sat)")
+        raise ValueError("day must be 0 (Mon) … 6 (Sun)")
     return day
 
 

@@ -121,11 +121,11 @@ def test_suggest_endpoint(conn):
     p = db.save_recipe(conn, R("Omelette", ("2 eggs", "egg", 2, None)))
     db.save_recipe(conn, R("Empty", servings=4))
     db.save_recipe(conn, R("Pork", ("pork", "pork shoulder", 1, "kg")))
-    db.add_to_week(conn, date(2026, 10, 11), p)
+    db.add_to_week(conn, date(2026, 10, 12), p)
     c = client(conn, today=TODAY)
     c.post("/fridge", headers=H, json={"name": "Eggs", "qty": 8})
     c.post("/fridge", headers=H, json={"name": "Spinach", "qty": 1, "unit": "bag", "use_soon": True})
-    r = c.post("/fridge/suggest", headers=H, json={"nights": 3, "week": "2026-10-11"})
+    r = c.post("/fridge/suggest", headers=H, json={"nights": 3, "week": "2026-10-12"})
     assert r.status_code == 200
     out = r.json()
     assert [x["recipe_id"] for x in out["picks"]] == [a] and out["thin_library"] is True

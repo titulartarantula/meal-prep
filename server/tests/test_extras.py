@@ -57,10 +57,10 @@ def test_add_extra_needs_a_seen_product_and_keeps_order_limits(conn):
         pass
     seen(conn, pcx, "deli ham")
     e = extras.add_extra(conn, date(2026, 10, 14), "  deli   ham ", "HAM", 250)
-    assert (e["week"], e["term"], e["quantity"], e["product"]["code"]) == ("2026-10-11", "deli ham", 300, "HAM")
+    assert (e["week"], e["term"], e["quantity"], e["product"]["code"]) == ("2026-10-12", "deli ham", 300, "HAM")
     assert db.get_pick_full(conn, "deli ham|each") == ("HAM", "user")
     assert [x["id"] for x in extras.list_extras(conn, WK)] == [e["id"]]
-    assert extras.list_extras(conn, [date(2026, 10, 18)]) == []
+    assert extras.list_extras(conn, [date(2026, 10, 19)]) == []
 
 
 def test_draft_lines_use_the_chosen_product_and_quantity(conn):
@@ -69,7 +69,7 @@ def test_draft_lines_use_the_chosen_product_and_quantity(conn):
     seen(conn, pcx)
     extras.add_extra(conn, WK[0], "paper towels", "TOW", 2)
     c = client(conn, pcx)
-    body = {"items": [item().model_dump()], "weeks": ["2026-10-11"]}
+    body = {"items": [item().model_dump()], "weeks": ["2026-10-12"]}
     did = drafts.create_draft(conn, [item(), *extras.items_for(conn, WK)], WK, store_id="1092", ai_provider="fake")
     drafts.build_draft(conn, did, pcx, AI("CH"), workers=1)
     lines = drafts.get_draft(conn, did)["lines"]
@@ -84,7 +84,7 @@ def test_api_draft_includes_the_weeks_added_items(conn):
     seen(conn, pcx)
     extras.add_extra(conn, WK[0], "paper towels", "TOW", 1)
     # The background build can't connect (dsn "unused"), so the line stays pending.
-    did = client(conn, pcx).post("/drafts", headers=H, json={"items": [], "weeks": ["2026-10-11"]}).json()["id"]
+    did = client(conn, pcx).post("/drafts", headers=H, json={"items": [], "weeks": ["2026-10-12"]}).json()["id"]
     [line] = drafts.get_draft(conn, did)["lines"]
     assert line["name"] == "paper towels" and line["status"] == "pending" and line["extra_id"] is not None
 
@@ -131,26 +131,26 @@ def test_add_an_item_on_a_cart_and_line_edits_mirror_the_item(conn):
     assert r.status_code == 201
     line = r.json()
     assert (line["name"], line["quantity"], line["source"], line["recipes"]) == ("paper towels", 2, "user", ["Added"])
-    [e] = c.get("/extras", headers=H, params={"week": "2026-10-11"}).json()
+    [e] = c.get("/extras", headers=H, params={"week": "2026-10-12"}).json()
     assert (e["id"], e["quantity"], e["product"]["code"]) == (line["extra_id"], 2, "TOW")
     c.patch(f"/drafts/{did}/lines/{line['id']}", headers=H, json={"quantity": 4, "product_code": "T2"})
-    [e] = c.get("/extras", headers=H, params={"week": "2026-10-11"}).json()
+    [e] = c.get("/extras", headers=H, params={"week": "2026-10-12"}).json()
     assert (e["quantity"], e["product"]["code"]) == (4, "T2")
     c.patch(f"/drafts/{did}/lines/{line['id']}", headers=H, json={"removed": True})
-    assert c.get("/extras", headers=H, params={"week": "2026-10-11"}).json() == []
+    assert c.get("/extras", headers=H, params={"week": "2026-10-12"}).json() == []
     c.patch(f"/drafts/{did}/lines/{line['id']}", headers=H, json={"removed": False})     # Undo
-    [e] = c.get("/extras", headers=H, params={"week": "2026-10-11"}).json()
+    [e] = c.get("/extras", headers=H, params={"week": "2026-10-12"}).json()
     assert (e["id"], e["quantity"], e["product"]["code"]) == (line["extra_id"], 4, "T2")
 
 
 def test_extras_api_errors(conn):
     pcx = Pcx({"paper towels": [towels()]})
     c = client(conn, pcx)
-    assert c.post("/extras", headers=H, json={"week": "2026-10-11", "term": "paper towels", "product_code": "TOW"}).status_code == 422
+    assert c.post("/extras", headers=H, json={"week": "2026-10-12", "term": "paper towels", "product_code": "TOW"}).status_code == 422
     seen(conn, pcx)
-    r = c.post("/extras", headers=H, json={"week": "2026-10-11", "term": "paper towels", "product_code": "TOW"})
+    r = c.post("/extras", headers=H, json={"week": "2026-10-12", "term": "paper towels", "product_code": "TOW"})
     assert r.status_code == 201 and r.json()["quantity"] == 1
-    assert c.post("/extras", headers=H, json={"week": "2026-10-11", "term": " ", "product_code": "TOW"}).status_code == 422
+    assert c.post("/extras", headers=H, json={"week": "2026-10-12", "term": " ", "product_code": "TOW"}).status_code == 422
     assert c.patch("/extras/999", headers=H, json={"quantity": 2}).status_code == 404
     assert c.patch(f"/extras/{r.json()['id']}", headers=H, json={"quantity": 0}).status_code == 422
     assert c.delete(f"/extras/{r.json()['id']}", headers=H).status_code == 204

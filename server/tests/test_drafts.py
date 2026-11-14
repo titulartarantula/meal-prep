@@ -5,7 +5,7 @@ import pytest
 from mealprep import db, drafts, qtycheck
 from mealprep.models import ListItem, Product
 
-WK = [date(2026, 10, 11)]
+WK = [date(2026, 10, 12)]
 _ids = itertools.count(1)
 
 
@@ -70,7 +70,7 @@ def test_draft_builds_lines_with_alternatives(conn):
     did = build(conn, [item("chicken thigh"), item("salt", needed=False)], pcx, ai)
     d = drafts.get_draft(conn, did)
     assert d["status"] == "ready" and d["progress"] == {"done": 1, "total": 1} and d["pcx_cart_id"] is None
-    assert d["weeks"] == ["2026-10-11"]
+    assert d["weeks"] == ["2026-10-12"]
     [line] = d["lines"]                                         # unneeded items are not draft lines
     assert line["item_key"] == "chicken thigh|each" and line["name"] == "chicken thigh" and line["recipes"] == ["Chili"]
     assert line["product"]["code"] == "B" and line["product"]["price"] == 2 and line["source"] == "ai"
@@ -355,7 +355,7 @@ def test_unmatched_line_has_no_plan(conn):
     assert (line["packs_min"], line["needs_check"], line["why"]) == (None, False, None)
 
 
-# Draft 5 (week 2026-10-11) sent 5 × 1 kg salt, 5 × vanilla and 5 × 170 g chocolate: remembered quantities.
+# Draft 5 (week 2026-10-12) sent 5 × 1 kg salt, 5 × vanilla and 5 × 170 g chocolate: remembered quantities.
 REGRESSION = [(ListItem(key="coarse sea salt|vol", name="coarse sea salt", qty=1.5, unit="tsp"), "1 kg", 1),
               (ListItem(key="vanilla extract|vol", name="vanilla extract", qty=2, unit="tsp"), "46 ml", 1),
               (ListItem(key="bittersweet chocolate|mass", name="bittersweet chocolate", qty=1.25, unit="lb"), "170 g", 4)]
@@ -466,7 +466,7 @@ def test_fingerprint_changes_on_add_remove_and_scale(conn):
     assert db.plan_fingerprint(conn, WK) == fp1
     db.remove_entry(conn, eb)
     assert db.plan_fingerprint(conn, WK) == fp0             # removed
-    nxt = date(2026, 10, 18)
+    nxt = date(2026, 10, 19)
     assert db.plan_fingerprint(conn, [nxt]) != db.plan_fingerprint(conn, [WK[0]])   # the week is part of it
     db.add_to_week(conn, nxt, b)
     both = db.plan_fingerprint(conn, [WK[0], nxt])
@@ -497,12 +497,12 @@ def test_sent_cart_goes_stale_and_week_is_no_longer_carted(conn):
     pcx = FakePcx({"x": [prod("A")]})
     did = build(conn, [item("x")], pcx, FakeAI({"x": "A"}))
     drafts.send_draft(conn, did, pcx)
-    assert summary(conn) == {"week": "2026-10-11", "entries": 1, "extras": 0, "named_nights": 0, "carted": True, "cart_stale": False}
+    assert summary(conn) == {"week": "2026-10-12", "entries": 1, "extras": 0, "named_nights": 0, "carted": True, "cart_stale": False}
     assert db.default_cart_week(conn, date(2026, 10, 7)) is None
     db.update_entry(conn, ea, day=4)                        # a night move keeps it carted
     assert summary(conn)["carted"] is True
     db.update_entry(conn, ea, multiplier=2)
-    assert summary(conn) == {"week": "2026-10-11", "entries": 1, "extras": 0, "named_nights": 0, "carted": False, "cart_stale": True}
+    assert summary(conn) == {"week": "2026-10-12", "entries": 1, "extras": 0, "named_nights": 0, "carted": False, "cart_stale": True}
     assert db.default_cart_week(conn, date(2026, 10, 7)) == WK[0]          # a stale week is offered again
     assert drafts.get_draft(conn, did)["stale"] is True
     assert drafts.send_draft(conn, did, pcx) == pcx.created[0]             # resending a sent cart stays a no-op
@@ -510,13 +510,13 @@ def test_sent_cart_goes_stale_and_week_is_no_longer_carted(conn):
     new = build(conn, [item("x")], pcx, FakeAI({"x": "A"}))
     assert summary(conn)["cart_stale"] is True                             # a ready draft isn't a sent cart
     drafts.send_draft(conn, new, pcx)
-    assert summary(conn) == {"week": "2026-10-11", "entries": 2, "extras": 0, "named_nights": 0, "carted": True, "cart_stale": False}
+    assert summary(conn) == {"week": "2026-10-12", "entries": 2, "extras": 0, "named_nights": 0, "carted": True, "cart_stale": False}
     assert drafts.latest_for_week(conn, WK[0])["id"] == new
 
 
 def test_multi_week_cart_is_stale_when_either_week_changes(conn):
     a = _recipe(conn)
-    nxt = date(2026, 10, 18)
+    nxt = date(2026, 10, 19)
     db.add_to_week(conn, WK[0], a); db.add_to_week(conn, nxt, a)
     pcx = FakePcx({"x": [prod("A")]})
     did = drafts.create_draft(conn, [item("x")], [WK[0], nxt], store_id="1092", ai_provider="fake")
@@ -536,7 +536,7 @@ def test_null_fingerprint_is_never_stale(conn):
     drafts.send_draft(conn, did, pcx)
     conn.execute("UPDATE carts SET plan_fingerprint = NULL")
     db.add_to_week(conn, WK[0], a)
-    assert summary(conn) == {"week": "2026-10-11", "entries": 2, "extras": 0, "named_nights": 0, "carted": True, "cart_stale": False}
+    assert summary(conn) == {"week": "2026-10-12", "entries": 2, "extras": 0, "named_nights": 0, "carted": True, "cart_stale": False}
     assert drafts.get_draft(conn, did)["stale"] is False
     assert db.default_cart_week(conn, date(2026, 10, 7)) is None
     assert db.cart_is_stale(conn, WK, None) is False and db.cart_is_stale(conn, [], "x") is False

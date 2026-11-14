@@ -9,7 +9,7 @@ from mealprep.api import create_app
 from mealprep.config import Settings
 from mealprep.models import ListItem, Product
 
-WK = [date(2026, 10, 11)]
+WK = [date(2026, 10, 12)]
 _ids = itertools.count(1)
 
 

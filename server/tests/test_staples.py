@@ -92,7 +92,7 @@ def test_reorder_by_position(conn):
 
 def _cart(conn, key, sent_at=None, status="sent", line_status="added", removed=False):
     cid = conn.execute("INSERT INTO carts(status, weeks, sent_at) VALUES(%s,%s,%s) RETURNING id",
-                       (status, [date(2026, 10, 4)], sent_at)).fetchone()[0]
+                       (status, [date(2026, 10, 5)], sent_at)).fetchone()[0]
     conn.execute("INSERT INTO cart_lines(cart_id, item_key, item_name, status, source, removed) "
                  "VALUES(%s,%s,%s,%s,'ai',%s)", (cid, key, key.split("|")[0], line_status, removed))
 
@@ -173,15 +173,15 @@ def test_measured_staple_in_another_unit_family_is_its_own_line():
 def test_list_endpoint_merges_only_the_staples_asked_for(conn):
     c = client(conn)
     rid = db.save_recipe(conn, R("Pancakes", Ingredient(raw="1 cup milk", name="milk", qty=1, unit="cup")))
-    db.add_to_week(conn, date(2026, 10, 11), rid)
+    db.add_to_week(conn, date(2026, 10, 12), rid)
     milk = c.post("/staples", headers=H, json={"name": "milk"}).json()["id"]
     lemon = c.post("/staples", headers=H, json={"name": "lemonade", "weekly": False}).json()["id"]
-    plain = c.post("/list", headers=H, json={"weeks": ["2026-10-11"]}).json()
+    plain = c.post("/list", headers=H, json={"weeks": ["2026-10-12"]}).json()
     assert [(i["key"], i["staple"]) for i in plain] == [("milk|vol", False)]
-    out = c.post("/list", headers=H, json={"weeks": ["2026-10-11"], "staples": [milk, lemon, 999]}).json()
+    out = c.post("/list", headers=H, json={"weeks": ["2026-10-12"], "staples": [milk, lemon, 999]}).json()
     assert [(i["key"], i["staple"], i["staple_packs"], i["recipes"]) for i in out] == [
         ("milk|vol", True, 1, ["Pancakes", "Staples"]), ("lemonade|each", True, 1, ["Staples"])]
-    only = c.post("/list", headers=H, json={"weeks": ["2026-11-01"], "staples": [lemon]}).json()
+    only = c.post("/list", headers=H, json={"weeks": ["2026-11-02"], "staples": [lemon]}).json()
     assert [i["key"] for i in only] == ["lemonade|each"]                # staples alone, nothing planned
 
 

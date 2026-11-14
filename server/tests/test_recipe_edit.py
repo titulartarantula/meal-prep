@@ -10,8 +10,8 @@ from mealprep.models import Ingredient, Recipe
 from test_api import H, client
 from test_drafts import FakeAI as CartAI, FakePcx, build, item, prod
 
-ON = "2026-10-11"
-WK = date(2026, 10, 11)
+ON = "2026-10-12"
+WK = date(2026, 10, 12)
 
 
 class LineAI:

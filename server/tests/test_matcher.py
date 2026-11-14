@@ -5,7 +5,7 @@ from mealprep import db, qtycheck
 from mealprep.models import ListItem, Product
 from mealprep.matcher import fill_cart
 
-WK = [date(2026, 10, 11)]
+WK = [date(2026, 10, 12)]
 _ids = itertools.count(1)
 
 
@@ -101,9 +101,9 @@ def test_cart_weeks_and_lines_recorded_incl_unmatched(conn):
     db.set_pick(conn, "chicken thigh|each", "A")
     pcx, ai = FakePcx({"chicken thigh": [P1], "beef": [P2]}), FakeAI({"code": "B", "quantity": 2})
     res = fill_cart([item("sumac"), item("chicken thigh"), item("beef")], pcx, ai, conn,
-                    weeks=[date(2026, 10, 14), date(2026, 10, 18)], provider_name="claude-cli")
+                    weeks=[date(2026, 10, 14), date(2026, 10, 19)], provider_name="claude-cli")
     assert conn.execute("SELECT pcx_cart_id, store_id, ai_provider FROM carts").fetchall() == [(res.cart_id, "1092", "claude-cli")]
-    assert [w.isoformat() for (w,) in conn.execute("SELECT week FROM cart_weeks ORDER BY week")] == ["2026-10-11", "2026-10-18"]
+    assert [w.isoformat() for (w,) in conn.execute("SELECT week FROM cart_weeks ORDER BY week")] == ["2026-10-12", "2026-10-19"]
     rows = conn.execute("SELECT item_key, item_name, need_qty, product_code, quantity, price_at_add::float, status, source "
                         "FROM cart_lines ORDER BY id").fetchall()
     assert rows == [("sumac|each", "sumac", 1.0, None, None, None, "unmatched", "none"),
@@ -115,7 +115,7 @@ def test_same_week_carted_twice_records_two_carts(conn):
     for _ in range(2):
         fc([item("chicken thigh")], FakePcx({"chicken thigh": [P1]}), FakeAI({"code": "A", "quantity": 1}), conn)
     assert conn.execute("SELECT count(*) FROM carts").fetchone()[0] == 2
-    assert conn.execute("SELECT count(*) FROM cart_weeks WHERE week='2026-10-11'").fetchone()[0] == 2
+    assert conn.execute("SELECT count(*) FROM cart_weeks WHERE week='2026-10-12'").fetchone()[0] == 2
 
 
 def test_user_pick_survives_out_of_stock_week(conn):

@@ -347,7 +347,7 @@ CREATE TABLE IF NOT EXISTS extras(
 );
 CREATE INDEX IF NOT EXISTS extras_week_idx ON extras(week);
 ALTER TABLE cart_lines ADD COLUMN IF NOT EXISTS extra_id int;
--- Store items for a night (2026-11-06): an added item can belong to one night of its week (0 = Sun … 6 = Sat); NULL =
+-- Store items for a night (2026-11-06): an added item can belong to one night of its week (0 = Mon … 6 = Sun since 2026-11-14; was 0 = Sun … 6 = Sat); NULL =
 -- for the week, as before. Its cart line carries the night in its item (cart_lines.item->'day').
 ALTER TABLE extras ADD COLUMN IF NOT EXISTS day smallint CHECK (day BETWEEN 0 AND 6);
 

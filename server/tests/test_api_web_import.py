@@ -46,7 +46,7 @@ def test_share_any_site_saves_with_attribution(conn, fetched):
     calls, pages = fetched
     pages[URL] = (URL, html())
     c = client(conn)
-    r = share(c, f"Look at this {URL}?utm_source=app", "2026-10-11")
+    r = share(c, f"Look at this {URL}?utm_source=app", "2026-10-12")
     assert r.status_code == 200, r.text
     body = r.json()
     rec = body["recipe"]

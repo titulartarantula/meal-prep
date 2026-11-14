@@ -38,14 +38,14 @@ def test_export_one_404_and_auth(conn):
 def test_export_ratings_entries(conn):
     rid = add(conn)
     c = client(conn, today=date(2026, 10, 14))
-    rated = db.add_to_week(conn, date(2026, 10, 4), rid)
-    db.update_entry(conn, rated, day=2, multiplier=2.0)
+    rated = db.add_to_week(conn, date(2026, 10, 5), rid)
+    db.update_entry(conn, rated, day=1, multiplier=2.0)     # Tue 10-06
     db.set_rating(conn, rated, 4, "yes", "less salt")       # an old rating's own answer (before the verdict)
     db.set_company(conn, rid, "yes", None)
-    cooked = db.add_to_week(conn, date(2026, 9, 27), rid)
-    db.update_entry(conn, cooked, day=1)                     # cooked, never rated
-    db.add_to_week(conn, date(2026, 10, 18), rid)            # planned ahead: not exported
-    db.add_to_week(conn, date(2026, 10, 4), rid)             # never placed on a night: not exported
+    cooked = db.add_to_week(conn, date(2026, 9, 28), rid)
+    db.update_entry(conn, cooked, day=0)                     # Mon 09-28: cooked, never rated
+    db.add_to_week(conn, date(2026, 10, 19), rid)            # planned ahead: not exported
+    db.add_to_week(conn, date(2026, 10, 5), rid)             # never placed on a night: not exported
     n = c.get(f"/recipes/{rid}/export", headers=H).json()
     e = n["mealprep:ratings"]["entries"]
     assert [(x["date"], x["multiplier"], x["family"], x["company"], x["note"]) for x in e] == [
@@ -226,8 +226,8 @@ def test_same_id_changed_can_update(conn):
     c = client(conn, today=date(2026, 10, 14))
     first = apply(c, "mealprep_v1.json")
     rid = first["items"][0]["recipe_id"]
-    eid = db.add_to_week(conn, date(2026, 10, 11), rid)
-    db.update_entry(conn, eid, day=1)
+    eid = db.add_to_week(conn, date(2026, 10, 12), rid)
+    db.update_entry(conn, eid, day=0)
     db.set_rating(conn, eid, 3, note="ours")
     n = json.loads((FX / "mealprep_v1.json").read_text())
     n["mealprep:recipe"]["steps"].append("Dust with icing sugar.")
@@ -241,7 +241,7 @@ def test_same_id_changed_can_update(conn):
     assert job["items"][0]["status"] == "updated" and job["items"][0]["recipe_id"] == rid
     r = db.get_recipe(conn, rid)
     assert r.steps[-1] == "Dust with icing sugar." and nrecipes(conn) == 1
-    assert db.get_week(conn, date(2026, 10, 11))[0].rating.note == "ours"           # own plan + rating kept
+    assert db.get_week(conn, date(2026, 10, 12))[0].rating.note == "ours"           # own plan + rating kept
     assert conn.execute("SELECT count(*) FROM imported_ratings").fetchone()[0] == 4  # 3 + the new one, no copies
 
 
@@ -303,8 +303,8 @@ def test_imported_ratings_count_and_export_back(conn):
 def test_favourites_include_imported_ratings(conn):
     c = client(conn, today=date(2026, 10, 14))
     plain = add(conn, title="Test Plain")
-    eid = db.add_to_week(conn, date(2026, 10, 4), plain)
-    db.update_entry(conn, eid, day=1)
+    eid = db.add_to_week(conn, date(2026, 10, 5), plain)
+    db.update_entry(conn, eid, day=0)
     db.set_rating(conn, eid, 4)
     rid = apply(c, "mealprep_v1.json")["items"][0]["recipe_id"]           # avg 4.5 from another library
     order = [r["id"] for r in c.get("/recipes?sort=favourites", headers=H).json()]

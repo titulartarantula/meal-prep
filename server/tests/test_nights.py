@@ -14,7 +14,7 @@ from test_chooser import AI, Pcx, WK, build
 from test_rbac import ALL_ROLES, member_session, new_household
 
 H = {"Authorization": "Bearer secret"}
-WEEK = "2026-10-11"
+WEEK = "2026-10-12"
 
 
 def pizza(code="PIZ", price=6.99):
@@ -157,7 +157,7 @@ def test_nights_list_names_and_store_items_together(conn):
     pz = extras.add_extra(conn, WK[0], "frozen pizza", "PIZ", 2, day=4)
     extras.add_extra(conn, WK[0], "caesar salad kit", "KIT", 1, day=4)
     extras.add_extra(conn, WK[0], "caesar salad kit", "KIT", 1)                     # week-wide: not on a night
-    extras.add_extra(conn, date(2026, 10, 18), "frozen pizza", "PIZ", 1, day=4)     # another week
+    extras.add_extra(conn, date(2026, 10, 19), "frozen pizza", "PIZ", 1, day=4)     # another week
     nights.set_title(conn, WK[0], 4, "Pizza night")
     nights.set_title(conn, WK[0], 1, "Leftovers")
     out = c.get(f"/weeks/{WEEK}/nights", headers=H).json()
@@ -231,11 +231,11 @@ def test_a_recipe_night_can_have_a_name_too(conn):
 def test_week_summaries_count_added_items_and_named_nights(conn):
     p = pcx(); seen(conn, p)
     c = client(conn, p)
-    nxt = "2026-10-18"
+    nxt = "2026-10-19"
     assert c.get("/cart/default-week", headers=H).json() == {"week": None}
-    extras.add_extra(conn, date(2026, 10, 18), "frozen pizza", "PIZ", 1, day=5)     # only store items, no recipe
-    extras.add_extra(conn, date(2026, 10, 18), "caesar salad kit", "KIT", 1)
-    nights.set_title(conn, date(2026, 10, 18), 5, "Pizza night")
+    extras.add_extra(conn, date(2026, 10, 19), "frozen pizza", "PIZ", 1, day=5)     # only store items, no recipe
+    extras.add_extra(conn, date(2026, 10, 19), "caesar salad kit", "KIT", 1)
+    nights.set_title(conn, date(2026, 10, 19), 5, "Pizza night")
     weeks = c.get("/weeks", headers=H, params={"from": WEEK, "count": 2}).json()
     assert weeks == [{"week": WEEK, "entries": 0, "extras": 0, "named_nights": 0, "carted": False, "cart_stale": False},
                      {"week": nxt, "entries": 0, "extras": 2, "named_nights": 1, "carted": False, "cart_stale": False}]

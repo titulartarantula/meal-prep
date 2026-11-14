@@ -39,19 +39,21 @@ def test_set_pick_appends_history(conn):
     assert conn.execute("SELECT product_code, chosen_by FROM pick_history WHERE key='k' ORDER BY id").fetchall() == [("A", "ai"), ("B", "user")]
 
 
-def test_week_start_is_sunday():
-    assert db.week_start(date(2026, 10, 4)) == date(2026, 10, 4)    # Sunday
-    assert db.week_start(date(2026, 10, 7)) == date(2026, 10, 4)    # Wednesday
-    assert db.week_start(date(2026, 10, 10)) == date(2026, 10, 4)   # Saturday
+def test_week_start_is_monday():
+    assert db.week_start(date(2026, 10, 5)) == date(2026, 10, 5)    # Monday
+    assert db.week_start(date(2026, 10, 7)) == date(2026, 10, 5)    # Wednesday
+    assert db.week_start(date(2026, 10, 10)) == date(2026, 10, 5)   # Saturday
+    assert db.week_start(date(2026, 10, 11)) == date(2026, 10, 5)   # Sunday ends the week
+    assert db.week_start(date(2026, 10, 12)) == date(2026, 10, 12)  # next Monday
 
 
 def test_week_plan(conn):
     rid = db.save_recipe(conn, Recipe(title="A", source="photo", servings=4, ingredients=[], steps=[]))
-    wk = date(2026, 10, 11)
+    wk = date(2026, 10, 12)
     eid = db.add_to_week(conn, wk, rid)
     [e] = db.get_week(conn, wk)
-    assert e.recipe_id == rid and e.day is None and e.multiplier == 1.0 and e.week == "2026-10-11"
-    db.update_entry(conn, eid, day=2, multiplier=1.5)      # 0=Sun … 6=Sat
+    assert e.recipe_id == rid and e.day is None and e.multiplier == 1.0 and e.week == "2026-10-12"
+    db.update_entry(conn, eid, day=2, multiplier=1.5)      # 0=Mon … 6=Sun
     [e] = db.get_week(conn, wk)
     assert e.day == 2 and e.multiplier == 1.5
     db.add_to_week(conn, wk, rid)                          # same recipe twice in a week is allowed (two nights)
@@ -60,10 +62,12 @@ def test_week_plan(conn):
     assert len(db.get_week(conn, wk)) == 1
 
 
-def test_add_to_week_normalizes_to_sunday(conn):
+def test_add_to_week_normalizes_to_monday(conn):
     rid = db.save_recipe(conn, Recipe(title="A", source="photo", ingredients=[], steps=[]))
     db.add_to_week(conn, date(2026, 10, 14), rid)
-    assert db.get_week(conn, date(2026, 10, 11))[0].week == "2026-10-11"
+    assert db.get_week(conn, date(2026, 10, 12))[0].week == "2026-10-12"
+    db.add_to_week(conn, date(2026, 10, 18), rid)          # a Sunday belongs to the week that began the Monday before
+    assert [e.week for e in db.get_week(conn, date(2026, 10, 12))] == ["2026-10-12", "2026-10-12"]
 
 
 def test_record_products_upserts_and_observes_price(conn):
@@ -94,18 +98,18 @@ def test_schema_migrates_legacy_carts_idempotently(conn):
         conn.execute("INSERT INTO products(code, name) VALUES('A', 'Thighs')")
         cid = conn.execute("INSERT INTO carts(pcx_cart_id, store_id, ai_provider) VALUES('old-1','1092','claude-cli') "
                            "RETURNING id").fetchone()[0]
-        conn.execute("INSERT INTO cart_weeks VALUES(%s, '2026-10-11')", (cid,))
+        conn.execute("INSERT INTO cart_weeks VALUES(%s, '2026-10-12')", (cid,))
         conn.execute("INSERT INTO cart_lines(cart_id, item_key, item_name, product_code, quantity, price_at_add, status, "
                      "source) VALUES(%s, 'chicken thigh|each', 'chicken thigh', 'A', 1, 15, 'added', 'ai')", (cid,))
     for _ in range(2):
         db.migrate(conn)
-    assert conn.execute("SELECT status, pcx_cart_id, weeks FROM carts").fetchone() == ("sent", "old-1", [date(2026, 10, 11)])
+    assert conn.execute("SELECT status, pcx_cart_id, weeks FROM carts").fetchone() == ("sent", "old-1", [date(2026, 10, 12)])
     assert conn.execute("SELECT removed, alternatives, price_at_add::float FROM cart_lines").fetchone() == (False, [], 15.0)
     # new drafts default to building, and the 'user' source is now allowed
     new = conn.execute("INSERT INTO carts(store_id) VALUES('1092') RETURNING status").fetchone()[0]
     assert new == "building"
     conn.execute("INSERT INTO cart_lines(cart_id, item_key, source) VALUES(%s, 'k', 'user')", (cid,))
-    assert db.week_summaries(conn, date(2026, 10, 11), 1)[0]["carted"] is True
+    assert db.week_summaries(conn, date(2026, 10, 12), 1)[0]["carted"] is True
     assert conn.execute("SELECT plan_fingerprint FROM carts WHERE id=%s", (cid,)).fetchone()[0] is None   # unknown
 
 

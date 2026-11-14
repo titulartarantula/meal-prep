@@ -170,11 +170,11 @@ def plan(conn, week, *recipes):
 
 
 def test_post_list_with_the_fridge(conn):
-    plan(conn, date(2026, 10, 11), R("Quiche", I("egg", 12), I("cilantro", 1), I("red onion", 1)))
+    plan(conn, date(2026, 10, 12), R("Quiche", I("egg", 12), I("cilantro", 1), I("red onion", 1)))
     c = client(conn)
     c.post("/fridge", headers=H, json={"name": "Eggs", "qty": 6})
     c.post("/fridge", headers=H, json={"name": "Cilantro", "qty": 1, "unit": "bunch"})
-    body = {"weeks": ["2026-10-11"]}
+    body = {"weeks": ["2026-10-12"]}
     plain = c.post("/list", headers=H, json=body).json()
     assert c.post("/list", headers=H, json={**body, "fridge": False}).json() == plain
     out = {it["name"]: it for it in c.post("/list", headers=H, json={**body, "fridge": True}).json()}
@@ -186,7 +186,7 @@ def test_post_list_with_the_fridge(conn):
 def test_a_draft_from_a_fridge_list_buys_only_the_remainder(conn):
     items = build_list([(R("A", I("egg", 12), I("whole milk", 1, "cup"), I("cilantro", 1), I("red onion", 1)), 1)],
                        fridge=[F(1, "Eggs", 6), F(2, "Whole milk", 2, "cup"), F(3, "Cilantro", 1, "bunch")])
-    did = drafts.create_draft(conn, items, [date(2026, 10, 11)], store_id="1092", ai_provider="fake")
+    did = drafts.create_draft(conn, items, [date(2026, 10, 12)], store_id="1092", ai_provider="fake")
     rows = conn.execute("SELECT item_name, need_qty::float, item->>'fridge', (item->>'fridge_qty')::float "
                         "FROM cart_lines WHERE cart_id=%s ORDER BY position", (did,)).fetchall()
     assert rows == [("egg", 6.0, "partial", 6.0), ("red onion", 1.0, None, None)]

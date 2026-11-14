@@ -86,7 +86,7 @@ class ListItem(BaseModel):
     extra_id: int | None = None
     product_code: str | None = None
     quantity: int | None = None
-    day: int | None = None       # an added item's night (0=Sun … 6=Sat); None = for the week
+    day: int | None = None       # an added item's night (0=Mon … 6=Sun); None = for the week
     # What the fridge covers (`POST /list {fridge: true}`, 0.14.0): "covered" = all of it (qty is still what the recipes
     # need; not needed, shown in Probably have), "partial" = qty is the remainder and fridge_qty what the fridge covers
     # (in the line's unit), "check" = the units don't convert (not needed, "check you have enough"). fridge_items = the
@@ -204,9 +204,9 @@ class CookedRatings(BaseModel):
 
 class PlanEntry(CookedRatings):
     id: int
-    week: str                    # ISO date of the Sunday
+    week: str                    # ISO date of the Monday
     recipe_id: int
-    day: int | None = None       # 0=Sun … 6=Sat; None = not placed on a night yet
+    day: int | None = None       # 0=Mon … 6=Sun; None = not placed on a night yet
     multiplier: float = 1.0
     title: str | None = None     # the recipe's title, so the app can draw a week without the whole library
 
@@ -263,7 +263,7 @@ def recipe_revision(r: Recipe) -> str:
 
 class RecipeOut(Recipe):
     ratings: RatingSummary = RatingSummary()
-    planned_weeks: list[str] = []    # ISO Sundays from this week on that have this recipe (the library shows them)
+    planned_weeks: list[str] = []    # ISO Mondays from this week on that have this recipe (the library shows them)
     revision: str | None = None      # recipe_revision(), filled in here (PATCH expected_revision)
 
     @model_validator(mode="after")
