@@ -4,6 +4,7 @@ import dev.mealprep.app.core.Weeks
 import dev.mealprep.app.data.Repository
 import dev.mealprep.app.data.api.PlanEntry
 import dev.mealprep.app.data.settings.NotifPrefs
+import dev.mealprep.app.ui.home.dinnerTitles
 import dev.mealprep.app.ui.nav.Nav
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -29,8 +30,10 @@ data class WeekData(val week: LocalDate, val entries: List<PlanEntry>)
 /**
  * Planned on each phone from its copy of the weeks (the server is LAN-only, so there is no push
  * service; both phones do this and both get the notifications):
- * - RATE: the morning after each placed dinner not rated yet ("How was Tuesday's Chili?").
- * - TONIGHT (off unless chosen): on the day, opening the recipe.
+ * - RATE: the morning after each placed dinner not rated yet ("How was Tuesday's Chili?"); a night with several recipes
+ *   asks about each (each is rated on its own).
+ * - TONIGHT (off unless chosen): on the day, one per night naming all its recipes, opening the first (the order they
+ *   were put on the night, as the server sends them).
  * Only reminders after [now] are returned.
  */
 object Reminders {
@@ -44,8 +47,18 @@ object Reminders {
             if (prefs.rate && e.rating == null) out += Reminder("rate-${e.id}", ReminderKind.RATE, date.plusDays(1).atTime(prefs.rateAt),
                 "How was ${Weeks.longDayLabel(e.day)}'s $title?", "Tap to rate it: was it a hit, and would you make it for company?",
                 Nav.rating(e.id, week), e.id, week)
-            if (prefs.tonight) out += Reminder("tonight-${e.id}", ReminderKind.TONIGHT, date.atTime(prefs.tonightAt),
-                "Tonight: $title", "Tap for the recipe.", Nav.recipe(e.recipeId), e.id, week)
+        }
+        if (prefs.tonight) {
+            // One per night, named after its first recipe's entry, so adding a side doesn't make a second one.
+            val nights = weeks.flatMap { w -> w.entries.filter { it.day != null }.map { Weeks.weekStart(w.week) to it } }
+                .distinctBy { it.second.id }.groupBy({ (wk, e) -> wk to e.day!! }, { it.second })
+            for ((key, es) in nights) {
+                val (week, day) = key
+                val first = es[0]
+                out += Reminder("tonight-${first.id}", ReminderKind.TONIGHT, Weeks.nightDate(week, day).atTime(prefs.tonightAt),
+                    "Tonight: ${dinnerTitles(es)}",
+                    if (es.size == 1) "Tap for the recipe." else "Tap for the first recipe.", Nav.recipe(first.recipeId), first.id, week)
+            }
         }
         return out.filter { it.at.isAfter(now) }.sortedBy { it.at }
     }

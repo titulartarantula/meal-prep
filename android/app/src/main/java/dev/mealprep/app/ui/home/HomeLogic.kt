@@ -56,8 +56,9 @@ fun contextAction(week: LocalDate, today: LocalDate, entries: List<PlanEntry>, c
     val start = Weeks.weekStart(week)
     if (entries.isEmpty() && extras == 0) return ContextAction.AddRecipes
     if (start.plusDays(6).isBefore(today)) return ContextAction.AllSet
-    val tonight = entries.firstOrNull { it.day != null && Weeks.nightDate(start, it.day) == today }
-        ?.let { ContextAction.Tonight(it.id, it.recipeId, it.title ?: "dinner") }
+    // A night can hold several recipes (in the order they were put on it): the button names them all and opens the first.
+    val tonight = entries.filter { it.day != null && Weeks.nightDate(start, it.day) == today }.takeIf { it.isNotEmpty() }
+        ?.let { es -> ContextAction.Tonight(es[0].id, es[0].recipeId, dinnerTitles(es)) }
     // After the week's first day, its Monday (the shopping is done by then), tonight's dinner is what matters.
     if (tonight != null && today.isAfter(start)) return tonight
     // A cart built before the week's recipes changed is an older cart: build a new one, don't review that one.
@@ -86,6 +87,9 @@ fun freeNights(week: LocalDate, today: LocalDate, entries: List<PlanEntry>): Int
     val taken = entries.mapNotNull { it.day }.toSet()
     return (0..6).count { d -> d !in taken && !Weeks.nightDate(start, d).isBefore(today) }
 }
+
+/** A night's recipes in a line: "Chili", "Chili and Green salad", "Chili, Green salad and Apple pie". */
+fun dinnerTitles(entries: List<PlanEntry>): String = andList(entries.map { it.title ?: "dinner" })
 
 /** "4 Eggs", "4 Eggs and 1 cup Whole milk", "4 Eggs, 2 Lemons and 1 cup Whole milk". */
 fun andList(items: List<String>): String = when (items.size) {

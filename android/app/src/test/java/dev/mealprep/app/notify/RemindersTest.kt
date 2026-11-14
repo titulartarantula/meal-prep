@@ -27,6 +27,18 @@ class RemindersTest {
         assertTrue("rate-22" !in r && "rate-23" !in r)
     }
 
+    @Test fun `a night with several recipes - one tonight reminder naming them all, a rating reminder for each`() {
+        val salad = PlanEntry(24, "2026-10-12", 7, 2, title = "Green salad")
+        val pie = PlanEntry(25, "2026-10-12", 8, 2, title = "Apple pie", rating = Rating(5))
+        val r = plan(listOf(chili, salad, pie, soup), prefs = NotifPrefs(tonight = true))
+        assertEquals(setOf("rate-21", "rate-24", "rate-22", "tonight-21", "tonight-22"), r.keys)
+        assertEquals("Tonight: Chili, Green salad and Apple pie", r["tonight-21"]!!.title)
+        assertEquals("Tap for the first recipe.", r["tonight-21"]!!.text)
+        assertEquals("recipe/5", r["tonight-21"]!!.nav)
+        assertEquals("How was Wednesday's Green salad?", r["rate-24"]!!.title)
+        assertEquals("Tap for the recipe.", r["tonight-22"]!!.text)
+    }
+
     @Test fun `only rating and tonight reminders are planned (no thaw since Sunday prep was retired)`() {
         val r = plan(listOf(chili, soup), prefs = NotifPrefs(tonight = true))
         assertEquals(setOf("rate-21", "rate-22", "tonight-21", "tonight-22"), r.keys)

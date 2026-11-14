@@ -63,6 +63,17 @@ class HomeLogicTest {
         assertEquals(ContextAction.AllSet, contextAction(wk, LocalDate.parse("2026-10-19"), entries, false, null)) // week over
     }
 
+    @Test fun `a night with several recipes - tonight names them all in their order and opens the first`() {
+        val wedThisWeek = LocalDate.parse("2026-10-14")
+        val night = listOf(e(40, 2, "Chili"), e(12, 2, "Green salad"), e(41, 2, "Apple pie"), e(42, 3, "Soup"))
+        val t = contextAction(wk, wedThisWeek, night, false, null)
+        assertEquals(ContextAction.Tonight(40, 40, "Chili, Green salad and Apple pie"), t)
+        assertEquals("Tonight: Chili, Green salad and Apple pie", t.label)
+        assertEquals("Chili and Green salad", dinnerTitles(night.take(2)))
+        // a night counts once however many recipes it holds
+        assertEquals(5, freeNights(wk, wk, night))
+    }
+
     @Test fun `import cards`() {
         val a = UUID.randomUUID(); val b = UUID.randomUUID(); val c = UUID.randomUUID(); val d = UUID.randomUUID()
         val done = workDataOf(ImportWorker.OUT_RECIPE_ID to 3, ImportWorker.OUT_TITLE to "Wings", ImportWorker.OUT_EXISTING to true,
