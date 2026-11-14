@@ -5,7 +5,9 @@ to public addresses only (no LAN, loopback, link-local, carrier-grade NAT, multi
 connection itself goes through `GuardBackend`, which re-checks the addresses it actually connects to (so a DNS answer
 that changes between the check and the connection can't reach the LAN). Redirects are followed by hand (at most
 MAX_REDIRECTS, each one checked), with a browser-like User-Agent, a connect/read timeout, an overall deadline and a
-size cap (the import cap). Only HTML is read. Every failure is a WebImportError with a `reason` code and a sentence
+size cap (the import cap). Only HTML is read. A page a bot check turns away (403 / "Just a moment…") is fetched
+once more by `browser_fetch` (curl_cffi with a browser's TLS fingerprint, the same checks, the connection pinned to a
+checked address). Every failure is a WebImportError with a `reason` code and a sentence
 for the household; the code is logged.
 
 Finding the recipe (`read_recipe`), in order:
@@ -261,11 +263,116 @@ def _status_error(status: int, headers, url: str, body: bytes) -> WebImportError
     return WebImportError(HTTP_ERROR, f"{site} answered HTTP {status} for that page.")
 
 
-def fetch_page(url: str, max_bytes: int, client: httpx.Client | None = None, resolve=_resolve) -> Page:
-    """The page's HTML after redirects (each hop checked by check_url). Raises WebImportError."""
+_DEFAULT = object()
+
+
+def fetch_page(url: str, max_bytes: int, client: httpx.Client | None = None, resolve=_resolve,
+               fallback=_DEFAULT) -> Page:
+    """The page's HTML after redirects (each hop checked by check_url). Raises WebImportError.
+
+    A site behind a bot check (Cloudflare's "Just a moment…", a bare 403) often turns away httpx by its TLS
+    fingerprint alone, though the page is public. Then the page is fetched once more with `fallback` (default
+    `browser_fetch`: a browser's TLS/HTTP2 fingerprint, the same address checks, pinned to the checked address). Tests
+    that pass their own client get no fallback unless they pass one."""
+    if fallback is _DEFAULT:
+        fallback = browser_fetch if client is None else None
+    start = time.monotonic()
+    try:
+        return _httpx_fetch(url, max_bytes, client, resolve, start)
+    except WebImportError as e:
+        if e.reason != BLOCKED or fallback is None:
+            raise
+        log.warning("web fetch %s blocked (%s); trying a browser-like fetch", url[:200], e)
+        try:
+            return fallback(url, max_bytes, resolve=resolve, start=start)
+        except WebImportError as e2:
+            log.warning("browser-like fetch of %s failed: %s: %s", url[:200], e2.reason, e2)
+            raise e2 if e2.reason != BLOCKED else e
+        except Exception as e2:   # the fallback itself broke: the first answer stands
+            log.warning("browser-like fetch of %s failed: %s: %s", url[:200], type(e2).__name__, str(e2)[:200])
+            raise e
+
+
+def _pin(url: str, resolve) -> tuple[str, int, str | None]:
+    """(host, port, address to connect to) for a link check_url accepted; the address is re-resolved and must be
+    public (None = the host is an IP literal, already checked)."""
+    u = urlsplit(url)
+    host = (u.hostname or "").lower().rstrip(".")
+    port = u.port or PORTS[u.scheme.lower()]
+    try:
+        ipaddress.ip_address(host)
+        return host, port, None
+    except ValueError:
+        pass
+    try:
+        addrs = resolve(host, port)
+    except (socket.gaierror, UnicodeError, OSError) as e:
+        raise WebImportError(UNREACHABLE, f"Couldn't find the site {host}. Check the link.") from e
+    if not addrs or not all(is_public(a) for a in addrs):
+        raise WebImportError(PRIVATE, "That link points into a private network, not the public web.")
+    return host, port, addrs[0]
+
+
+def browser_fetch(url: str, max_bytes: int, resolve=_resolve, start: float | None = None) -> Page:
+    """fetch_page's second try (curl_cffi impersonating Chrome): the same rules — every hop checked by check_url,
+    redirects by hand, the connection pinned (CURLOPT_RESOLVE) to an address that was just checked to be public and
+    confirmed after, http/https only, no proxies from the environment, the size cap and the overall deadline."""
+    from curl_cffi import CurlOpt, requests as creq
+    from curl_cffi.requests.exceptions import RequestException, Timeout
+    start = start or time.monotonic()
+    for _ in range(MAX_REDIRECTS + 1):
+        check_url(url, resolve)
+        host, port, pin = _pin(url, resolve)
+        left = DEADLINE - (time.monotonic() - start)
+        if left <= 1:
+            raise WebImportError(TIMEOUT_, "That site took too long to answer. Try again later.")
+        opts = {CurlOpt.PROTOCOLS_STR: b"http,https", CurlOpt.REDIR_PROTOCOLS_STR: b"http,https"}
+        if pin:
+            opts[CurlOpt.RESOLVE] = [f"{host}:{port}:{'[' + pin + ']' if ':' in pin else pin}"]
+        try:
+            with creq.Session(impersonate="chrome", trust_env=False, curl_options=opts) as s:
+                r = s.get(url, stream=True, allow_redirects=False, timeout=(10, min(20.0, left)),
+                          headers={"Accept-Language": "en-CA,en;q=0.8"})
+                try:
+                    ip = getattr(r, "primary_ip", None)
+                    if ip and not is_public(ip):
+                        raise WebImportError(PRIVATE, "That link points into a private network, not the public web.")
+                    loc = r.headers.get("location")
+                    if r.status_code in (301, 302, 303, 307, 308) and loc:
+                        nxt = urljoin(url, loc)
+                        log.warning("browser-like fetch %s → %s %s", url, r.status_code, nxt)
+                        url = nxt
+                        continue
+                    body = bytearray()
+                    for chunk in r.iter_content():
+                        body += chunk
+                        if len(body) > max_bytes:
+                            raise WebImportError(TOO_BIG, "That page is too big to read.")
+                        if time.monotonic() - start > DEADLINE:
+                            raise WebImportError(TIMEOUT_, "That site took too long to answer. Try again later.")
+                        if r.status_code >= 400 and len(body) > 65536:
+                            break
+                finally:
+                    r.close()
+        except Timeout as e:
+            raise WebImportError(TIMEOUT_, "That site took too long to answer. Try again later.") from e
+        except RequestException as e:
+            raise WebImportError(UNREACHABLE, f"Couldn't reach {host} ({type(e).__name__}).") from e
+        if r.status_code >= 400:
+            raise _status_error(r.status_code, r.headers, url, bytes(body))
+        if r.status_code != 200:
+            raise WebImportError(HTTP_ERROR, f"The site answered HTTP {r.status_code} for that page.")
+        ctype = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
+        if ctype and ctype not in _HTML_TYPES:
+            raise WebImportError(NOT_HTML, "That link isn't a web page (it's "
+                                           f"{ctype or 'something else'}). Share the recipe's page.")
+        return Page(url=url, html=_decode(bytes(body), r.headers.get("content-type") or ""))
+    raise WebImportError(HTTP_ERROR, "That link redirects too many times.")
+
+
+def _httpx_fetch(url: str, max_bytes: int, client: httpx.Client | None, resolve, start: float) -> Page:
     own = client is None
     client = client or guarded_client(resolve)
-    start = time.monotonic()
     try:
         for _ in range(MAX_REDIRECTS + 1):
             check_url(url, resolve)

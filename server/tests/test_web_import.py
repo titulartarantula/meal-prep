@@ -358,3 +358,72 @@ def test_jsonld_lines_tidied_by_the_ai_and_kept_when_it_fails():
             raise RuntimeError("down")
     w = web.read_recipe(page(SOUP), URL, ai=Down(), tidy=importer.tidy)
     assert [i.raw for i in w.recipe.ingredients] == SOUP["recipeIngredient"] and w.warnings == [importer.NO_AI]
+
+
+# --- the browser-like second try (2026-11-14: a Cloudflare bot check turned away httpx on a public recipe page) ----
+
+def _blocked_route():
+    respx.get("https://blog.example.org/x").mock(return_value=httpx.Response(
+        403, headers={"cf-mitigated": "challenge"}, text="<title>Just a moment...</title>"))
+
+
+@respx.mock
+def test_blocked_page_is_fetched_again_with_the_fallback():
+    _blocked_route()
+    calls = []
+    def fallback(url, max_bytes, resolve, start):
+        calls.append(url)
+        return web.Page(url=url, html="<html>the recipe</html>")
+    p = web.fetch_page("https://blog.example.org/x", 10_000, client=httpx.Client(), resolve=resolver(), fallback=fallback)
+    assert calls == ["https://blog.example.org/x"] and "the recipe" in p.html
+
+
+@respx.mock
+def test_other_failures_never_use_the_fallback():
+    respx.get("https://blog.example.org/x").mock(return_value=httpx.Response(404, text="Not found"))
+    def fallback(*a, **kw):
+        raise AssertionError("not called")
+    with pytest.raises(WebImportError) as e:
+        web.fetch_page("https://blog.example.org/x", 10_000, client=httpx.Client(), resolve=resolver(), fallback=fallback)
+    assert e.value.reason == web.NOT_FOUND
+
+
+@respx.mock
+def test_injected_client_has_no_fallback_by_default():
+    _blocked_route()
+    with pytest.raises(WebImportError) as e:
+        web.fetch_page("https://blog.example.org/x", 10_000, client=httpx.Client(), resolve=resolver())
+    assert e.value.reason == web.BLOCKED
+
+
+@pytest.mark.parametrize("raised,reason", [
+    (WebImportError(web.BLOCKED, "still blocked"), web.BLOCKED),
+    (WebImportError(web.NOT_FOUND, "gone"), web.NOT_FOUND),
+    (RuntimeError("curl broke"), web.BLOCKED),
+])
+@respx.mock
+def test_fallback_failures(raised, reason):
+    _blocked_route()
+    def fallback(*a, **kw):
+        raise raised
+    with pytest.raises(WebImportError) as e:
+        web.fetch_page("https://blog.example.org/x", 10_000, client=httpx.Client(), resolve=resolver(), fallback=fallback)
+    assert e.value.reason == reason
+    if reason == web.BLOCKED:   # the first answer's sentence: it says what to do
+        assert "refused to show that page" in str(e.value)
+
+
+def test_browser_fetch_refuses_private_hosts_before_connecting():
+    with pytest.raises(WebImportError) as e:
+        web.browser_fetch("https://lan.example.org/x", 10_000, resolve=resolver({"lan.example.org": ["192.168.1.5"]}))
+    assert e.value.reason == web.PRIVATE
+    with pytest.raises(WebImportError) as e:
+        web.browser_fetch("http://10.1.2.3/x", 10_000, resolve=resolver())
+    assert e.value.reason == web.PRIVATE
+
+
+def test_browser_fetch_pins_a_fresh_public_answer():
+    answers = iter([[PUBLIC], ["127.0.0.1"]])   # public when checked, loopback when pinned (DNS rebinding)
+    with pytest.raises(WebImportError) as e:
+        web.browser_fetch("https://rebind.example.org/x", 10_000, resolve=lambda h, p: next(answers))
+    assert e.value.reason == web.PRIVATE
