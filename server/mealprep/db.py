@@ -266,6 +266,12 @@ def week_start(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
+# A night can hold several recipes (2026-11-14): they show in the order they were put on it. plan.position is that
+# order within its night (set when a recipe is placed, NULL in the tray); rows placed before the column existed have
+# NULL and come first, by id (`python -m mealprep.night_order` numbers them once). Older apps take the night's first.
+NIGHT_ORDER = "COALESCE(p.day, 99), p.position NULLS FIRST, p.id"
+
+
 def add_to_week(conn, week: date, recipe_id: int) -> int:
     return conn.execute("INSERT INTO plan(week, recipe_id) VALUES(%s,%s) RETURNING id",
                         (week_start(week), recipe_id)).fetchone()[0]
@@ -281,7 +287,7 @@ def get_week(conn, week: date, viewer: int | None = None) -> list[PlanEntry]:
     """The week's entries with everyone's ratings; viewer = the member asking (None = the shared token / Family)."""
     rows = conn.execute("SELECT p.id, p.week, p.recipe_id, p.day, p.multiplier, rc.title "
                         "FROM plan p JOIN recipes rc ON rc.id = p.recipe_id "
-                        "WHERE p.week=%s ORDER BY COALESCE(p.day, 99), p.id", (week_start(week),)).fetchall()
+                        "WHERE p.week=%s ORDER BY " + NIGHT_ORDER, (week_start(week),)).fetchall()
     people = _people(conn)
     rated = _plan_ratings(conn, [r[0] for r in rows], people)
     verdicts = company_verdicts(conn, list({r[2] for r in rows}))
@@ -294,10 +300,15 @@ _UNSET = object()
 
 
 def update_entry(conn, entry_id: int, day=_UNSET, multiplier=_UNSET) -> None:
-    """Update only the fields passed; day=None explicitly un-places the recipe from its night."""
+    """Update only the fields passed; day=None explicitly un-places the recipe from its night. A recipe put on another
+    night goes after the recipes already there (the same night again keeps its place)."""
     sets, vals = [], []
     if day is not _UNSET:
         sets.append("day=%s"); vals.append(day)
+        sets.append("position = CASE WHEN %s::smallint IS NULL THEN NULL WHEN plan.day IS NOT DISTINCT FROM %s::smallint "
+                    "THEN plan.position ELSE (SELECT COALESCE(max(o.position), count(*)) + 1 FROM plan o "
+                    "WHERE o.week = plan.week AND o.day = %s::smallint AND o.id <> plan.id) END")
+        vals += [day, day, day]
     if multiplier is not _UNSET:
         sets.append("multiplier=%s"); vals.append(multiplier)
     if sets:
@@ -639,7 +650,7 @@ def pending_ratings(conn, today: date, days: int = 14, rater: int | None = None)
         "WHERE p.day IS NOT NULL AND p.week + p.day::int < %(t)s AND p.week + p.day::int >= %(t)s - %(n)s::int "
         "AND NOT EXISTS (SELECT 1 FROM ratings x WHERE x.plan_id = p.id" + who.format("x") + ") "
         "AND NOT EXISTS (SELECT 1 FROM recipe_ratings y WHERE y.recipe_id = p.recipe_id "
-        "AND y.cooked_on = p.week + p.day::int" + who.format("y") + ") ORDER BY d DESC, p.id",
+        "AND y.cooked_on = p.week + p.day::int" + who.format("y") + ") ORDER BY d DESC, p.position NULLS FIRST, p.id",
         {"t": today, "n": days, "m": rater})
     return [{"entry_id": i, "week": w.isoformat(), "day": dy, "date": d.isoformat(), "recipe_id": rid, "title": t,
              "multiplier": m} for i, w, dy, d, rid, t, m in rows]

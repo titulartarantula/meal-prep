@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS plan(
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS plan_week_idx ON plan(week);
+-- Several recipes on a night (2026-11-14): their order on the night, set when one is placed (NULL in the tray and for
+-- rows placed before; those come first, by id). `python -m mealprep.night_order` numbers the old ones (logged, --revert).
+ALTER TABLE plan ADD COLUMN IF NOT EXISTS position int;
 CREATE TABLE IF NOT EXISTS products(
   code text PRIMARY KEY,
   name text,
