@@ -476,6 +476,28 @@ test.describe("signed in", () => {
     await expect(page.getByRole("status").filter({ hasText: "Added Shrimp fried rice" })).toBeVisible();
   });
 
+  test("several recipes on one night: add another recipe, place one from the tray; they keep the order they were put on it", async ({ page }) => {
+    const monday = page.getByRole("article", { name: /^Monday/ });
+    await expect(monday).toContainText("Miso-glazed salmon");
+    await monday.getByRole("button", { name: "Add another recipe to Monday" }).click();
+    const dlg = page.getByRole("dialog", { name: "Add to Monday" });
+    await expect(dlg).toContainText("Already on Monday: Miso-glazed salmon with sesame greens");
+    await dlg.getByRole("searchbox", { name: "Search recipes" }).fill("shrimp");
+    await dlg.getByRole("button", { name: /Shrimp fried rice/ }).click();
+    await expect(dlg).toBeHidden();
+    // the tray's oldest recipe goes after the two already there
+    await page.getByRole("button", { name: "Place Mushroom bourguignon" }).click();
+    await page.getByRole("menu").getByRole("menuitem", { name: "Mon" }).click();
+    await expect(monday.locator("h3")).toHaveText(["Miso-glazed salmon with sesame greens", "Shrimp fried rice", "Mushroom bourguignon"]);
+    await axe(page);
+    await phoneChecks(page);
+    await shot(page, "03b-several-recipes");
+    // one off the night again: the others stay, in order
+    await monday.getByRole("button", { name: "Options for Shrimp fried rice" }).click();
+    await page.getByRole("menuitem", { name: "Remove from week" }).click();
+    await expect(monday.locator("h3")).toHaveText(["Miso-glazed salmon with sesame greens", "Mushroom bourguignon"]);
+  });
+
   test("week navigation and dark mode", async ({ page }) => {
     await page.getByRole("button", { name: "Next week" }).click();
     await expect(page.getByRole("heading", { name: "Next week" })).toBeVisible();

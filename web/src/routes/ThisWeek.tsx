@@ -107,7 +107,8 @@ export function ThisWeek() {
       {draft && draft.status !== "sent" && !draft.stale ? "Review cart" : "Build cart"}
     </Button>
   ) : null;
-  const placed = list.filter((e) => e.day != null).length;
+  // Nights with a dinner (a night with a side or dessert as well still counts once).
+  const placed = new Set(list.filter((e) => e.day != null).map((e) => e.day)).size;
 
   return (
     <main className="main" id="main">
@@ -154,7 +155,7 @@ export function ThisWeek() {
                     {editable && <MenuItem icon="edit" onSelect={() => { close(); setNaming(d); }}>{name ? "Rename night" : "Name this night"}</MenuItem>}
                     {editable && name && <MenuItem icon="x" onSelect={() => { close(); nameNight.mutate({ day: d, title: "" }, { onError: onErr("clear the name") }); }}>Clear name</MenuItem>}
                     {canShop && <MenuItem icon="bag" onSelect={() => { close(); setShopStatus(null); setShopping(d); }}>Add store items</MenuItem>}
-                    {editable && <MenuItem icon="plus" onSelect={() => { close(); setAdding(d); }}>Add a recipe</MenuItem>}
+                    {editable && <MenuItem icon="plus" onSelect={() => { close(); setAdding(d); }}>{es.length ? "Add another recipe" : "Add a recipe"}</MenuItem>}
                   </>
                 )}
               </Menu>
@@ -165,7 +166,7 @@ export function ThisWeek() {
                 <div className="night-head">
                   <span className="dow">{DAYS[d]}</span><span className="date">{shortDate(date)}</span>
                   {tonight && <span className="pill tonight">Tonight</span>}
-                  {!tonight && es[0]?.rating_count ? <span className="tag-quiet"><Icon name="check" size={14} />Rated</span> : null}
+                  {!tonight && es.length > 0 && es.every((e) => e.rating_count > 0) ? <span className="tag-quiet"><Icon name="check" size={14} />Rated</span> : null}
                   {nightMenu && <span className="night-menu">{nightMenu}</span>}
                 </div>
                 {name && (
@@ -182,13 +183,22 @@ export function ThisWeek() {
                     <small>{!editable ? "Nothing planned" : drag ? "Add a recipe, or drag one from the tray" : "Add a recipe"}</small>
                   </button>
                 ) : (
-                  <div className={es.length > 1 ? "stack" : "single"}>
-                    {es.map((e) => (
-                      <NightCard key={e.id} entry={e} recipe={byId.get(e.recipe_id)} compact={es.length > 1} past={past || tonight}
-                        editable={editable} canRate={canRate} me={me} draggable={drag} onRate={() => setRating(e)} onRemove={() => removeEntry(e)}
-                        onMove={(day) => move.mutate({ id: e.id, day })} />
-                    ))}
-                  </div>
+                  <>
+                    <div className={es.length > 1 ? "stack" : "single"}>
+                      {es.map((e) => (
+                        <NightCard key={e.id} entry={e} recipe={byId.get(e.recipe_id)} compact={es.length > 1} past={past || tonight}
+                          editable={editable} canRate={canRate} me={me} draggable={drag} onRate={() => setRating(e)} onRemove={() => removeEntry(e)}
+                          onMove={(day) => move.mutate({ id: e.id, day })} />
+                      ))}
+                    </div>
+                    {/* A night can hold several recipes (a side, a dessert…), in the order they were put on it. */}
+                    {editable && (
+                      <button type="button" className="link-btn night-add-recipe" onClick={() => setAdding(d)}
+                        aria-label={`Add another recipe to ${DAYS_LONG[d]}`}>
+                        <Icon name="plus" size={14} />Add another recipe
+                      </button>
+                    )}
+                  </>
                 )}
                 <NightStore day={d} items={items} canEdit={canShop} onAdd={() => { setShopStatus(null); setShopping(d); }}
                   onQty={itemQty} onMove={itemMove} onRemove={itemRemove} />
@@ -253,7 +263,7 @@ export function ThisWeek() {
       )}
       {compact && action && (
         <div className="dock">
-          <span className="dock-text"><b>{placed}</b> {placed === 1 ? "dinner" : "dinners"} placed</span>
+          <span className="dock-text"><b>{placed}</b> {placed === 1 ? "night" : "nights"} planned</span>
           {action}
         </div>
       )}

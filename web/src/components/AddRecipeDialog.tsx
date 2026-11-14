@@ -24,8 +24,12 @@ export function AddRecipeDialog({ open, week, day, onClose }: { open: boolean; w
   }, [recipes.data, q, sort]);
 
   const where = day == null ? "the week (no night yet)" : `${DAYS_LONG[day]} ${shortDate(nightDate(week, day))}`;
+  // A night can hold several recipes: what's already on it, so a side or dessert is picked knowingly.
+  const already = day == null ? [] : planned.filter((e) => e.day === day).map((e) => e.title ?? "a recipe");
+  const title = day == null ? "Add a recipe to the week" : already.length ? `Add to ${DAYS_LONG[day]}` : `Dinner for ${DAYS_LONG[day]}`;
   return (
-    <Modal open={open} onClose={() => { setQ(""); onClose(); }} title={day == null ? "Add a recipe to the week" : `Dinner for ${DAYS_LONG[day]}`} wide>
+    <Modal open={open} onClose={() => { setQ(""); onClose(); }} title={title} wide>
+      {already.length > 0 && <p className="muted night-already">Already on {DAYS_LONG[day!]}: {already.join(", ")}</p>}
       <div className="picker-bar">
         <label className="search grow">
           <Icon name="search" size={16} />

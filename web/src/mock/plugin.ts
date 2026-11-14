@@ -392,7 +392,13 @@ export function mockApi(): Plugin {
       const i = db.entries.findIndex((e) => e.id === Number(g![1]));
       if (i < 0) return send(res, 404, { detail: "entry" });
       if (m === "DELETE") db.entries.splice(i, 1);
-      else Object.assign(db.entries[i], body);
+      else {
+        // as the server: a recipe put on another night goes after the ones already there
+        const b = (body ?? {}) as { day?: number | null };
+        const moved = b.day != null && b.day !== db.entries[i].day;
+        Object.assign(db.entries[i], b);
+        if (moved) db.entries.push(...db.entries.splice(i, 1));
+      }
       return send(res, 204);
     }
     if ((g = path.match(/^\/plan\/(\d+)\/rating$/))) {
