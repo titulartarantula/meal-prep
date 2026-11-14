@@ -373,7 +373,7 @@ export interface paths {
         };
         /**
          * Get Nights
-         * @description The week's nights that have a name or store items (Sunday first). A night with no recipe still counts as
+         * @description The week's nights that have a name or store items (Monday first). A night with no recipe still counts as
          *     planned for display; it never asks for a rating.
          */
         get: operations["get_nights_weeks__week__nights_get"];

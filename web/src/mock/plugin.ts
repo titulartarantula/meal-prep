@@ -18,8 +18,8 @@ function iso(d: Date) {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
-function sunday(d = new Date(), weeks = 0) {
-  return iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay() + 7 * weeks));
+function monday(d = new Date(), weeks = 0) {
+  return iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7) + 7 * weeks));
 }
 
 interface Entry { id: number; week: string; recipe_id: number; day: number | null; multiplier: number; ratings: PR[] }
@@ -48,16 +48,16 @@ function fresh() {
   for (const [off, list] of Object.entries(PLAN)) {
     for (const [rid, day, stars] of list) {
       const at = new Date(Date.now() - 3600e3).toISOString();
-      entries.push({ id: ++id, week: sunday(new Date(), Number(off)), recipe_id: rid, day, multiplier: 1,
+      entries.push({ id: ++id, week: monday(new Date(), Number(off)), recipe_id: rid, day, multiplier: 1,
         ratings: stars ? [{ member_id: null, entered_by: null, family: stars, note: null, rated_at: at }] : [] });
     }
   }
   for (const [rid, member, stars, note, by] of NIGHT_RATINGS) {
-    const e = entries.find((x) => x.week === sunday() && x.recipe_id === rid)!;
+    const e = entries.find((x) => x.week === monday() && x.recipe_id === rid)!;
     e.ratings.push({ member_id: member, entered_by: by ?? member, family: stars, note: note ?? null,
       rated_at: new Date(Date.now() - 1800e3).toISOString() });
   }
-  const sent: Draft = { id: 1, status: "sent", weeks: [sunday()], lines: [], pcx_cart_id: "8f3c2d1e-0000-4000-8000-000000000001",
+  const sent: Draft = { id: 1, status: "sent", weeks: [monday()], lines: [], pcx_cart_id: "8f3c2d1e-0000-4000-8000-000000000001",
     created_at: new Date(Date.now() - 6 * 864e5).toISOString(), sent_at: new Date(Date.now() - 6 * 864e5).toISOString(), built: 0, total: 0 };
   const recipes: (MockRecipe & { revision: number; notesText?: string | null })[] = structuredClone(RECIPES).map((r) => ({ ...r, revision: 1 }));
   const company = new Map<number, Verdict>(recipes.filter((r) => r.company)
@@ -310,7 +310,7 @@ export function mockApi(): Plugin {
       const term = (b.term ?? "").trim().replace(/\s+/g, " ");
       if (!term || badDay(b.day) || (b.quantity != null && b.quantity <= 0)) return send(res, 422, { detail: "invalid added item" });
       if (!byCode(b.product_code)) return send(res, 422, { detail: `unknown product ${b.product_code} — search for it first` });
-      const x: MockExtra = { id: ++db.nextId, week: sunday(new Date(b.week + "T12:00")), day: b.day ?? null, term, code: b.product_code,
+      const x: MockExtra = { id: ++db.nextId, week: monday(new Date(b.week + "T12:00")), day: b.day ?? null, term, code: b.product_code,
         quantity: b.quantity || 1, created_at: new Date().toISOString() };
       db.extras.push(x);
       const d = openDraft(x.week);   // a cart under review gets the line at once
@@ -352,7 +352,7 @@ export function mockApi(): Plugin {
     if ((g = path.match(/^\/weeks\/([\d-]+)\/nights\/(-?\d+)$/))) {
       if (!can("plan.edit")) return send(res, 403, { detail: "You need the plan.edit permission for this." });
       const w = g[1], d = Number(g[2]);
-      if (badDay(d)) return send(res, 422, { detail: "day must be 0 (Sun) … 6 (Sat)" });
+      if (badDay(d)) return send(res, 422, { detail: "day must be 0 (Mon) … 6 (Sun)" });
       if (m === "DELETE") { db.nights.delete(`${w}|${d}`); return send(res, 204); }
       const raw = (body as { title?: string | null } | null)?.title ?? "";
       if (raw.length > 200) return send(res, 422, { detail: "title" });
@@ -362,16 +362,16 @@ export function mockApi(): Plugin {
       return send(res, 200, { week: w, day: d, title: title || null });
     }
     if (path === "/weeks") {
-      const from = url.searchParams.get("from") ?? sunday(), n = Number(url.searchParams.get("count") ?? 8);
+      const from = url.searchParams.get("from") ?? monday(), n = Number(url.searchParams.get("count") ?? 8);
       return send(res, 200, Array.from({ length: n }, (_, i) => {
-        const w = iso(addDays(sunday(new Date(from + "T12:00")), 7 * i));
+        const w = iso(addDays(monday(new Date(from + "T12:00")), 7 * i));
         const sent = db.drafts.find((d) => d.status === "sent" && d.weeks.includes(w));
         return { week: w, entries: db.entries.filter((e) => e.week === w).length, extras: db.extras.filter((x) => x.week === w).length,
           named_nights: [...db.nights.keys()].filter((k) => k.startsWith(`${w}|`)).length, carted: !!sent, cart_stale: false };
       }));
     }
     if (path === "/cart/default-week") {
-      const w = [...new Set([...db.entries.map((e) => e.week), ...db.extras.map((x) => x.week)])].sort().find((w) => w >= sunday() &&
+      const w = [...new Set([...db.entries.map((e) => e.week), ...db.extras.map((x) => x.week)])].sort().find((w) => w >= monday() &&
         !db.drafts.some((d) => d.status === "sent" && d.weeks.includes(w)));
       return send(res, 200, { week: w ?? null });
     }

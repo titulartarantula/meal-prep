@@ -103,9 +103,9 @@ export const NIGHT_RATINGS: [number, number | null, number, string?, number?][] 
 
 /** Plan entries per week offset from this week: [recipe, day | null, Family rating | null]. */
 export const PLAN: Record<number, [number, number | null, number | null][]> = {
-  [-1]: [[11, 1, 5], [10, 3, null], [12, 5, null], [4, 6, null]],
-  0: [[1, 0, 5], [2, 1, 4], [3, 2, 5], [4, 3, 4], [5, 4, null], [6, 5, null], [7, null, null], [8, null, null]],
-  1: [[9, 0, null], [11, 2, null], [12, 4, null]],
+  [-1]: [[11, 0, 5], [10, 2, null], [12, 4, null], [4, 5, null]],
+  0: [[2, 0, 4], [3, 1, 5], [4, 2, 4], [5, 3, null], [6, 4, null], [1, 6, 5], [7, null, null], [8, null, null]],
+  1: [[11, 1, null], [12, 3, null], [9, 6, null]],
 };
 
 export interface MockProduct {

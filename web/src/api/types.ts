@@ -69,7 +69,7 @@ export interface WeekSummary {
   cart_stale: boolean;
 }
 
-/** GET /extras: an item added by search for a week, or one night of it (day 0 = Sun … 6 = Sat; null = the week). */
+/** GET /extras: an item added by search for a week, or one night of it (day 0 = Mon … 6 = Sun; null = the week). */
 export interface Extra {
   id: number;
   week: string;
@@ -133,7 +133,7 @@ export interface DraftLine {
   pinned?: boolean;
   note?: string | null;
   extra_id?: number | null;
-  /** An added item's night (0 = Sun … 6 = Sat); null = for the week. */
+  /** An added item's night (0 = Mon … 6 = Sun); null = for the week. */
   day?: number | null;
 }
 

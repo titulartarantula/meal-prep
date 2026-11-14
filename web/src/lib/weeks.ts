@@ -1,8 +1,9 @@
-// Weeks run Sunday–Saturday and are named by their Sunday as an ISO date ("2026-11-01"), like the server.
+// Weeks run Monday–Sunday and are named by their Monday as an ISO date ("2026-11-16"), like the server (Sunday–Saturday
+// before 2026-11-14). A night's day is its offset from the Monday: 0 = Mon … 6 = Sun.
 // Dates are handled as local calendar days (no time zone shifts: "2026-11-01" is never parsed as UTC midnight).
 
-export const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-export const DAYS_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+export const DAYS_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 export function parseISO(s: string): Date {
@@ -19,16 +20,16 @@ export function addDays(d: Date, n: number): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 }
 
-/** The Sunday that starts the week holding d. */
+/** The Monday that starts the week holding d. */
 export function weekOf(d: Date): string {
-  return toISO(addDays(d, -d.getDay()));
+  return toISO(addDays(d, -((d.getDay() + 6) % 7)));
 }
 
 export function shiftWeek(week: string, n: number): string {
   return toISO(addDays(parseISO(week), 7 * n));
 }
 
-/** The date of a night (0 = Sunday) in a week. */
+/** The date of a night (0 = Monday) in a week. */
 export function nightDate(week: string, day: number): Date {
   return addDays(parseISO(week), day);
 }

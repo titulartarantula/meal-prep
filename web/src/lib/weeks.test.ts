@@ -1,28 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { nightDate, shiftWeek, toISO, weekName, weekNameInline, weekOf, weekRange } from "./weeks";
+import { DAYS, DAYS_LONG, nightDate, shiftWeek, toISO, weekName, weekNameInline, weekOf, weekRange } from "./weeks";
 import { agoInline, amount, formatMinutes, formatQty } from "./format";
 import { lineCost } from "../api/types";
 
 describe("weeks", () => {
-  it("names a week by its Sunday", () => {
-    expect(weekOf(new Date(2026, 9, 30))).toBe("2026-10-25");   // Friday
-    expect(weekOf(new Date(2026, 10, 1))).toBe("2026-11-01");   // Sunday
-    expect(weekOf(new Date(2026, 10, 7))).toBe("2026-11-01");   // Saturday
+  it("names a week by its Monday (weeks run Monday–Sunday)", () => {
+    expect(weekOf(new Date(2026, 9, 30))).toBe("2026-10-26");   // Friday
+    expect(weekOf(new Date(2026, 9, 26))).toBe("2026-10-26");   // Monday
+    expect(weekOf(new Date(2026, 10, 1))).toBe("2026-10-26");   // Sunday: the end of the week, not the start
+    expect(weekOf(new Date(2026, 10, 2))).toBe("2026-11-02");   // Monday
+    expect(weekOf(new Date(2026, 10, 7))).toBe("2026-11-02");   // Saturday
   });
   it("shifts across months and DST", () => {
-    expect(shiftWeek("2026-10-25", 1)).toBe("2026-11-01");      // DST ends Nov 1 in Toronto
-    expect(shiftWeek("2026-11-01", -1)).toBe("2026-10-25");
-    expect(toISO(nightDate("2026-10-25", 6))).toBe("2026-10-31");
+    expect(shiftWeek("2026-10-26", 1)).toBe("2026-11-02");      // DST ends Nov 1 in Toronto
+    expect(shiftWeek("2026-11-02", -1)).toBe("2026-10-26");
+    expect(toISO(nightDate("2026-10-26", 0))).toBe("2026-10-26"); // night 0 = Monday
+    expect(toISO(nightDate("2026-10-26", 6))).toBe("2026-11-01"); // night 6 = Sunday, across DST
+  });
+  it("day names start on Monday", () => {
+    expect(DAYS[0]).toBe("Mon");
+    expect(DAYS[6]).toBe("Sun");
+    expect(DAYS_LONG[3]).toBe("Thursday");
+    expect(nightDate("2026-11-16", 3).getDay()).toBe(4); // night 3 of a Monday week is a Thursday
   });
   it("labels", () => {
     const today = new Date(2026, 9, 30);
-    expect(weekName("2026-10-25", today)).toBe("This week");
-    expect(weekName("2026-11-01", today)).toBe("Next week");
-    expect(weekName("2026-11-08", today)).toBe("Week of Nov 8");
-    expect(weekNameInline("2026-11-08", today)).toBe("the week of Nov 8");
-    expect(weekNameInline("2026-11-01", today)).toBe("next week");
-    expect(weekRange("2026-10-25")).toBe("Oct 25 – 31");
-    expect(weekRange("2026-11-29")).toBe("Nov 29 – Dec 5");
+    expect(weekName("2026-10-26", today)).toBe("This week");
+    expect(weekName("2026-11-02", today)).toBe("Next week");
+    expect(weekName("2026-10-19", today)).toBe("Last week");
+    expect(weekName("2026-11-09", today)).toBe("Week of Nov 9");
+    expect(weekName("2026-10-26", new Date(2026, 10, 1))).toBe("This week");   // on Sunday it's still this week
+    expect(weekNameInline("2026-11-09", today)).toBe("the week of Nov 9");
+    expect(weekNameInline("2026-11-02", today)).toBe("next week");
+    expect(weekRange("2026-10-26")).toBe("Oct 26 – Nov 1");
+    expect(weekRange("2026-11-16")).toBe("Nov 16 – 22");
   });
 });
 
